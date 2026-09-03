@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 export default function HomePage() {
   return (
@@ -13,12 +13,12 @@ export default function HomePage() {
         exterior and civil engineering work, done right.
       </p>
       <div className="flex gap-3">
-        <Button asChild size="lg">
-          <Link href="/requirements/new">Describe what you need</Link>
-        </Button>
-        <Button asChild size="lg" variant="outline">
-          <Link href="/discover">Browse professionals</Link>
-        </Button>
+        <Link href="/requirements/new" className={buttonVariants({ size: "lg" })}>
+          Describe what you need
+        </Link>
+        <Link href="/discover" className={buttonVariants({ size: "lg", variant: "outline" })}>
+          Browse professionals
+        </Link>
       </div>
     </div>
   );

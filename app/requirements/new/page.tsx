@@ -48,7 +48,15 @@ export default function NewRequirementPage() {
       .select("id")
       .single();
 
-    if (!error && data) {
+    if (error) {
+      console.error("requirements insert error", error);
+      // Show a basic client-side message if insert failed
+      // (could be improved with a UI component)
+      alert(error.message || "Failed to post requirement");
+      return;
+    }
+
+    if (data) {
       router.push(`/discover?requirement=${data.id}`);
     }
   }

@@ -44,15 +44,26 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  asChild = false,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
+  const classNames = cn(buttonVariants({ variant, size, className }));
+
+  if (asChild && children) {
+    // Clone the single child and merge className so `asChild` doesn't leak to DOM
+    const child = React.Children.only(children) as React.ReactElement;
+    return React.cloneElement(child, {
+      className: cn(classNames, (child.props && child.props.className) || ""),
+      ...props,
+    });
+  }
+
   return (
-    <ButtonPrimitive
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
+    <ButtonPrimitive data-slot="button" className={classNames} {...props}>
+      {children}
+    </ButtonPrimitive>
+  );
 }
 
 export { Button, buttonVariants }

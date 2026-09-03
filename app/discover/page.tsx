@@ -7,9 +7,9 @@ const CITIES = ["Cuddalore", "Chidambaram"];
 export default async function DiscoverPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; city?: string }>;
+  searchParams: Promise<{ category?: string; city?: string; requirement?: string }>;
 }) {
-  const { category, city } = await searchParams;
+  const { category, city, requirement } = await searchParams;
   const supabase = await createClient();
 
   const { data: categories } = await supabase
@@ -20,15 +20,38 @@ export default async function DiscoverPage({
   let query = supabase
     .from("providers")
     .select(
-      `id, business_name, headline, city, avg_rating, review_count, is_verified,
-       profiles ( full_name, avatar_url ),
-       provider_categories ( service_categories ( id, slug, name ) )`
+       `id, business_name, headline, city, avg_rating, review_count, is_verified,
+         profiles ( full_name, avatar_url, email ),
+         provider_categories ( service_categories ( id, slug, name ) )`
     )
     .eq("is_active", true);
 
   if (city) query = query.eq("city", city);
   if (category) {
     query = query.eq("provider_categories.service_categories.slug", category);
+  }
+
+  // If a requirement id is present, attempt to match providers by the
+  // requirement's city and by any service category names mentioned in the
+  // requirement description. This helps show relevant professionals after
+  // a user posts what they need.
+  if (requirement) {
+    const { data: req } = await supabase
+      .from("customer_requirements")
+      .select("id, title, description, city")
+      .eq("id", requirement)
+      .single();
+
+    if (req?.city) query = query.eq("city", req.city);
+
+    if (req?.description) {
+      const { data: allCats } = await supabase.from("service_categories").select("id, slug, name");
+      const matched = (allCats || []).filter((c: any) =>
+        req.description.toLowerCase().includes((c.name || "").toLowerCase())
+      );
+      const slugs = matched.map((m: any) => m.slug).filter(Boolean);
+      if (slugs.length) query = query.in("provider_categories.service_categories.slug", slugs as string[]);
+    }
   }
 
   const { data: providers } = await query;

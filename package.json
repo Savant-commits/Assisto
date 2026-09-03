@@ -12,6 +12,7 @@
     "@base-ui/react": "^1.7.0",
     "@hookform/resolvers": "^5.9.1",
     "@supabase/ssr": "^0.12.5",
+    "@supabase/auth-helpers-nextjs": "^0.6.0",
     "@supabase/supabase-js": "^2.114.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

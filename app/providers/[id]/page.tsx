@@ -16,7 +16,7 @@ export default async function ProviderProfilePage({
     .select(
       `id, business_name, headline, bio, years_experience, city, is_verified,
        avg_rating, review_count,
-       profiles ( full_name ),
+       profiles ( full_name, email ),
        provider_categories ( service_categories ( id, name ) ),
        provider_portfolio_items ( id, image_url, caption )`
     )
