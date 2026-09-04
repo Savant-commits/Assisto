@@ -22,7 +22,8 @@ export default async function DiscoverPage({
     .select(
        `id, business_name, headline, city, avg_rating, review_count, is_verified,
          profiles ( full_name, avatar_url, email ),
-         provider_categories ( service_categories ( id, slug, name ) )`
+         provider_categories ( service_categories ( id, slug, name ) ),
+         provider_portfolio_items ( id, image_url, description, media_type, created_at )`
     )
     .eq("is_active", true);
 

@@ -1,4 +1,4 @@
-import { Button as ButtonPrimitive } from "@base-ui/react/button"
+import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -40,29 +40,24 @@ const buttonVariants = cva(
   }
 )
 
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+  };
+
 function Button({
   className,
   variant = "default",
   size = "default",
-  asChild = false,
   children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
+}: ButtonProps) {
   const classNames = cn(buttonVariants({ variant, size, className }));
 
-  if (asChild && children) {
-    // Clone the single child and merge className so `asChild` doesn't leak to DOM
-    const child = React.Children.only(children) as React.ReactElement;
-    return React.cloneElement(child, {
-      className: cn(classNames, (child.props && child.props.className) || ""),
-      ...props,
-    });
-  }
-
   return (
-    <ButtonPrimitive data-slot="button" className={classNames} {...props}>
+    <button data-slot="button" className={classNames} {...props}>
       {children}
-    </ButtonPrimitive>
+    </button>
   );
 }
 

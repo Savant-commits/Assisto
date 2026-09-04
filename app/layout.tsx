@@ -22,9 +22,9 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
-  let profile: { full_name?: string } | null = null;
+  let profile: { full_name?: string; avatar_url?: string | null } | null = null;
   if (userData.user) {
-    const { data } = await supabase.from("profiles").select("full_name").eq("id", userData.user.id).single();
+    const { data } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", userData.user.id).single();
     profile = data || null;
   }
 
@@ -51,7 +51,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </a>
             </nav>
             <div>
-              <SessionMenu userId={userData.user?.id} fullName={profile?.full_name} />
+              <SessionMenu userId={userData.user?.id} fullName={profile?.full_name} avatarUrl={profile?.avatar_url} />
             </div>
           </div>
         </header>

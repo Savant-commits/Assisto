@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/form";
 import LoadingSpinner from "@/components/loading-spinner";
 
-const schema = z.object({
+const schema: z.ZodType<FormValues> = z.object({
   business_name: z.string().optional(),
   professional_type: z.string().min(2, "e.g. Electrician, Civil Engineer, Interior Designer"),
   years_experience: z.coerce.number().min(0).max(60),
@@ -28,12 +28,19 @@ const schema = z.object({
   service_area_notes: z.string().optional(),
 });
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = {
+  business_name?: string;
+  professional_type: string;
+  years_experience: number;
+  bio: string;
+  city: "Cuddalore" | "Chidambaram";
+  service_area_notes?: string;
+};
 
 export default function ApplyPage() {
   const router = useRouter();
   const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema as any) as any,
     defaultValues: {
       business_name: "",
       professional_type: "",

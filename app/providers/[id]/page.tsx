@@ -16,9 +16,9 @@ export default async function ProviderProfilePage({
     .select(
       `id, business_name, headline, bio, years_experience, city, is_verified,
        avg_rating, review_count,
-       profiles ( full_name, email ),
+       profiles ( full_name, email, avatar_url ),
        provider_categories ( service_categories ( id, name ) ),
-       provider_portfolio_items ( id, image_url, caption )`
+       provider_portfolio_items ( id, image_url, description, media_type )`
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -26,12 +26,17 @@ export default async function ProviderProfilePage({
 
   if (!provider) notFound();
 
-  const name = provider.business_name || provider.profiles?.full_name || "Provider";
+  const profile = Array.isArray(provider.profiles) ? provider.profiles[0] : provider.profiles;
+  const name = provider.business_name || profile?.full_name || "Provider";
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <div className="mb-6 flex items-start gap-4">
-        <div className="h-16 w-16 shrink-0 rounded-full bg-muted" />
+        <img
+          src={profile?.avatar_url || "/placeholder-avatar.png"}
+          alt={name}
+          className="h-16 w-16 shrink-0 rounded-full object-cover bg-muted"
+        />
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold">{name}</h1>
@@ -52,11 +57,19 @@ export default async function ProviderProfilePage({
       </div>
 
       <div className="mb-6 flex flex-wrap gap-1">
-        {provider.provider_categories.map((pc) => (
-          <Badge key={pc.service_categories.id} variant="outline">
-            {pc.service_categories.name}
-          </Badge>
-        ))}
+        {(provider.provider_categories ?? []).map((pc) => {
+          const category = Array.isArray(pc.service_categories)
+            ? pc.service_categories[0]
+            : pc.service_categories;
+
+          if (!category) return null;
+
+          return (
+            <Badge key={category.id} variant="outline">
+              {category.name}
+            </Badge>
+          );
+        })}
       </div>
 
       {provider.bio && (
@@ -66,18 +79,33 @@ export default async function ProviderProfilePage({
         </div>
       )}
 
-      {provider.provider_portfolio_items.length > 0 && (
+      {(provider.provider_portfolio_items ?? []).length > 0 && (
         <div className="mb-8">
           <h2 className="mb-2 font-medium">Work</h2>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {provider.provider_portfolio_items.map((item) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={item.id}
-                src={item.image_url}
-                alt={item.caption ?? ""}
-                className="aspect-square rounded-md object-cover"
-              />
+            {(provider.provider_portfolio_items ?? []).map((item) => (
+              <div key={item.id} className="group relative rounded-md overflow-hidden bg-muted">
+                {item.media_type === "video" ? (
+                  <video
+                    src={item.image_url}
+                    controls
+                    className="aspect-square w-full object-cover"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.image_url}
+                    alt={item.description || "Portfolio item"}
+                    className="aspect-square w-full object-cover"
+                  />
+                )}
+                
+                {item.description && (
+                  <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
+                    <p className="text-xs text-white line-clamp-3">{item.description}</p>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
