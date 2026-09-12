@@ -12,6 +12,14 @@ DROP POLICY IF EXISTS "portfolio_items_insert_own" ON public.provider_portfolio_
 DROP POLICY IF EXISTS "portfolio_items_update_own" ON public.provider_portfolio_items;
 DROP POLICY IF EXISTS "portfolio_items_delete_own" ON public.provider_portfolio_items;
 DROP POLICY IF EXISTS "providers_select_public" ON public.providers;
+DROP POLICY IF EXISTS "avatars_select_public" ON storage.objects;
+DROP POLICY IF EXISTS "avatars_insert_own" ON storage.objects;
+DROP POLICY IF EXISTS "avatars_update_own" ON storage.objects;
+DROP POLICY IF EXISTS "avatars_delete_own" ON storage.objects;
+DROP POLICY IF EXISTS "portfolio_select_public" ON storage.objects;
+DROP POLICY IF EXISTS "portfolio_insert_own" ON storage.objects;
+DROP POLICY IF EXISTS "portfolio_update_own" ON storage.objects;
+DROP POLICY IF EXISTS "portfolio_delete_own" ON storage.objects;
 
 -- === Profiles table policies ===
 -- Users can view all profiles (for discovery)
@@ -58,6 +66,82 @@ CREATE POLICY "portfolio_items_delete_own"
   ON public.provider_portfolio_items
   FOR DELETE
   USING (auth.uid() = provider_id);
+
+-- === Storage policies: allow authenticated users to upload their own media under a user-scoped folder ===
+-- Public read access for the media buckets so portfolio items and avatars can be shown on profiles and discovery pages.
+CREATE POLICY "avatars_select_public"
+  ON storage.objects
+  FOR SELECT
+  USING (bucket_id = 'avatars');
+
+CREATE POLICY "avatars_insert_own"
+  ON storage.objects
+  FOR INSERT
+  WITH CHECK (
+    bucket_id = 'avatars'
+    AND auth.role() = 'authenticated'
+    AND COALESCE((storage.foldername(name))[0], '') = auth.uid()::text
+  );
+
+CREATE POLICY "avatars_update_own"
+  ON storage.objects
+  FOR UPDATE
+  USING (
+    bucket_id = 'avatars'
+    AND auth.role() = 'authenticated'
+    AND COALESCE((storage.foldername(name))[0], '') = auth.uid()::text
+  )
+  WITH CHECK (
+    bucket_id = 'avatars'
+    AND auth.role() = 'authenticated'
+    AND COALESCE((storage.foldername(name))[0], '') = auth.uid()::text
+  );
+
+CREATE POLICY "avatars_delete_own"
+  ON storage.objects
+  FOR DELETE
+  USING (
+    bucket_id = 'avatars'
+    AND auth.role() = 'authenticated'
+    AND COALESCE((storage.foldername(name))[0], '') = auth.uid()::text
+  );
+
+CREATE POLICY "portfolio_select_public"
+  ON storage.objects
+  FOR SELECT
+  USING (bucket_id = 'portfolio');
+
+CREATE POLICY "portfolio_insert_own"
+  ON storage.objects
+  FOR INSERT
+  WITH CHECK (
+    bucket_id = 'portfolio'
+    AND auth.role() = 'authenticated'
+    AND COALESCE((storage.foldername(name))[0], '') = auth.uid()::text
+  );
+
+CREATE POLICY "portfolio_update_own"
+  ON storage.objects
+  FOR UPDATE
+  USING (
+    bucket_id = 'portfolio'
+    AND auth.role() = 'authenticated'
+    AND COALESCE((storage.foldername(name))[0], '') = auth.uid()::text
+  )
+  WITH CHECK (
+    bucket_id = 'portfolio'
+    AND auth.role() = 'authenticated'
+    AND COALESCE((storage.foldername(name))[0], '') = auth.uid()::text
+  );
+
+CREATE POLICY "portfolio_delete_own"
+  ON storage.objects
+  FOR DELETE
+  USING (
+    bucket_id = 'portfolio'
+    AND auth.role() = 'authenticated'
+    AND COALESCE((storage.foldername(name))[0], '') = auth.uid()::text
+  );
 
 -- === Providers table policies ===
 -- Anyone can view providers

@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from "./ui/c
 import { cn } from "@/lib/utils";
 import type { ProviderListItem } from "@/lib/types";
 
-export function ProviderCard({ provider }: { provider: ProviderListItem }) {
+export function ProviderCard({ provider, requirement }: { provider: ProviderListItem; requirement?: string }) {
   const name = provider.profiles?.full_name ?? provider.business_name ?? "Provider";
   const portfolioItems = (provider.provider_portfolio_items as any[]) || [];
   const hasPortfolio = portfolioItems.length > 0;
@@ -58,7 +58,7 @@ export function ProviderCard({ provider }: { provider: ProviderListItem }) {
         <div className="flex w-full items-center justify-between">
           <div className="text-sm text-muted-foreground">{provider.city}</div>
           <Link
-            href={`/providers/${provider.id}`}
+            href={requirement ? `/providers/${provider.id}?requirement=${requirement}` : `/providers/${provider.id}`}
             className={cn("text-sm font-medium underline")}
           >
             View profile

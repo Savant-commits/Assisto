@@ -123,36 +123,37 @@ export default function PortfolioPage() {
         return;
       }
 
-      // Upload file
-      const ext = file.name.split(".").pop();
-      const path = `${userData.user.id}-${Date.now()}.${ext}`;
+      // Upload into a user-scoped folder so storage policies that restrict by
+      // folder (storage.foldername(name))[1] = auth.uid() can authorize each upload.
+      const ext = file.name.includes(".") ? file.name.split(".").pop() || "file" : "file";
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const path = `${userData.user.id}/portfolio-${uniqueSuffix}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("portfolio")
-        .upload(path, file);
+        .upload(path, file, { upsert: true });
 
       if (uploadError) {
         setError(uploadError.message);
         return;
       }
 
-      // Get public URL
       const { data } = supabase.storage.from("portfolio").getPublicUrl(path);
       const publicUrl = data.publicUrl;
 
-      // Create portfolio item in database
-      const { error: insertError } = await supabase
-        .from("provider_portfolio_items")
-        .insert({
-          provider_id: userData.user.id,
+      const res = await fetch("/api/profile/portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           image_url: publicUrl,
           media_type: isVideo ? "video" : "image",
           description: description || null,
-          created_at: new Date().toISOString(),
-        });
+        }),
+      });
 
-      if (insertError) {
-        setError(insertError.message);
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(payload?.error || "Failed to save portfolio item.");
         return;
       }
 
