@@ -14,10 +14,14 @@ export default function ManageServicesPage() {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  // Committed state: what's actually saved in Supabase
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
+  // Draft state: what the checkboxes currently show (local only)
+  const [draftCategoryIds, setDraftCategoryIds] = useState<number[]>([]);
+  const [draftServiceIds, setDraftServiceIds] = useState<number[]>([]);
   const [serviceEditCredits, setServiceEditCredits] = useState<number | null>(null);
-  const [pending, setPending] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,8 +59,12 @@ export default function ManageServicesPage() {
 
       setCategories((catRes.data as any) || []);
       setServices((svcRes.data as any) || []);
-      setSelectedCategoryIds(((provCatRes.data as any) || []).map((r: any) => r.category_id));
-      setSelectedServiceIds(((provSvcRes.data as any) || []).map((r: any) => r.service_id));
+      const provCatIds = ((provCatRes.data as any) || []).map((r: any) => r.category_id);
+      const provSvcIds = ((provSvcRes.data as any) || []).map((r: any) => r.service_id);
+      setSelectedCategoryIds(provCatIds);
+      setSelectedServiceIds(provSvcIds);
+      setDraftCategoryIds(provCatIds);
+      setDraftServiceIds(provSvcIds);
       setLoading(false);
     }
 
@@ -66,86 +74,46 @@ export default function ManageServicesPage() {
     };
   }, []);
 
-  // Helpers to mark pending by key
-  function setPendingFor(key: string, v: boolean) {
-    setPending((p) => ({ ...p, [key]: v }));
-  }
-
-  async function toggleService(service: Service, on: boolean) {
-    setError(null);
-    const supabase = createClient();
-    const key = `service:${service.id}`;
-    setPendingFor(key, true);
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        router.push(`/login?redirect=/profile/services`);
-        return;
-      }
-
-      if (on) {
-        // insert provider_services
-        const { error: insertErr } = await supabase.from("provider_services").insert({ provider_id: userData.user.id, service_id: service.id });
-        if (insertErr) throw insertErr;
-
-        // ensure category row exists
-        const catId = service.category_id;
-        if (catId && !selectedCategoryIds.includes(catId)) {
-          const { error: catErr } = await supabase.from("provider_categories").insert({ provider_id: userData.user.id, category_id: catId });
-          if (catErr) throw catErr;
-          setSelectedCategoryIds((s) => [...s, catId]);
-        }
-
-        setSelectedServiceIds((s) => Array.from(new Set([...s, service.id])));
-      } else {
-        // delete provider_services row
-        const { error: delErr } = await supabase.from("provider_services").delete().eq("provider_id", userData.user.id).eq("service_id", service.id);
-        if (delErr) throw delErr;
-        setSelectedServiceIds((s) => s.filter((id) => id !== service.id));
-      }
-      // On any successful service toggle (add or remove), decrement local credits
-      setServiceEditCredits((c) => (c !== null ? Math.max(0, c - 1) : c));
-    } catch (err: any) {
-      // If the trigger raised an exception about edits, show that message inline
-      setError(err?.message || "Action failed");
-    } finally {
-      setPendingFor(key, false);
+  function toggleService(service: Service, on: boolean) {
+    if (on) {
+      setDraftServiceIds((s) => Array.from(new Set([...s, service.id])));
+    } else {
+      setDraftServiceIds((s) => s.filter((id) => id !== service.id));
     }
   }
 
-  async function toggleCategory(category: Category, on: boolean) {
+  function toggleCategory(category: Category, on: boolean) {
+    const svcIds = services.filter((s) => s.category_id === category.id).map((s) => s.id);
+
+    if (on) {
+      setDraftCategoryIds((s) => Array.from(new Set([...s, category.id])));
+      setDraftServiceIds((s) => Array.from(new Set([...s, ...svcIds])));
+    } else {
+      setDraftCategoryIds((s) => s.filter((id) => id !== category.id));
+      setDraftServiceIds((s) => s.filter((id) => !svcIds.includes(id)));
+    }
+  }
+
+  async function saveChanges() {
     setError(null);
-    const supabase = createClient();
-    const key = `category:${category.id}`;
-    setPendingFor(key, true);
+    setIsSaving(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        router.push(`/login?redirect=/profile/services`);
-        return;
-      }
+      const supabase = createClient();
+      const { data, error: rpcError } = await supabase.rpc("save_provider_services", {
+        p_service_ids: draftServiceIds,
+      });
 
-      if (on) {
-        const { error: insertErr } = await supabase.from("provider_categories").insert({ provider_id: userData.user.id, category_id: category.id });
-        if (insertErr) throw insertErr;
-        setSelectedCategoryIds((s) => Array.from(new Set([...s, category.id])));
-      } else {
-        // find services under this category
-        const svcIds = services.filter((s) => s.category_id === category.id).map((s) => s.id);
-        if (svcIds.length > 0) {
-          const { error: delSvErr } = await supabase.from("provider_services").delete().eq("provider_id", userData.user.id).in("service_id", svcIds);
-          if (delSvErr) throw delSvErr;
-          setSelectedServiceIds((s) => s.filter((id) => !svcIds.includes(id)));
-        }
+      if (rpcError) throw rpcError;
 
-        const { error: delCatErr } = await supabase.from("provider_categories").delete().eq("provider_id", userData.user.id).eq("category_id", category.id);
-        if (delCatErr) throw delCatErr;
-        setSelectedCategoryIds((s) => s.filter((id) => id !== category.id));
-      }
+      // Update committed state to match draft
+      setSelectedServiceIds(draftServiceIds);
+      setSelectedCategoryIds(draftCategoryIds);
+      // Update credits with the returned value
+      setServiceEditCredits(data);
     } catch (err: any) {
-      setError(err?.message || "Action failed");
+      setError(err?.message || "Failed to save changes");
     } finally {
-      setPendingFor(key, false);
+      setIsSaving(false);
     }
   }
 
@@ -193,9 +161,9 @@ export default function ManageServicesPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  checked={selectedCategoryIds.includes(cat.id)}
+                  checked={draftCategoryIds.includes(cat.id)}
                   onChange={(e) => toggleCategory(cat, e.target.checked)}
-                  disabled={(serviceEditCredits === 0) || !!pending[`category:${cat.id}`]}
+                  disabled={isSaving}
                 />
                 <div className="font-medium">{cat.name}</div>
               </div>
@@ -206,9 +174,9 @@ export default function ManageServicesPage() {
                 <label key={svc.id} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    checked={selectedServiceIds.includes(svc.id)}
+                    checked={draftServiceIds.includes(svc.id)}
                     onChange={(e) => toggleService(svc, e.target.checked)}
-                    disabled={(serviceEditCredits === 0) || !!pending[`service:${svc.id}`]}
+                    disabled={isSaving}
                   />
                   <span>{svc.name}</span>
                 </label>
@@ -216,6 +184,28 @@ export default function ManageServicesPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-8 space-y-4">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={saveChanges}
+            disabled={
+              isSaving ||
+              serviceEditCredits === 0 ||
+              JSON.stringify(draftServiceIds.sort((a, b) => a - b)) ===
+                JSON.stringify(selectedServiceIds.sort((a, b) => a - b))
+            }
+            className="rounded-md bg-blue-600 px-4 py-2 text-white disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-blue-700"
+          >
+            {isSaving ? "Saving..." : "Save changes"}
+          </button>
+          {JSON.stringify(draftServiceIds.sort((a, b) => a - b)) !==
+            JSON.stringify(selectedServiceIds.sort((a, b) => a - b)) && (
+            <span className="text-sm text-amber-600">You have unsaved changes</span>
+          )}
+        </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
       <div className="mt-8">
