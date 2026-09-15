@@ -1,6 +1,7 @@
 import Link from "next/link";
 import * as React from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from "./ui/card";
+import { Badge } from "./ui/badge";
 import { cn } from "@/lib/utils";
 import type { ProviderListItem } from "@/lib/types";
 
@@ -19,8 +20,24 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
             className="h-12 w-12 rounded-full object-cover flex-shrink-0"
           />
           <div className="flex-1 min-w-0">
-            <CardTitle className="truncate">{name}</CardTitle>
+            <CardTitle className="truncate">
+              <div className="flex items-center gap-2">
+                <span className="truncate">{name}</span>
+                {provider.is_verified && <Badge variant="secondary">Verified</Badge>}
+              </div>
+            </CardTitle>
             <CardDescription className="text-sm truncate">{provider.headline}</CardDescription>
+
+            {/* Reputation line: show star + avg rating and review count, or a muted "New on Assisto" */}
+            {(provider.review_count ?? 0) > 0 ? (
+              <div className="text-sm mt-1">
+                <span className="text-yellow-500">★</span>
+                <span className="ml-1 font-medium">{(provider.avg_rating ?? 0).toFixed(1)}</span>
+                <span className="ml-2 text-muted-foreground">({provider.review_count} {provider.review_count === 1 ? "review" : "reviews"})</span>
+              </div>
+            ) : (
+              <div className="text-sm mt-1 text-muted-foreground">New on Assisto</div>
+            )}
           </div>
         </div>
       </CardHeader>

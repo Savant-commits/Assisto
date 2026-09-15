@@ -112,6 +112,59 @@ not a form disappearing into a void.
 
 ---
 
+## Addendum — actual schema found in production (read before Step 2)
+
+The assumptions below in the original Step 2 spec turned out to be wrong
+once we actually inspected the live database. **Follow this addendum, not
+the original code samples further down**, wherever they conflict.
+
+- The requirement table is **`customer_requirements`**, not `requirements`.
+- **`providers.id` is the provider's own `auth.uid()` directly** — there is
+  no `providers.user_id` column. Any RLS policy or query written against
+  `providers.user_id = auth.uid()` will fail. Use `providers.id = auth.uid()`
+  instead, or in `enquiries`, just `auth.uid() = provider_id` directly.
+- An `enquiries` table **already existed** before this phase started (empty,
+  0 rows, no RLS policies at the time it was found), with this shape:
+  `id, customer_id, provider_id, requirement_id, message, status
+  (enum: enquiry_status), contact_unlocked_at, created_at, updated_at`.
+  It already anticipates Step 4 with `contact_unlocked_at`.
+- **The `status` enum's real values are:**
+  `sent, accepted, declined, confirmed, completed, cancelled`
+  — there is no `pending` and no `closed`. Everywhere below that says
+  `pending`, read `sent`. Everywhere it says `closed`, that state doesn't
+  exist yet; `completed`/`cancelled` exist instead but are out of scope for
+  Steps 2–5 (see note below).
+- RLS actually applied (2025 session): insert restricted to
+  `customer_id = auth.uid()` with `status = 'sent'`; provider update
+  restricted to `status = 'sent' → accepted/declined`; customer update
+  restricted to `status = 'accepted' → confirmed` only — this is what
+  enforces "customer makes the final call" at the DB level. A trigger stamps
+  `contact_unlocked_at = now()` automatically the moment status becomes
+  `confirmed`. A partial unique index blocks a customer from having two
+  simultaneous `sent` enquiries to the same provider.
+- **Known open risk, unresolved as of this addendum:** when RLS was applied,
+  three older, unexplained policies were already present on `enquiries`
+  (`customer creates enquiry`, `parties read own enquiries`, `parties update
+  own enquiry`) from an unknown earlier attempt. If any of them are
+  permissive beyond what's described above, they may silently override the
+  state-machine restrictions (Postgres RLS policies are OR'd together). This
+  must be resolved — either by confirming they're harmless/redundant and
+  dropping them, or by tightening them — before Step 2 code is written
+  against the assumption that only "sent → accepted/declined → confirmed"
+  transitions are possible.
+- `profiles.phone` already exists as a column, collected via the profile
+  edit form. It is **currently exposed by a public `profiles_select_public`
+  select policy** — i.e. it's already readable by anyone today, which is
+  exactly the problem Step 4 below anticipates. Not blocking for Step 2, but
+  don't forget it's a live issue, not a hypothetical one.
+- Cancellation (`cancelled`) and completion (`completed`) are real enum
+  values but intentionally out of scope for this phase — no policy allows
+  setting them yet. Completion belongs to Phase 4 (Projects). Whether a
+  customer should be able to withdraw a `sent` enquiry before a provider
+  responds is an open product question, not yet decided either way.
+
+---
+
 ## Step 2 — Enquiry Send Flow (from a provider's profile)
 
 **Goal:** A customer viewing a provider can send an enquiry, optionally tied

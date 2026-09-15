@@ -61,6 +61,76 @@ export async function approveApplication(applicationId: string) {
 
   if (providerError) throw providerError;
 
+  // Parse service labels from the application and insert matching
+  // provider_services / provider_categories rows using the admin client.
+  // Failures here should not roll back provider creation; log and continue.
+  try {
+    const raw = application.service_area_notes || "";
+    const labels = raw
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 0);
+
+    // Track which category_ids we've already inserted this run to avoid duplicates
+    const insertedCategoryIds = new Set<number>();
+
+    for (const label of labels) {
+      try {
+        // Find a service by case-insensitive name match
+        const { data: svcMatches, error: svcErr } = await admin
+          .from("services")
+          .select("id,category_id,name")
+          .ilike("name", label)
+          .limit(1);
+
+        if (svcErr) {
+          console.warn("approveApplication: error looking up service", { applicationId, label, error: svcErr });
+          continue;
+        }
+
+        const svc = (svcMatches as any[])?.[0];
+        if (!svc) {
+          console.warn(`approveApplication: no service match for application ${application.id}: "${label}"`);
+          continue;
+        }
+
+        // Upsert provider_services (provider_id, service_id)
+        const { error: upsertSvcErr } = await admin
+          .from("provider_services")
+          .upsert(
+            { provider_id: application.user_id, service_id: svc.id },
+            { onConflict: "provider_id,service_id" }
+          );
+
+        if (upsertSvcErr) {
+          console.warn("approveApplication: failed to insert provider_services", { applicationId, label, error: upsertSvcErr });
+        }
+
+        // Ensure provider_categories row exists for this service's category
+        const catId = svc.category_id;
+        if (catId && !insertedCategoryIds.has(catId)) {
+          const { error: upsertCatErr } = await admin
+            .from("provider_categories")
+            .upsert(
+              { provider_id: application.user_id, category_id: catId },
+              { onConflict: "provider_id,category_id" }
+            );
+
+          if (upsertCatErr) {
+            console.warn("approveApplication: failed to insert provider_categories", { applicationId, label, error: upsertCatErr });
+          } else {
+            insertedCategoryIds.add(catId);
+          }
+        }
+      } catch (innerErr: any) {
+        console.warn("approveApplication: error processing label", { applicationId, label, error: innerErr?.message || innerErr });
+        // continue to next label
+      }
+    }
+  } catch (err: any) {
+    console.warn("approveApplication: failed parsing/inserting service labels", { applicationId, error: err?.message || err });
+  }
+
   await admin
     .from("profiles")
     .update({ role: "provider" })

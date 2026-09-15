@@ -1,30 +1,300 @@
-import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import Link from "next/link";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
-export default async function ProviderProfilePage({
-  params,
+const enquirySchema = z.object({
+  message: z.string().trim().min(1, "Add a short message to send with your enquiry"),
+});
+
+type EnquiryFormValues = z.infer<typeof enquirySchema>;
+
+type ProviderRecord = {
+  id: string;
+  business_name: string | null;
+  headline: string | null;
+  bio: string | null;
+  years_experience: number | null;
+  city: string | null;
+  is_verified: boolean | null;
+  avg_rating: number | null;
+  review_count: number | null;
+  profiles?:
+    | Array<{ full_name?: string | null; avatar_url?: string | null; email?: string | null }>
+    | { full_name?: string | null; avatar_url?: string | null; email?: string | null }
+    | null;
+  provider_categories?: Array<{
+    service_categories?:
+      | { id: number; name: string }
+      | Array<{ id: number; name: string }>
+      | null;
+  }>;
+  provider_portfolio_items?: Array<{
+    id: string;
+    image_url: string;
+    description: string | null;
+    media_type: string;
+  }>;
+};
+
+function buildLoginRedirect(providerId: string, requirementId?: string) {
+  const target = requirementId ? `/providers/${providerId}?requirement=${requirementId}` : `/providers/${providerId}`;
+  return `/login?redirect=${encodeURIComponent(target)}`;
+}
+
+function EnquiryWidget({
+  providerId,
+  providerName,
+  requirementId,
+  initialMessage,
 }: {
-  params: Promise<{ id: string }>;
+  providerId: string;
+  providerName: string;
+  requirementId?: string;
+  initialMessage?: string;
 }) {
-  const { id } = await params;
-  const supabase = await createClient();
+  const router = useRouter();
+  const supabase = createClient();
+  const [isOpen, setIsOpen] = useState(false);
+  const [isPending, setIsPending] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const { data: provider } = await supabase
-    .from("providers")
-    .select(
-      `id, business_name, headline, bio, years_experience, city, is_verified,
-       avg_rating, review_count,
-       profiles ( full_name, email, avatar_url ),
-       provider_categories ( service_categories ( id, name ) ),
-       provider_portfolio_items ( id, image_url, description, media_type )`
-    )
-    .eq("id", id)
-    .eq("is_active", true)
-    .single();
+  const form = useForm<EnquiryFormValues>({
+    resolver: zodResolver(enquirySchema),
+    defaultValues: { message: initialMessage ?? "" },
+  });
 
-  if (!provider) notFound();
+  useEffect(() => {
+    if (initialMessage) {
+      form.reset({ message: initialMessage });
+    }
+  }, [form, initialMessage]);
+
+  async function handleStart() {
+    setErrorMessage(null);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push(buildLoginRedirect(providerId, requirementId));
+      return;
+    }
+
+    const { data: existing } = await supabase
+      .from("enquiries")
+      .select("id")
+      .eq("customer_id", user.id)
+      .eq("provider_id", providerId)
+      .eq("status", "sent")
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      setIsPending(true);
+      setIsOpen(false);
+      return;
+    }
+
+    setIsPending(false);
+    setIsOpen(true);
+  }
+
+  async function onSubmit(values: EnquiryFormValues) {
+    setErrorMessage(null);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push(buildLoginRedirect(providerId, requirementId));
+      return;
+    }
+
+    const { data: existing } = await supabase
+      .from("enquiries")
+      .select("id")
+      .eq("customer_id", user.id)
+      .eq("provider_id", providerId)
+      .eq("status", "sent")
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      setIsPending(true);
+      setIsOpen(false);
+      return;
+    }
+
+    const { error } = await supabase.from("enquiries").insert({
+      customer_id: user.id,
+      provider_id: providerId,
+      requirement_id: requirementId || null,
+      message: values.message,
+      status: "sent",
+    });
+
+    if (error) {
+      if (error.code === "23505") {
+        setIsPending(true);
+        setIsOpen(false);
+        return;
+      }
+
+      setErrorMessage(error.message || "Unable to send your enquiry right now.");
+      return;
+    }
+
+    setIsSuccess(true);
+    setIsOpen(false);
+  }
+
+  if (isSuccess) {
+    return (
+      <p className="text-sm text-foreground">
+        Your enquiry has been sent to {providerName}. They&apos;ll respond soon.
+      </p>
+    );
+  }
+
+  if (isPending) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-foreground">You already have a pending enquiry with this provider</p>
+        <Link href="/my-enquiries" className="text-sm font-medium underline">
+          View my enquiries
+        </Link>
+      </div>
+    );
+  }
+
+  if (!isOpen) {
+    return (
+      <Button className="w-full" onClick={handleStart}>
+        Send enquiry
+      </Button>
+    );
+  }
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="message"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Message</FormLabel>
+              <FormControl>
+                <Textarea
+                  rows={6}
+                  placeholder="Tell the provider what you need and what you&apos;re looking for."
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" className="flex-1" onClick={() => setIsOpen(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" className="flex-1" disabled={form.formState.isSubmitting}>
+            Send enquiry
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
+
+export default function ProviderProfilePage() {
+  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const id = params.id;
+  const requirementId = searchParams.get("requirement") || undefined;
+  const supabase = useMemo(() => createClient(), []);
+
+  const [provider, setProvider] = useState<ProviderRecord | null>(null);
+  const [initialRequirementMessage, setInitialRequirementMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function load() {
+      setLoading(true);
+
+      const { data: providerData } = await supabase
+        .from("providers")
+        .select(
+          `id, business_name, headline, bio, years_experience, city, is_verified,
+           avg_rating, review_count,
+           profiles ( full_name, email, avatar_url ),
+           provider_categories ( service_categories ( id, name ) ),
+           provider_portfolio_items ( id, image_url, description, media_type )`
+        )
+        .eq("id", id)
+        .eq("is_active", true)
+        .single();
+
+      if (!isMounted) return;
+
+      setProvider(providerData ?? null);
+
+      if (requirementId) {
+        const { data: requirementRow } = await supabase
+          .from("customer_requirements")
+          .select("id, description")
+          .eq("id", requirementId)
+          .maybeSingle();
+
+        if (isMounted) {
+          setInitialRequirementMessage(requirementRow?.description ?? "");
+        }
+      } else if (isMounted) {
+        setInitialRequirementMessage("");
+      }
+
+      if (isMounted) {
+        setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id, requirementId, supabase]);
+
+  if (loading) {
+    return <div className="mx-auto max-w-2xl px-4 py-10 text-sm text-muted-foreground">Loading profile…</div>;
+  }
+
+  if (!provider) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-10">
+        <h1 className="text-2xl font-semibold">Provider not found</h1>
+        <Link href="/discover" className="mt-4 inline-block underline">
+          Back to discover
+        </Link>
+      </div>
+    );
+  }
 
   const profile = Array.isArray(provider.profiles) ? provider.profiles[0] : provider.profiles;
   const name = provider.business_name || profile?.full_name || "Provider";
@@ -45,9 +315,9 @@ export default async function ProviderProfilePage({
           <p className="text-muted-foreground">
             {provider.city} · {provider.years_experience ?? 0} yrs experience
           </p>
-          {provider.review_count > 0 ? (
+          {provider.review_count && provider.review_count > 0 ? (
             <p className="mt-1 text-sm">
-              ★ {provider.avg_rating.toFixed(1)}{" "}
+              ★ {(provider.avg_rating ?? 0).toFixed(1)}{" "}
               <span className="text-muted-foreground">({provider.review_count} reviews)</span>
             </p>
           ) : (
@@ -92,14 +362,13 @@ export default async function ProviderProfilePage({
                     className="aspect-square w-full object-cover"
                   />
                 ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={item.image_url}
                     alt={item.description || "Portfolio item"}
                     className="aspect-square w-full object-cover"
                   />
                 )}
-                
+
                 {item.description && (
                   <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
                     <p className="text-xs text-white line-clamp-3">{item.description}</p>
@@ -115,9 +384,12 @@ export default async function ProviderProfilePage({
         <p className="mb-3 text-sm text-muted-foreground">
           Contact details unlock once you send an enquiry and the provider confirms.
         </p>
-        <Button className="w-full" disabled title="Enquiry flow lands in Phase 2">
-          Send enquiry (coming next)
-        </Button>
+        <EnquiryWidget
+          providerId={provider.id}
+          providerName={name}
+          requirementId={requirementId}
+          initialMessage={initialRequirementMessage}
+        />
       </div>
     </div>
   );

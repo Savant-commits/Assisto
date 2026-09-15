@@ -8,9 +8,9 @@ export default function HomePage() {
         Find the right person for the job.
       </h1>
       <p className="mb-8 max-w-xl text-muted-foreground">
-        Assisto connects you with reviewed, verified service professionals in
-        Cuddalore and Chidambaram — interior, construction, renovation,
-        exterior and civil engineering work, done right.
+        Tell us what you need, and we'll connect you with reviewed, verified
+        professionals near you in Cuddalore and Chidambaram — you choose who to
+        work with.
       </p>
       <div className="flex gap-3">
         <Link href="/requirements/new" className={buttonVariants({ size: "lg" })}>

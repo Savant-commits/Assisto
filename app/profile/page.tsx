@@ -259,13 +259,23 @@ export default function ProfilePage() {
       </Form>
 
       {isProvider && (
-        <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
-          <h2 className="font-medium text-blue-900 mb-2">Share your work</h2>
-          <p className="text-sm text-blue-800 mb-4">Upload photos and videos of your past projects to showcase your work.</p>
-          <a href="/profile/portfolio" className="inline-block rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
-            Upload portfolio
-          </a>
-        </div>
+        <>
+          <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <h2 className="font-medium text-blue-900 mb-2">Categories & services</h2>
+            <p className="text-sm text-blue-800 mb-4">Manage which categories and services you offer so customers can find you for the right work.</p>
+            <a href="/profile/services" className="inline-block rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
+              Manage services
+            </a>
+          </div>
+
+          <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <h2 className="font-medium text-blue-900 mb-2">Share your work</h2>
+            <p className="text-sm text-blue-800 mb-4">Upload photos and videos of your past projects to showcase your work.</p>
+            <a href="/profile/portfolio" className="inline-block rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
+              Upload portfolio
+            </a>
+          </div>
+        </>
       )}
     </div>
   );
