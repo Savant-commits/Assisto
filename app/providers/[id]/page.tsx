@@ -391,6 +391,75 @@ export default function ProviderProfilePage() {
           initialMessage={initialRequirementMessage}
         />
       </div>
+
+      {/* Your history with this provider (only for authenticated users) */}
+      <ProviderEnquiryHistory providerId={provider.id} />
+    </div>
+  );
+}
+
+function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<Array<{ id: number; message: string | null; status: string; created_at: string | null }>>([]);
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      const supabase = createClient();
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("enquiries")
+        .select("id,message,status,created_at")
+        .eq("customer_id", userData.user.id)
+        .eq("provider_id", providerId)
+        .order("created_at", { ascending: false });
+
+      if (!mounted) return;
+      if (!error && data && (data as any).length > 0) {
+        setHistory(data as any);
+      }
+      setLoading(false);
+    }
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [providerId]);
+
+  if (loading || history.length === 0) return null;
+
+  return (
+    <div className="mt-6 rounded-lg border p-4">
+      <h3 className="mb-2 font-medium">Your history with this provider</h3>
+      <div className="space-y-2">
+        {history.map((h) => (
+          <div key={h.id} className="flex items-center justify-between text-sm">
+            <div className="text-muted-foreground">{h.created_at ? new Date(h.created_at).toLocaleDateString() : ""}</div>
+            <div className="mx-4 flex-1 truncate">{h.message}</div>
+            <div>
+              <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                h.status === "accepted" || h.status === "confirmed"
+                  ? "bg-green-100 text-green-800"
+                  : h.status === "declined" || h.status === "cancelled"
+                  ? "bg-red-100 text-red-800"
+                  : h.status === "completed"
+                  ? "bg-blue-100 text-blue-800"
+                  : "bg-gray-100 text-gray-800"
+              }`}>{h.status}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3">
+        <Link href="/my-enquiries" className="text-sm text-blue-600 underline">
+          View all my enquiries
+        </Link>
+      </div>
     </div>
   );
 }
