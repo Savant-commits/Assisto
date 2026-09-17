@@ -28,7 +28,6 @@ type FormValues = z.infer<typeof schema>;
 
 type Profile = {
   full_name: string | null;
-  phone: string | null;
   city: string | null;
   role: string | null;
   avatar_url: string | null;
@@ -60,12 +59,23 @@ export default function ProfilePage() {
         return;
       }
 
-      const { data: profileData } = await supabase.from("profiles").select("full_name, phone, city, role, avatar_url").eq("id", userData.user.id).single();
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("full_name, city, role, avatar_url")
+        .eq("id", userData.user.id)
+        .single();
+      const { data: phoneData } = await supabase.rpc("get_profile_phone", {
+        profile_id: userData.user.id,
+      });
       const { data: providerData } = await supabase.from("providers").select("id").eq("id", userData.user.id).single();
-      
+
       if (mounted && profileData) {
         setProfile(profileData);
-        form.reset({ full_name: profileData.full_name || "", phone: profileData.phone || "", city: profileData.city || "Cuddalore" });
+        form.reset({
+          full_name: profileData.full_name || "",
+          phone: phoneData || "",
+          city: profileData.city || "Cuddalore",
+        });
         setAvatarUrl(profileData.avatar_url);
         setIsAdmin(profileData.role === "admin");
         setIsProvider(!!providerData);
