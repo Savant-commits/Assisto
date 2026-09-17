@@ -6,12 +6,14 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LoadingSpinner from "@/components/loading-spinner";
 import { Badge } from "@/components/ui/badge";
+import { ContactUnlock } from "@/components/contact-unlock";
 
 type Enquiry = {
   id: number;
   message: string | null;
   status: string;
   created_at: string | null;
+  customer_id: string;
   profiles?: { full_name: string | null } | null;
   customer_requirements?: { description: string | null } | null;
 };
@@ -43,7 +45,7 @@ export default function EnquiriesPage() {
       const { data, error } = await supabase
         .from("enquiries")
         .select(
-          `id,message,status,created_at,profiles(full_name),customer_requirements(description)`
+          `id,message,status,created_at,customer_id,profiles(full_name),customer_requirements(description)`
         )
         .eq("provider_id", userData.user.id)
         .order("created_at", { ascending: false });
@@ -173,6 +175,10 @@ export default function EnquiriesPage() {
                     {pendingMap[enq.id] ? "Declining…" : "Decline"}
                   </button>
                 </div>
+              )}
+
+              {tab === "history" && (enq.status === "confirmed" || enq.status === "completed") && (
+                <ContactUnlock profileId={enq.customer_id} />
               )}
 
               {errors[enq.id] && <p className="mt-2 text-sm text-destructive">{errors[enq.id]}</p>}

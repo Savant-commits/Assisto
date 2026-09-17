@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { ContactUnlock } from "@/components/contact-unlock";
 
 const enquirySchema = z.object({
   message: z.string().trim().min(1, "Add a short message to send with your enquiry"),
@@ -400,7 +401,10 @@ export default function ProviderProfilePage() {
 
 function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
   const [loading, setLoading] = useState(true);
-  const [history, setHistory] = useState<Array<{ id: number; message: string | null; status: string; created_at: string | null }>>([]);
+  const [history, setHistory] = useState<Array<{ id: number; message: string | null; status: string; created_at: string | null; customer_id: string }>>([]);
+  const [pendingMap, setPendingMap] = useState<Record<number, boolean>>({});
+  const [errors, setErrors] = useState<Record<number, string | null>>({});
+
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -413,7 +417,7 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
 
       const { data, error } = await supabase
         .from("enquiries")
-        .select("id,message,status,created_at")
+        .select("id,message,status,created_at,customer_id")
         .eq("customer_id", userData.user.id)
         .eq("provider_id", providerId)
         .order("created_at", { ascending: false });
@@ -431,27 +435,67 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
     };
   }, [providerId]);
 
+  function setPending(id: number, v: boolean) {
+    setPendingMap((s) => ({ ...s, [id]: v }));
+  }
+
+  function setCardError(id: number, msg: string | null) {
+    setErrors((s) => ({ ...s, [id]: msg }));
+  }
+
+  async function updateStatus(id: number, status: string) {
+    setPending(id, true);
+    setCardError(id, null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
+      if (error) throw error;
+      setHistory((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
+    } catch (err: any) {
+      setCardError(id, err?.message || "Update failed");
+    } finally {
+      setPending(id, false);
+    }
+  }
+
   if (loading || history.length === 0) return null;
 
   return (
     <div className="mt-6 rounded-lg border p-4">
       <h3 className="mb-2 font-medium">Your history with this provider</h3>
-      <div className="space-y-2">
+      <div className="space-y-3">
         {history.map((h) => (
-          <div key={h.id} className="flex items-center justify-between text-sm">
-            <div className="text-muted-foreground">{h.created_at ? new Date(h.created_at).toLocaleDateString() : ""}</div>
-            <div className="mx-4 flex-1 truncate">{h.message}</div>
-            <div>
-              <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                h.status === "accepted" || h.status === "confirmed"
-                  ? "bg-green-100 text-green-800"
-                  : h.status === "declined" || h.status === "cancelled"
-                  ? "bg-red-100 text-red-800"
-                  : h.status === "completed"
-                  ? "bg-blue-100 text-blue-800"
-                  : "bg-gray-100 text-gray-800"
-              }`}>{h.status}</span>
+          <div key={h.id} className="flex flex-col text-sm">
+            <div className="flex items-center justify-between">
+              <div className="text-muted-foreground">{h.created_at ? new Date(h.created_at).toLocaleDateString() : ""}</div>
+              <div className="mx-4 flex-1 truncate">{h.message}</div>
+              <div>
+                <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                  h.status === "accepted" || h.status === "confirmed"
+                    ? "bg-green-100 text-green-800"
+                    : h.status === "declined" || h.status === "cancelled"
+                    ? "bg-red-100 text-red-800"
+                    : h.status === "completed"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-800"
+                }`}>{h.status}</span>
+              </div>
             </div>
+            {h.status === "accepted" && (
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={() => updateStatus(h.id, "confirmed")}
+                  disabled={!!pendingMap[h.id]}
+                  className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                >
+                  {pendingMap[h.id] ? "Confirming…" : "Confirm"}
+                </button>
+              </div>
+            )}
+            {(h.status === "confirmed" || h.status === "completed") && (
+              <ContactUnlock profileId={providerId} />
+            )}
+            {errors[h.id] && <p className="mt-2 text-sm text-destructive">{errors[h.id]}</p>}
           </div>
         ))}
       </div>

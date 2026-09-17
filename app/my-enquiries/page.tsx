@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LoadingSpinner from "@/components/loading-spinner";
+import { ContactUnlock } from "@/components/contact-unlock";
 
 type Enquiry = {
   id: number;
@@ -25,6 +26,8 @@ export default function MyEnquiriesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
+  const [pendingMap, setPendingMap] = useState<Record<number, boolean>>({});
+  const [errors, setErrors] = useState<Record<number, string | null>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -56,6 +59,29 @@ export default function MyEnquiriesPage() {
       mounted = false;
     };
   }, []);
+
+  function setPending(id: number, v: boolean) {
+    setPendingMap((s) => ({ ...s, [id]: v }));
+  }
+
+  function setCardError(id: number, msg: string | null) {
+    setErrors((s) => ({ ...s, [id]: msg }));
+  }
+
+  async function updateStatus(id: number, status: string) {
+    setPending(id, true);
+    setCardError(id, null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
+      if (error) throw error;
+      setEnquiries((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
+    } catch (err: any) {
+      setCardError(id, err?.message || "Update failed");
+    } finally {
+      setPending(id, false);
+    }
+  }
 
   if (loading) {
     return (
@@ -112,6 +138,24 @@ export default function MyEnquiriesPage() {
               <div className="mt-3 text-sm text-muted-foreground">{enq.message}</div>
 
               <div className="mt-3 text-xs text-muted-foreground">{formatDate(enq.created_at)}</div>
+
+              {enq.status === "accepted" && (
+                <div className="mt-4 flex items-center gap-2">
+                  <button
+                    onClick={() => updateStatus(enq.id, "confirmed")}
+                    disabled={!!pendingMap[enq.id]}
+                    className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                  >
+                    {pendingMap[enq.id] ? "Confirming…" : "Confirm"}
+                  </button>
+                </div>
+              )}
+
+              {(enq.status === "confirmed" || enq.status === "completed") && (
+                <ContactUnlock profileId={enq.providers?.id ?? ""} />
+              )}
+
+              {errors[enq.id] && <p className="mt-2 text-sm text-destructive">{errors[enq.id]}</p>}
             </div>
           ))}
         </div>
