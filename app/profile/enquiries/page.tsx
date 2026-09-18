@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import LoadingSpinner from "@/components/loading-spinner";
 import { Badge } from "@/components/ui/badge";
 import { ContactUnlock } from "@/components/contact-unlock";
+import { CompletionActions } from "@/components/completion-actions";
 
 type Enquiry = {
   id: number;
@@ -14,6 +15,8 @@ type Enquiry = {
   status: string;
   created_at: string | null;
   customer_id: string;
+  customer_completed_at: string | null;
+  provider_completed_at: string | null;
   profiles?: { full_name: string | null } | null;
   customer_requirements?: { description: string | null } | null;
 };
@@ -22,7 +25,7 @@ export default function EnquiriesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
-  const [tab, setTab] = useState<"new" | "history">("new");
+  const [tab, setTab] = useState<"new" | "active" | "history">("new");
   const [pendingMap, setPendingMap] = useState<Record<number, boolean>>({});
   const [errors, setErrors] = useState<Record<number, string | null>>({});
 
@@ -45,7 +48,7 @@ export default function EnquiriesPage() {
       const { data, error } = await supabase
         .from("enquiries")
         .select(
-          `id,message,status,created_at,customer_id,profiles(full_name),customer_requirements(description)`
+          `id,message,status,created_at,customer_id,customer_completed_at,provider_completed_at,profiles(full_name),customer_requirements(description)`
         )
         .eq("provider_id", userData.user.id)
         .order("created_at", { ascending: false });
@@ -74,6 +77,7 @@ export default function EnquiriesPage() {
   }
 
   const newCount = enquiries.filter((e) => e.status === "sent").length;
+  const activeCount = enquiries.filter((e) => e.status === "confirmed").length;
 
   function setPending(id: number, v: boolean) {
     setPendingMap((s) => ({ ...s, [id]: v }));
@@ -98,7 +102,12 @@ export default function EnquiriesPage() {
     }
   }
 
-  const shown = tab === "new" ? enquiries.filter((e) => e.status === "sent") : enquiries.filter((e) => e.status !== "sent");
+  const shown =
+    tab === "new"
+      ? enquiries.filter((e) => e.status === "sent")
+      : tab === "active"
+      ? enquiries.filter((e) => e.status === "confirmed")
+      : enquiries.filter((e) => !["sent", "confirmed"].includes(e.status));
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -115,6 +124,12 @@ export default function EnquiriesPage() {
           New <span className="ml-2">{"(" + newCount + ")"}</span>
         </button>
         <button
+          onClick={() => setTab("active")}
+          className={`rounded-md px-3 py-1 text-sm font-medium ${tab === "active" ? "bg-blue-600 text-white" : "bg-muted"}`}
+        >
+          Active <span className="ml-2">{"(" + activeCount + ")"}</span>
+        </button>
+        <button
           onClick={() => setTab("history")}
           className={`rounded-md px-3 py-1 text-sm font-medium ${tab === "history" ? "bg-blue-600 text-white" : "bg-muted"}`}
         >
@@ -124,7 +139,7 @@ export default function EnquiriesPage() {
 
       {shown.length === 0 ? (
         <div className="rounded-lg border p-6 text-center text-muted-foreground">
-          {tab === "new" ? "No new enquiries yet" : "No enquiry history yet"}
+          {tab === "new" ? "No new enquiries yet" : tab === "active" ? "No active enquiries yet" : "No enquiry history yet"}
         </div>
       ) : (
         <div className="space-y-4">
@@ -177,9 +192,20 @@ export default function EnquiriesPage() {
                 </div>
               )}
 
-              {tab === "history" && (enq.status === "confirmed" || enq.status === "completed") && (
-                <ContactUnlock profileId={enq.customer_id} />
+              {tab === "active" && (
+                <>
+                  <ContactUnlock profileId={enq.customer_id} />
+                  <CompletionActions
+                    enquiryId={enq.id}
+                    role="provider"
+                    customerCompletedAt={enq.customer_completed_at}
+                    providerCompletedAt={enq.provider_completed_at}
+                    onUpdated={(patch) => setEnquiries((prev) => prev.map((p) => (p.id === enq.id ? { ...p, ...patch } : p)))}
+                  />
+                </>
               )}
+
+              {tab === "history" && enq.status === "completed" && <ContactUnlock profileId={enq.customer_id} />}
 
               {errors[enq.id] && <p className="mt-2 text-sm text-destructive">{errors[enq.id]}</p>}
             </div>

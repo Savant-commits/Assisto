@@ -23,9 +23,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   let profile: { full_name?: string; avatar_url?: string | null } | null = null;
+  let isProvider = false;
   if (userData.user) {
     const { data } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", userData.user.id).single();
     profile = data || null;
+    const { data: providerRow } = userData.user ? await supabase.from("providers").select("id").eq("id", userData.user.id).single() : { data: null };
+    isProvider = !!providerRow;
   }
 
   return (
@@ -40,6 +43,16 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               Assisto
             </a>
             <nav className="flex items-center gap-3 text-sm">
+              {isProvider && (
+                <a href="/profile/enquiries" className="rounded-full border px-3 py-1">
+                  Enquiries
+                </a>
+              )}
+              {userData.user && (
+                <a href="/my-enquiries" className="rounded-full border px-3 py-1">
+                  Past assists
+                </a>
+              )}
               <a href="/discover" className="rounded-full border px-3 py-1">
                 Discover
               </a>

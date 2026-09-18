@@ -268,14 +268,6 @@ export default function ProfilePage() {
         </form>
       </Form>
 
-      <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
-        <h2 className="font-medium text-blue-900 mb-2">Past assists</h2>
-        <p className="text-sm text-blue-800 mb-4">See every enquiry you've sent and its status.</p>
-        <a href="/my-enquiries" className="inline-block rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
-          View enquiries
-        </a>
-      </div>
-
       {isProvider && (
         <>
           <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -291,14 +283,6 @@ export default function ProfilePage() {
             <p className="text-sm text-blue-800 mb-4">Upload photos and videos of your past projects to showcase your work.</p>
             <a href="/profile/portfolio" className="inline-block rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
               Upload portfolio
-            </a>
-          </div>
-
-          <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
-            <h2 className="font-medium text-blue-900 mb-2">Enquiries</h2>
-            <p className="text-sm text-blue-800 mb-4">See who's reached out and respond to new enquiries.</p>
-            <a href="/profile/enquiries" className="inline-block rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
-              View enquiries
             </a>
           </div>
         </>
