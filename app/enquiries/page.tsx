@@ -13,6 +13,7 @@ type SentEnquiry = {
   message: string | null;
   status: string;
   created_at: string | null;
+  updated_at: string | null;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
   providers?: { id: string; business_name?: string | null } | null;
@@ -24,6 +25,7 @@ type ReceivedEnquiry = {
   message: string | null;
   status: string;
   created_at: string | null;
+  updated_at: string | null;
   customer_id: string;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
@@ -31,9 +33,9 @@ type ReceivedEnquiry = {
   customer_requirements?: { description: string | null } | null;
 };
 
-function formatDate(dateStr: string | null): string {
+function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
-  return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function statusBadge(status: string) {
@@ -57,6 +59,8 @@ export default function EnquiriesPage() {
   const [receivedTab, setReceivedTab] = useState<"pending" | "active" | "history">("pending");
   const [sent, setSent] = useState<SentEnquiry[]>([]);
   const [received, setReceived] = useState<ReceivedEnquiry[]>([]);
+  const [lastSeenHistory, setLastSeenHistory] = useState<{ sent: string; received: string }>({ sent: "", received: "" });
+  const [historyFilter, setHistoryFilter] = useState<"all" | "completed" | "declined" | "cancelled">("all");
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Record<number, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
@@ -77,27 +81,42 @@ export default function EnquiriesPage() {
     const { data: sentData } = await supabase
       .from("enquiries")
       .select(
-        `id,message,status,created_at,customer_completed_at,provider_completed_at,providers(id,business_name),customer_requirements(description)`
+        `id,message,status,created_at,updated_at,customer_completed_at,provider_completed_at,providers(id,business_name),customer_requirements(description)`
       )
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
 
-    let receivedData: any[] = [];
+    let receivedData: ReceivedEnquiry[] = [];
     if (amProvider) {
       const { data } = await supabase
         .from("enquiries")
         .select(
-          `id,message,status,created_at,customer_id,customer_completed_at,provider_completed_at,profiles(full_name),customer_requirements(description)`
+          `id,message,status,created_at,updated_at,customer_id,customer_completed_at,provider_completed_at,profiles(full_name),customer_requirements(description)`
         )
         .eq("provider_id", userData.user.id)
         .order("created_at", { ascending: false });
-      receivedData = data || [];
+      receivedData = (data as ReceivedEnquiry[]) || [];
+      receivedData = receivedData.filter((e: ReceivedEnquiry) => {
+        if (e.status !== "cancelled" || !e.created_at || !e.updated_at) return true;
+        const heldForMs = new Date(e.updated_at).getTime() - new Date(e.created_at).getTime();
+        return heldForMs > 2 * 60 * 1000;
+      });
     }
 
     if (!mountedRef.current) return;
     setIsProvider(amProvider);
-    setSent((sentData as any) || []);
-    setReceived(receivedData as any);
+    localStorage.setItem("enquiries:lastSeenSentActivity", new Date().toISOString());
+    const now = new Date().toISOString();
+    const storedSent = localStorage.getItem("enquiries:lastSeenHistory:sent");
+    const storedReceived = localStorage.getItem("enquiries:lastSeenHistory:received");
+    if (!storedSent) localStorage.setItem("enquiries:lastSeenHistory:sent", now);
+    if (!storedReceived) localStorage.setItem("enquiries:lastSeenHistory:received", now);
+    setLastSeenHistory({
+      sent: storedSent || now,
+      received: storedReceived || now,
+    });
+    setSent((sentData as SentEnquiry[]) || []);
+    setReceived(receivedData);
     setView(amProvider ? "received" : "sent");
     setLoading(false);
   }, [router]);
@@ -136,8 +155,8 @@ export default function EnquiriesPage() {
       const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
       if (error) throw error;
       setSent((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
-    } catch (err: any) {
-      setCardError(key, err?.message || "Update failed");
+    } catch (err: unknown) {
+      setCardError(key, err instanceof Error ? err.message : "Update failed");
     } finally {
       setPending(key, false);
     }
@@ -152,8 +171,8 @@ export default function EnquiriesPage() {
       const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
       if (error) throw error;
       setReceived((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
-    } catch (err: any) {
-      setCardError(key, err?.message || "Update failed");
+    } catch (err: unknown) {
+      setCardError(key, err instanceof Error ? err.message : "Update failed");
     } finally {
       setPending(key, false);
     }
@@ -167,17 +186,26 @@ export default function EnquiriesPage() {
     );
   }
 
+  function unseenHistoryCount(list: { status: string; updated_at?: string | null; created_at: string | null }[], lastSeen: string) {
+    return list.filter(
+      (e) => ["completed", "declined", "cancelled"].includes(e.status) && e.updated_at && e.updated_at > lastSeen
+    ).length;
+  }
+
   const bucket = (list: { status: string }[], t: "pending" | "active" | "history") =>
     t === "pending"
       ? list.filter((e) => e.status === "sent")
       : t === "active"
       ? list.filter((e) => e.status === "accepted" || e.status === "confirmed")
-      : list.filter((e) => ["completed", "declined", "cancelled"].includes(e.status));
+      : list.filter((e) => ["completed", "declined", "cancelled"].includes(e.status) && (historyFilter === "all" || e.status === historyFilter));
 
   const sentPendingCount = bucket(sent, "pending").length;
   const sentActiveCount = bucket(sent, "active").length;
   const receivedPendingCount = bucket(received, "pending").length;
   const receivedActiveCount = bucket(received, "active").length;
+  const sentHistoryUnseen = unseenHistoryCount(sent, lastSeenHistory.sent);
+  const receivedHistoryUnseen = unseenHistoryCount(received, lastSeenHistory.received);
+  const historyUnseen = view === "sent" ? sentHistoryUnseen : receivedHistoryUnseen;
 
   const activeTab = view === "sent" ? sentTab : receivedTab;
   const setActiveTab = view === "sent" ? setSentTab : setReceivedTab;
@@ -192,7 +220,7 @@ export default function EnquiriesPage() {
     <div className="mx-auto max-w-2xl px-4 py-10">
       <div className="mb-6">
         <h1 className="mb-1 text-2xl font-semibold">Enquiries</h1>
-        <p className="text-muted-foreground">Track what you've sent and, if you're a provider, what you've received.</p>
+        <p className="text-muted-foreground">Track what you have sent and, if you are a provider, what you have received.</p>
       </div>
 
       {isProvider && (
@@ -227,17 +255,48 @@ export default function EnquiriesPage() {
         </button>
         <button
           onClick={() => setActiveTab("history")}
-          className={`rounded-md px-3 py-1 text-sm font-medium ${activeTab === "history" ? "bg-blue-600 text-white" : "bg-muted"}`}
+          className={`relative rounded-md px-3 py-1 text-sm font-medium ${activeTab === "history" ? "bg-blue-600 text-white" : "bg-muted"}`}
         >
           History
+          {historyUnseen > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-semibold text-white">
+              {historyUnseen > 9 ? "9+" : historyUnseen}
+            </span>
+          )}
         </button>
+        {activeTab === "history" && historyUnseen > 0 && (
+          <button
+            onClick={() => {
+              const now = new Date().toISOString();
+              localStorage.setItem(`enquiries:lastSeenHistory:${view}`, now);
+              setLastSeenHistory((s) => ({ ...s, [view]: now }));
+            }}
+            className="ml-auto rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+          >
+            Alright, got it
+          </button>
+        )}
       </div>
+
+      {activeTab === "history" && (
+        <div className="mb-4 flex items-center gap-2 text-sm">
+          {(["all", "completed", "declined", "cancelled"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setHistoryFilter(f)}
+              className={`rounded-full px-3 py-1 ${historyFilter === f ? "bg-black text-white" : "bg-muted"}`}
+            >
+              {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {view === "sent" ? (
         shownSent.length === 0 ? (
           <div className="rounded-lg border p-6 text-center">
             <p className="text-muted-foreground">
-              {sentTab === "pending" ? "You haven't sent any enquiries yet." : sentTab === "active" ? "No active work right now." : "No history yet."}
+              {sentTab === "pending" ? "You have not sent any enquiries yet." : sentTab === "active" ? "No active work right now." : "No history yet."}
             </p>
             {sentTab === "pending" && (
               <div className="mt-4">
@@ -266,7 +325,12 @@ export default function EnquiriesPage() {
                   </div>
 
                   <div className="mt-3 text-sm text-muted-foreground">{enq.message}</div>
-                  <div className="mt-3 text-xs text-muted-foreground">{formatDate(enq.created_at)}</div>
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    Sent {formatDateTime(enq.created_at)}
+                    {sentTab === "history" && enq.updated_at && (
+                      <> · {enq.status === "completed" ? "Completed" : enq.status === "declined" ? "Declined" : "Cancelled"} {formatDateTime(enq.updated_at)}</>
+                    )}
+                  </div>
 
                   {sentTab === "pending" && enq.status === "sent" && (
                     <div className="mt-4">
@@ -362,6 +426,12 @@ export default function EnquiriesPage() {
                 </div>
 
                 <div className="mt-3 text-sm text-muted-foreground">{enq.message}</div>
+                <div className="mt-3 text-xs text-muted-foreground">
+                  Sent {formatDateTime(enq.created_at)}
+                  {receivedTab === "history" && enq.updated_at && (
+                    <> · {enq.status === "completed" ? "Completed" : enq.status === "declined" ? "Declined" : "Cancelled"} {formatDateTime(enq.updated_at)}</>
+                  )}
+                </div>
 
                 {receivedTab === "pending" && (
                   <div className="mt-4 flex items-center gap-2">

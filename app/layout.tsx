@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import SessionMenu from "@/components/session-menu";
+import { EnquiriesNavBadge } from "@/components/enquiries-nav-badge";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,12 +25,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   let profile: { full_name?: string; avatar_url?: string | null } | null = null;
-  let isProvider = false;
   if (userData.user) {
     const { data } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", userData.user.id).single();
     profile = data || null;
-    const { data: providerRow } = userData.user ? await supabase.from("providers").select("id").eq("id", userData.user.id).single() : { data: null };
-    isProvider = !!providerRow;
   }
 
   return (
@@ -39,13 +38,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <header className="border-b bg-background/50">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-            <a href="/" className="text-lg font-semibold">
+            <Link href="/" className="text-lg font-semibold">
               Assisto
-            </a>
+            </Link>
             <nav className="flex items-center gap-3 text-sm">
               {userData.user && (
-                <a href="/enquiries" className="rounded-full border px-3 py-1">
+                <a href="/enquiries" className="relative rounded-full border px-3 py-1">
                   Enquiries
+                  <EnquiriesNavBadge />
                 </a>
               )}
               <a href="/discover" className="rounded-full border px-3 py-1">
