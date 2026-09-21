@@ -43,14 +43,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               Assisto
             </a>
             <nav className="flex items-center gap-3 text-sm">
-              {isProvider && (
-                <a href="/profile/enquiries" className="rounded-full border px-3 py-1">
-                  Enquiries
-                </a>
-              )}
               {userData.user && (
-                <a href="/my-enquiries" className="rounded-full border px-3 py-1">
-                  Past assists
+                <a href="/enquiries" className="rounded-full border px-3 py-1">
+                  Enquiries
                 </a>
               )}
               <a href="/discover" className="rounded-full border px-3 py-1">

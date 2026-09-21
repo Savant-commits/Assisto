@@ -171,7 +171,7 @@ function EnquiryWidget({
     return (
       <div className="space-y-2">
         <p className="text-sm text-foreground">You already have a pending enquiry with this provider</p>
-        <Link href="/my-enquiries" className="text-sm font-medium underline">
+        <Link href="/enquiries" className="text-sm font-medium underline">
           View my enquiries
         </Link>
       </div>
@@ -500,7 +500,7 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
         ))}
       </div>
       <div className="mt-3">
-        <Link href="/my-enquiries" className="text-sm text-blue-600 underline">
+        <Link href="/enquiries" className="text-sm text-blue-600 underline">
           View all my enquiries
         </Link>
       </div>
