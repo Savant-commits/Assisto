@@ -14,7 +14,7 @@ export default async function AdminEnquiriesPage() {
 
   const { data: enquiries, error: enquiriesError } = await supabase
     .from("enquiries")
-    .select(`id,enquiry_code,message,status,created_at,updated_at,customer_id,provider_id,profiles!enquiries_customer_id_fkey(full_name,user_code),providers(id,business_name,profiles!providers_id_fkey(user_code)),customer_requirements(description),admin_note,admin_cancel_reason,admin_cancelled_at,admin_cancelled_by`)
+    .select(`id,enquiry_code,message,status,created_at,updated_at,customer_id,provider_id,accepted_at,declined_at,completed_at,contact_unlocked_at,profiles!enquiries_customer_id_fkey(full_name,user_code),providers(id,business_name,profiles!providers_id_fkey(user_code)),customer_requirements(description),admin_note,admin_cancel_reason,admin_cancelled_at,admin_cancelled_by`)
     .order("created_at", { ascending: false });
 
   if (enquiriesError) {

@@ -5,6 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AdminEnquiryDetail from "./admin-enquiry-detail";
 
+function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 export default function AdminEnquiriesTabs({ enquiries }: { enquiries: any[] }) {
   const tabs = [
     { key: "active_services", label: "Active services", statuses: ["confirmed"] },
@@ -102,6 +107,21 @@ export default function AdminEnquiriesTabs({ enquiries }: { enquiries: any[] }) 
                           <p className="font-medium">{enq.profiles?.full_name || enq.customer_id}</p>
                           {enq.enquiry_code && (
                             <p className="mt-0.5 text-sm text-muted-foreground">{enq.enquiry_code}</p>
+                          )}
+                          {enq.created_at && (
+                            <p className="mt-0.5 text-sm text-muted-foreground">Sent: {formatDateTime(enq.created_at)}</p>
+                          )}
+                          {enq.accepted_at && (
+                            <p className="mt-0.5 text-sm text-muted-foreground">Approved: {formatDateTime(enq.accepted_at)}</p>
+                          )}
+                          {enq.declined_at && (
+                            <p className="mt-0.5 text-sm text-muted-foreground">Rejected: {formatDateTime(enq.declined_at)}</p>
+                          )}
+                          {enq.contact_unlocked_at && (
+                            <p className="mt-0.5 text-sm text-muted-foreground">Confirmed: {formatDateTime(enq.contact_unlocked_at)}</p>
+                          )}
+                          {enq.completed_at && (
+                            <p className="mt-0.5 text-sm text-muted-foreground">Completed: {formatDateTime(enq.completed_at)}</p>
                           )}
                           {enq.providers?.business_name && (
                             <p className="mt-1 text-sm">
