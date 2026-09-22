@@ -8,6 +8,7 @@ export default function SessionMenu({ userId, fullName, avatarUrl }: { userId?: 
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isProvider, setIsProvider] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(avatarUrl || null);
 
   useEffect(() => {
@@ -17,19 +18,27 @@ export default function SessionMenu({ userId, fullName, avatarUrl }: { userId?: 
       const { data } = await supabase.auth.getUser();
       if (!mounted) return;
       setEmail(data?.user?.email || null);
-      
-      // Check if user is admin
+
       if (data?.user?.id) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", data.user.id)
-          .single();
+        const [{ data: profile }, { data: provider }] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", data.user.id)
+            .single(),
+          supabase
+            .from("providers")
+            .select("id")
+            .eq("id", data.user.id)
+            .maybeSingle(),
+        ]);
+
         if (mounted) {
           setIsAdmin(profile?.role === "admin");
+          setIsProvider(!!provider);
         }
       }
-      
+
       setLoading(false);
     }
     load();
@@ -70,6 +79,11 @@ export default function SessionMenu({ userId, fullName, avatarUrl }: { userId?: 
       {isAdmin && (
         <Link href="/admin/applications" className="rounded-full border px-3 py-1 bg-amber-50 text-amber-700 border-amber-200">
           Admin
+        </Link>
+      )}
+      {isProvider && (
+        <Link href="/provider" className="rounded-full border px-3 py-1">
+          Provider
         </Link>
       )}
       <Link href="/profile" className="rounded-full border px-3 py-1">

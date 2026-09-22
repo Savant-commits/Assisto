@@ -31,6 +31,13 @@ type Profile = {
   city: string | null;
   role: string | null;
   avatar_url: string | null;
+  user_code: string | null;
+};
+
+const emptyFormValues: FormValues = {
+  full_name: "",
+  phone: "",
+  city: "Cuddalore",
 };
 
 export default function ProfilePage() {
@@ -43,10 +50,12 @@ export default function ProfilePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isProvider, setIsProvider] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [savedFormValues, setSavedFormValues] = useState<FormValues>(emptyFormValues);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { full_name: "", phone: "", city: "Cuddalore" },
+    defaultValues: emptyFormValues,
   });
 
   useEffect(() => {
@@ -61,7 +70,7 @@ export default function ProfilePage() {
 
       const { data: profileData } = await supabase
         .from("profiles")
-        .select("full_name, city, role, avatar_url")
+        .select("full_name, city, role, avatar_url, user_code")
         .eq("id", userData.user.id)
         .single();
       const { data: phoneData } = await supabase.rpc("get_profile_phone", {
@@ -70,12 +79,15 @@ export default function ProfilePage() {
       const { data: providerData } = await supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle();
 
       if (mounted && profileData) {
-        setProfile(profileData);
-        form.reset({
+        const nextValues: FormValues = {
           full_name: profileData.full_name || "",
           phone: phoneData || "",
           city: profileData.city || "Cuddalore",
-        });
+        };
+
+        setProfile(profileData);
+        setSavedFormValues(nextValues);
+        form.reset(nextValues);
         setAvatarUrl(profileData.avatar_url);
         setIsAdmin(profileData.role === "admin");
         setIsProvider(!!providerData);
@@ -101,8 +113,16 @@ export default function ProfilePage() {
     if (updateError) {
       setError(updateError.message);
     } else {
+      setSavedFormValues(values);
+      setIsEditing(false);
       router.refresh();
     }
+  }
+
+  function handleCancelEdit() {
+    setError(null);
+    form.reset(savedFormValues);
+    setIsEditing(false);
   }
 
   async function ensureStorageBucket(bucket: "avatars" | "portfolio") {
@@ -215,78 +235,94 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <FormField
-            control={form.control}
-            name="full_name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Full name</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+      {!isEditing ? (
+        <div className="space-y-5">
+          <div>
+            <p className="text-lg font-medium">{profile?.full_name || savedFormValues.full_name || "Not provided"}</p>
+            {profile?.user_code ? <p className="mt-1 text-xs text-muted-foreground">#{profile.user_code}</p> : null}
+          </div>
 
-          <FormField
-            control={form.control}
-            name="phone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Phone</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <div>
+            <p className="mb-1 text-sm font-medium text-muted-foreground">Phone</p>
+            <p className="text-base">{savedFormValues.phone || "Not provided"}</p>
+          </div>
 
-          <FormField
-            control={form.control}
-            name="city"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>City</FormLabel>
-                <FormControl>
-                  <select className="w-full rounded-md border px-3 py-2 text-sm" {...field}>
-                    <option value="Cuddalore">Cuddalore</option>
-                    <option value="Chidambaram">Chidambaram</option>
-                  </select>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <div>
+            <p className="mb-1 text-sm font-medium text-muted-foreground">City</p>
+            <p className="text-base">{savedFormValues.city || "Not provided"}</p>
+          </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <Button type="submit">Save</Button>
-        </form>
-      </Form>
-
-      {isProvider && (
+          <Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
+            Edit
+          </Button>
+        </div>
+      ) : (
         <>
-          <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
-            <h2 className="font-medium text-blue-900 mb-2">Categories & services</h2>
-            <p className="text-sm text-blue-800 mb-4">Manage which categories and services you offer so customers can find you for the right work.</p>
-            <a href="/profile/services" className="inline-block rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
-              Manage services
-            </a>
+          <div className="mb-4">
+            <p className="text-lg font-medium">{profile?.full_name || savedFormValues.full_name || "Not provided"}</p>
+            {profile?.user_code ? <p className="mt-1 text-xs text-muted-foreground">#{profile.user_code}</p> : null}
           </div>
 
-          <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
-            <h2 className="font-medium text-blue-900 mb-2">Share your work</h2>
-            <p className="text-sm text-blue-800 mb-4">Upload photos and videos of your past projects to showcase your work.</p>
-            <a href="/profile/portfolio" className="inline-block rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
-              Upload portfolio
-            </a>
-          </div>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="full_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Full name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City</FormLabel>
+                    <FormControl>
+                      <select className="w-full rounded-md border px-3 py-2 text-sm" {...field}>
+                        <option value="Cuddalore">Cuddalore</option>
+                        <option value="Chidambaram">Chidambaram</option>
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {error && <p className="text-sm text-destructive">{error}</p>}
+
+              <div className="flex items-center gap-2">
+                <Button type="submit">Save</Button>
+                <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </Form>
         </>
       )}
+
     </div>
   );
 }
