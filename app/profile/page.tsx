@@ -67,7 +67,7 @@ export default function ProfilePage() {
       const { data: phoneData } = await supabase.rpc("get_profile_phone", {
         profile_id: userData.user.id,
       });
-      const { data: providerData } = await supabase.from("providers").select("id").eq("id", userData.user.id).single();
+      const { data: providerData } = await supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle();
 
       if (mounted && profileData) {
         setProfile(profileData);

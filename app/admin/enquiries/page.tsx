@@ -11,10 +11,12 @@ export default async function AdminEnquiriesPage() {
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", userData.user.id).single();
   if (profile?.role !== "admin") redirect("/");
 
-  const { data: enquiries } = await supabase
+  const { data: enquiries, error: enquiriesError } = await supabase
     .from("enquiries")
-    .select(`id,message,status,created_at,updated_at,customer_id,provider_id,profiles(full_name),providers(id,business_name),customer_requirements(description),admin_note,admin_cancel_reason,admin_cancelled_at,admin_cancelled_by`)
+    .select(`id,message,status,created_at,updated_at,customer_id,provider_id,profiles!enquiries_customer_id_fkey(full_name),providers(id,business_name),customer_requirements(description),admin_note,admin_cancel_reason,admin_cancelled_at,admin_cancelled_by`)
     .order("created_at", { ascending: false });
+
+  if (enquiriesError) console.error("enquiries query failed:", enquiriesError);
 
   const tabs = [
     { key: "active_services", label: "Active services", statuses: ["confirmed"] },

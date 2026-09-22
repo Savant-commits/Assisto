@@ -23,7 +23,7 @@ export function EnquiriesNavBadge() {
         return;
       }
 
-      const { data: providerRow } = await supabase.from("providers").select("id").eq("id", userData.user.id).single();
+      const { data: providerRow } = await supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle();
       const isProvider = !!providerRow;
 
       let pendingReceived = 0;

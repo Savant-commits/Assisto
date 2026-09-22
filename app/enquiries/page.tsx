@@ -75,7 +75,7 @@ export default function EnquiriesPage() {
       return;
     }
 
-    const { data: providerRow } = await supabase.from("providers").select("id").eq("id", userData.user.id).single();
+    const { data: providerRow } = await supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle();
     const amProvider = !!providerRow;
 
     const { data: sentData } = await supabase
@@ -88,13 +88,15 @@ export default function EnquiriesPage() {
 
     let receivedData: ReceivedEnquiry[] = [];
     if (amProvider) {
-      const { data } = await supabase
-        .from("enquiries")
-        .select(
-          `id,message,status,created_at,updated_at,customer_id,customer_completed_at,provider_completed_at,profiles(full_name),customer_requirements(description)`
-        )
-        .eq("provider_id", userData.user.id)
-        .order("created_at", { ascending: false });
+        const { data, error } = await supabase
+          .from("enquiries")
+          .select(
+            `id,message,status,created_at,updated_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),customer_requirements(description)`
+          )
+          .eq("provider_id", userData.user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) console.error("enquiries query failed:", error);
       receivedData = (data as ReceivedEnquiry[]) || [];
       receivedData = receivedData.filter((e: ReceivedEnquiry) => {
         if (e.status !== "cancelled" || !e.created_at || !e.updated_at) return true;

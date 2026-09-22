@@ -250,7 +250,7 @@ export default function ProviderProfilePage() {
         )
         .eq("id", id)
         .eq("is_active", true)
-        .single();
+        .maybeSingle();
 
       if (!isMounted) return;
 

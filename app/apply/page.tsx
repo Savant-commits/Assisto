@@ -106,7 +106,7 @@ export default function ApplyPage() {
         .single();
 
       // Check if already a provider
-      const { data: provider } = await supabase.from("providers").select("id").eq("id", userId).single();
+      const { data: provider } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
 
       if (!mounted) return;
       setExistingApp(app || null);
@@ -136,7 +136,7 @@ export default function ApplyPage() {
 
       // Prevent duplicates: check existing application or provider
       const { data: existing } = await supabase.from("provider_applications").select("id,status").eq("user_id", userId).single();
-      const { data: provider } = await supabase.from("providers").select("id").eq("id", userId).single();
+      const { data: provider } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
       if (existing) {
         setSubmitError("You have already submitted an application. Check its status.");
         setExistingApp(existing);
