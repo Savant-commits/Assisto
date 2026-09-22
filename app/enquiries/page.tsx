@@ -14,6 +14,9 @@ type SentEnquiry = {
   status: string;
   created_at: string | null;
   updated_at: string | null;
+  decline_reason?: string | null;
+  is_asap?: boolean | null;
+  scheduled_start_at?: string | null;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
   providers?: { id: string; business_name?: string | null } | null;
@@ -26,6 +29,9 @@ type ReceivedEnquiry = {
   status: string;
   created_at: string | null;
   updated_at: string | null;
+  decline_reason?: string | null;
+  is_asap?: boolean | null;
+  scheduled_start_at?: string | null;
   customer_id: string;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
@@ -63,6 +69,9 @@ export default function EnquiriesPage() {
   const [historyFilter, setHistoryFilter] = useState<"all" | "completed" | "declined" | "cancelled">("all");
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Record<number, boolean>>({});
+  const [confirmingDecline, setConfirmingDecline] = useState<Record<number, { open: boolean; reason: string }>>({});
+  const [confirmingSchedule, setConfirmingSchedule] = useState<Record<number, { mode: "now" | "specific" | null; scheduledStartAt: string }>>({});
+  const [minFutureDateTime] = useState(() => new Date(Date.now() + 60000).toISOString().slice(0, 16));
   const [errors, setErrors] = useState<Record<string, string | null>>({});
 
   const mountedRef = useRef(true);
@@ -81,7 +90,7 @@ export default function EnquiriesPage() {
     const { data: sentData } = await supabase
       .from("enquiries")
       .select(
-        `id,message,status,created_at,updated_at,customer_completed_at,provider_completed_at,providers(id,business_name),customer_requirements(description)`
+        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name),customer_requirements(description)`
       )
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
@@ -91,7 +100,7 @@ export default function EnquiriesPage() {
         const { data, error } = await supabase
           .from("enquiries")
           .select(
-            `id,message,status,created_at,updated_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),customer_requirements(description)`
+            `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),customer_requirements(description)`
           )
           .eq("provider_id", userData.user.id)
           .order("created_at", { ascending: false });
@@ -164,15 +173,49 @@ export default function EnquiriesPage() {
     }
   }
 
-  async function updateReceivedStatus(id: number, status: string) {
+  async function updateReceivedStatus(id: number, status: string, declineReason?: string | null) {
     const key = `received-${id}`;
     setPending(key, true);
     setCardError(key, null);
     try {
       const supabase = createClient();
-      const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
+      const nextReason = status === "declined" ? (declineReason?.trim() || null) : null;
+      const { error } = await supabase.from("enquiries").update({ status, decline_reason: nextReason }).eq("id", id);
       if (error) throw error;
-      setReceived((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
+      setReceived((prev) => prev.map((p) => (p.id === id ? { ...p, status, decline_reason: status === "declined" ? nextReason : p.decline_reason } : p)));
+    } catch (err: unknown) {
+      setCardError(key, err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setPending(key, false);
+    }
+  }
+
+  async function confirmAcceptedEnquiry(id: number, schedule: { isAsap: boolean; scheduledStartAt: string | null }) {
+    const key = `sent-${id}`;
+    setPending(key, true);
+    setCardError(key, null);
+    try {
+      const supabase = createClient();
+      const payload = {
+        status: "confirmed",
+        is_asap: schedule.isAsap,
+        scheduled_start_at: schedule.isAsap ? null : schedule.scheduledStartAt,
+      };
+      const { error } = await supabase.from("enquiries").update(payload).eq("id", id);
+      if (error) throw error;
+      setSent((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                status: "confirmed",
+                is_asap: schedule.isAsap,
+                scheduled_start_at: schedule.isAsap ? null : schedule.scheduledStartAt,
+              }
+            : p
+        )
+      );
+      setConfirmingSchedule((s) => ({ ...s, [id]: { mode: null, scheduledStartAt: "" } }));
     } catch (err: unknown) {
       setCardError(key, err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -186,6 +229,12 @@ export default function EnquiriesPage() {
         <LoadingSpinner size={10} />
       </div>
     );
+  }
+
+  function scheduleLine(enq: { is_asap?: boolean | null; scheduled_start_at?: string | null }) {
+    if (enq.is_asap) return "Scheduled: Now (ASAP)";
+    if (enq.scheduled_start_at) return `Scheduled: ${formatDateTime(enq.scheduled_start_at)}`;
+    return null;
   }
 
   function unseenHistoryCount(list: { status: string; updated_at?: string | null; created_at: string | null }[], lastSeen: string) {
@@ -333,6 +382,10 @@ export default function EnquiriesPage() {
                       <> · {enq.status === "completed" ? "Completed" : enq.status === "declined" ? "Declined" : "Cancelled"} {formatDateTime(enq.updated_at)}</>
                     )}
                   </div>
+                  {sentTab === "history" && enq.status === "declined" && enq.decline_reason && (
+                    <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
+                  )}
+                  {scheduleLine(enq) && <div className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</div>}
 
                   {sentTab === "pending" && enq.status === "sent" && (
                     <div className="mt-4">
@@ -368,21 +421,91 @@ export default function EnquiriesPage() {
                   )}
 
                   {sentTab === "active" && enq.status === "accepted" && (
-                    <div className="mt-4 flex items-center gap-2">
-                      <button
-                        onClick={() => updateSentStatus(enq.id, "confirmed")}
-                        disabled={!!pendingMap[key]}
-                        className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
-                      >
-                        {pendingMap[key] ? "Confirming…" : "Confirm"}
-                      </button>
-                      <button
-                        onClick={() => updateSentStatus(enq.id, "cancelled")}
-                        disabled={!!pendingMap[key]}
-                        className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800 disabled:opacity-60"
-                      >
-                        {pendingMap[key] ? "Cancelling…" : "Cancel"}
-                      </button>
+                    <div className="mt-4 space-y-3">
+                      {confirmingSchedule[enq.id]?.mode !== undefined ? (
+                        <div className="flex flex-col gap-2 rounded-md border border-muted p-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: "now", scheduledStartAt: "" } }))}
+                              className={`rounded-md px-3 py-1 text-sm ${confirmingSchedule[enq.id]?.mode === "now" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}
+                            >
+                              Now
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: "specific", scheduledStartAt: confirmingSchedule[enq.id]?.scheduledStartAt || "" } }))}
+                              className={`rounded-md px-3 py-1 text-sm ${confirmingSchedule[enq.id]?.mode === "specific" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}
+                            >
+                              Specific date & time
+                            </button>
+                          </div>
+
+                          {confirmingSchedule[enq.id]?.mode === "specific" && (
+                            <input
+                              type="datetime-local"
+                              min={minFutureDateTime}
+                              value={confirmingSchedule[enq.id]?.scheduledStartAt || ""}
+                              onChange={(e) =>
+                                setConfirmingSchedule((s) => ({
+                                  ...s,
+                                  [enq.id]: { mode: "specific", scheduledStartAt: e.target.value },
+                                }))
+                              }
+                              className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                            />
+                          )}
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const chosen = confirmingSchedule[enq.id];
+                                if (!chosen || (!chosen.scheduledStartAt && chosen.mode !== "now")) return;
+                                if (chosen.mode === "now") {
+                                  confirmAcceptedEnquiry(enq.id, { isAsap: true, scheduledStartAt: null });
+                                } else if (chosen.mode === "specific" && chosen.scheduledStartAt) {
+                                  confirmAcceptedEnquiry(enq.id, { isAsap: false, scheduledStartAt: new Date(chosen.scheduledStartAt).toISOString() });
+                                }
+                              }}
+                              disabled={
+                                !!pendingMap[key] ||
+                                !confirmingSchedule[enq.id]?.mode ||
+                                (confirmingSchedule[enq.id]?.mode === "specific" && !confirmingSchedule[enq.id]?.scheduledStartAt)
+                              }
+                              className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                            >
+                              {pendingMap[key] ? "Confirming…" : "Confirm"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: null, scheduledStartAt: "" } }));
+                              }}
+                              className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: null, scheduledStartAt: "" } }))}
+                            disabled={!!pendingMap[key]}
+                            className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                          >
+                            {pendingMap[key] ? "Confirming…" : "Confirm"}
+                          </button>
+                          <button
+                            onClick={() => updateSentStatus(enq.id, "cancelled")}
+                            disabled={!!pendingMap[key]}
+                            className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800 disabled:opacity-60"
+                          >
+                            {pendingMap[key] ? "Cancelling…" : "Cancel"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -434,6 +557,10 @@ export default function EnquiriesPage() {
                     <> · {enq.status === "completed" ? "Completed" : enq.status === "declined" ? "Declined" : "Cancelled"} {formatDateTime(enq.updated_at)}</>
                   )}
                 </div>
+                {receivedTab === "history" && enq.status === "declined" && enq.decline_reason && (
+                  <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
+                )}
+                {scheduleLine(enq) && <div className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</div>}
 
                 {receivedTab === "pending" && (
                   <div className="mt-4 flex items-center gap-2">
@@ -444,13 +571,46 @@ export default function EnquiriesPage() {
                     >
                       {pendingMap[key] ? "Accepting…" : "Accept"}
                     </button>
-                    <button
-                      onClick={() => updateReceivedStatus(enq.id, "declined")}
-                      disabled={!!pendingMap[key]}
-                      className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800 disabled:opacity-60"
-                    >
-                      {pendingMap[key] ? "Declining…" : "Decline"}
-                    </button>
+                    {confirmingDecline[enq.id]?.open ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={confirmingDecline[enq.id]?.reason ?? ""}
+                          onChange={(e) =>
+                            setConfirmingDecline((s) => ({
+                              ...s,
+                              [enq.id]: { open: true, reason: e.target.value },
+                            }))
+                          }
+                          placeholder="Optional reason"
+                          className="w-48 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                        />
+                        <button
+                          onClick={() => {
+                            const reason = confirmingDecline[enq.id]?.reason ?? "";
+                            setConfirmingDecline((s) => ({ ...s, [enq.id]: { open: false, reason: "" } }));
+                            updateReceivedStatus(enq.id, "declined", reason);
+                          }}
+                          disabled={!!pendingMap[key]}
+                          className="rounded-md bg-red-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                        >
+                          {pendingMap[key] ? "Declining…" : "Confirm decline"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmingDecline((s) => ({ ...s, [enq.id]: { open: false, reason: "" } }))}
+                          className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmingDecline((s) => ({ ...s, [enq.id]: { open: true, reason: "" } }))}
+                        disabled={!!pendingMap[key]}
+                        className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800 disabled:opacity-60"
+                      >
+                        {pendingMap[key] ? "Declining…" : "Decline"}
+                      </button>
+                    )}
                   </div>
                 )}
 

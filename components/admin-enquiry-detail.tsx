@@ -75,6 +75,13 @@ export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
         )}
       </div>
 
+      {enquiry?.decline_reason && (
+        <div>
+          <label className="block text-sm font-medium">Provider decline reason</label>
+          <p className="mt-1 text-sm text-muted-foreground">Reason: {enquiry.decline_reason}</p>
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium">Force-cancel enquiry</label>
         {confirming ? (

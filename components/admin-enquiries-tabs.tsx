@@ -117,6 +117,14 @@ export default function AdminEnquiriesTabs({ enquiries }: { enquiries: any[] }) 
                           {enq.declined_at && (
                             <p className="mt-0.5 text-sm text-muted-foreground">Rejected: {formatDateTime(enq.declined_at)}</p>
                           )}
+                          {enq.status === "declined" && enq.decline_reason && (
+                            <p className="mt-0.5 text-sm text-muted-foreground">Reason: {enq.decline_reason}</p>
+                          )}
+                          {enq.is_asap ? (
+                            <p className="mt-0.5 text-sm text-muted-foreground">Scheduled: Now (ASAP)</p>
+                          ) : enq.scheduled_start_at ? (
+                            <p className="mt-0.5 text-sm text-muted-foreground">Scheduled: {formatDateTime(enq.scheduled_start_at)}</p>
+                          ) : null}
                           {enq.contact_unlocked_at && (
                             <p className="mt-0.5 text-sm text-muted-foreground">Confirmed: {formatDateTime(enq.contact_unlocked_at)}</p>
                           )}
