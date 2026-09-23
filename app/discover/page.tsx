@@ -5,21 +5,23 @@ import type { ProviderListItem, ServiceCategory } from "@/lib/types";
 
 const CITIES = ["Cuddalore", "Chidambaram"];
 
-function buildDiscoverUrl({ city, category, service, requirement }: { city?: string; category?: string; service?: string; requirement?: string }) {
+function buildDiscoverUrl({ city, category, service, requirement, sort }: { city?: string; category?: string; service?: string; requirement?: string; sort?: string }) {
   const params = new URLSearchParams();
   if (city) params.set("city", city);
   if (category) params.set("category", category);
   if (service) params.set("service", service);
   if (requirement) params.set("requirement", requirement);
+  if (sort && sort !== "recommended") params.set("sort", sort);
   return `/discover?${params.toString()}`;
 }
 
 export default async function DiscoverPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; city?: string; requirement?: string; service?: string }>;
+  searchParams: Promise<{ category?: string; city?: string; requirement?: string; service?: string; sort?: string }>;
 }) {
-  const { category, city, requirement, service } = await searchParams;
+  const { category, city, requirement, service, sort } = await searchParams;
+  const selectedSort = sort === "top-rated" ? "top-rated" : "recommended";
   const supabase = await createClient();
 
   const { data: categories } = await supabase
@@ -45,7 +47,7 @@ export default async function DiscoverPage({
     ? "provider_categories!inner ( service_categories ( id, slug, name ) )"
     : "provider_categories ( service_categories ( id, slug, name ) )";
 
-  let querySelect =
+  const querySelect =
     `id, business_name, headline, city, avg_rating, review_count, is_verified,
          profiles ( full_name, avatar_url, email ),
          ${providerCategoriesSelect},
@@ -57,7 +59,7 @@ export default async function DiscoverPage({
   // If a requirement id is present, attempt to match providers by the
   // requirement's city and by any service names mentioned in the description.
   // Only run auto-matching when there is a requirement param AND no explicit service param.
-  let reqData: any = null;
+  let reqData: { id?: string | number; title?: string | null; description?: string | null; city?: string | null } | null = null;
   if (requirement && !service) {
     const { data: req } = await supabase
       .from("customer_requirements")
@@ -67,10 +69,10 @@ export default async function DiscoverPage({
     reqData = req;
     if (req?.description) {
       const { data: allServices } = await supabase.from("services").select("id,slug,name").eq("is_active", true);
-      const matchedServices = (allServices || []).filter((s: any) =>
+      const matchedServices = (allServices || []).filter((s: { id: number; name?: string | null }) =>
         req.description.toLowerCase().includes((s.name || "").toLowerCase())
       );
-      matchedServiceIds = matchedServices.map((m: any) => m.id).filter(Boolean);
+      matchedServiceIds = matchedServices.map((m: { id: number }) => m.id).filter(Boolean);
       if (matchedServiceIds.length) includeProviderServices = true;
     }
   }
@@ -86,7 +88,7 @@ export default async function DiscoverPage({
 
   // Category filter
   if (category) {
-    const selectedCategory = categories?.find((c: any) => c.slug === category);
+    const selectedCategory = (categories as ServiceCategory[] | null | undefined)?.find((c) => c.slug === category);
     if (selectedCategory) {
       query = query.eq("provider_categories.category_id", selectedCategory.id);
     }
@@ -103,6 +105,20 @@ export default async function DiscoverPage({
   }
 
   const { data: providers } = await query;
+  const sortedProviders = [...((providers as ProviderListItem[]) || [])].sort((a, b) => {
+    if (selectedSort !== "top-rated") return 0;
+
+    const aCount = Number(a.review_count ?? 0);
+    const bCount = Number(b.review_count ?? 0);
+    const aRating = Number(a.avg_rating ?? 0);
+    const bRating = Number(b.avg_rating ?? 0);
+
+    if (aCount === 0 && bCount === 0) return (bRating ?? 0) - (aRating ?? 0);
+    if (aCount === 0) return 1;
+    if (bCount === 0) return -1;
+    if (bRating !== aRating) return (bRating ?? 0) - (aRating ?? 0);
+    return bCount - aCount;
+  });
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -120,7 +136,7 @@ export default async function DiscoverPage({
           return (
             <a
               key={c}
-              href={buildDiscoverUrl({ city: isActive ? undefined : c, category, service, requirement })}
+              href={buildDiscoverUrl({ city: isActive ? undefined : c, category, service, requirement, sort: selectedSort })}
               className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
             >
               {c}
@@ -132,16 +148,34 @@ export default async function DiscoverPage({
           return (
             <a
               key={cat.id}
-              href={buildDiscoverUrl({ city, category: isActive ? undefined : cat.slug, service, requirement })}
+              href={buildDiscoverUrl({ city, category: isActive ? undefined : cat.slug, service, requirement, sort: selectedSort })}
               className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
             >
               {cat.name}
             </a>
           );
         })}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Sort:</span>
+          {[
+            { value: "recommended", label: "Recommended" },
+            { value: "top-rated", label: "Top rated" },
+          ].map((option) => {
+            const isActive = selectedSort === option.value;
+            return (
+              <a
+                key={option.value}
+                href={buildDiscoverUrl({ city, category, service, requirement, sort: isActive ? undefined : option.value })}
+                className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
+              >
+                {option.label}
+              </a>
+            );
+          })}
+        </div>
       </div>
 
-      {!providers?.length ? (
+      {!sortedProviders.length ? (
         <p className="text-muted-foreground">
           No professionals match yet. Try a different filter, or{" "}
           <a href="/requirements/new" className="underline">
@@ -151,7 +185,7 @@ export default async function DiscoverPage({
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(providers as unknown as ProviderListItem[]).map((p) => (
+          {(sortedProviders as unknown as ProviderListItem[]).map((p) => (
             <ProviderCard key={p.id} provider={p} requirement={requirement} />
           ))}
         </div>

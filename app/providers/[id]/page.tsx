@@ -47,6 +47,19 @@ type ProviderRecord = {
   }>;
 };
 
+type ProviderReview = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string | null;
+  profiles?: { full_name?: string | null } | null;
+};
+
+function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
 function buildLoginRedirect(providerId: string, requirementId?: string) {
   const target = requirementId ? `/providers/${providerId}?requirement=${requirementId}` : `/providers/${providerId}`;
   return `/login?redirect=${encodeURIComponent(target)}`;
@@ -230,6 +243,7 @@ export default function ProviderProfilePage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [provider, setProvider] = useState<ProviderRecord | null>(null);
+  const [reviews, setReviews] = useState<ProviderReview[]>([]);
   const [initialRequirementMessage, setInitialRequirementMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -255,6 +269,16 @@ export default function ProviderProfilePage() {
       if (!isMounted) return;
 
       setProvider(providerData ?? null);
+
+      const { data: reviewsData } = await supabase
+        .from("reviews")
+        .select("id,rating,comment,created_at,customer_id,profiles!reviews_customer_id_fkey(full_name)")
+        .eq("provider_id", id)
+        .order("created_at", { ascending: false });
+
+      if (isMounted) {
+        setReviews((reviewsData as ProviderReview[]) ?? []);
+      }
 
       if (requirementId) {
         const { data: requirementRow } = await supabase
@@ -381,6 +405,37 @@ export default function ProviderProfilePage() {
         </div>
       )}
 
+      <div className="mb-8">
+        <h2 className="mb-2 font-medium">Reviews</h2>
+        {provider.review_count && provider.review_count > 0 ? (
+          <>
+            <div className="mb-4 text-sm">
+              <span className="text-yellow-500">★</span>
+              <span className="ml-1 font-medium">{(provider.avg_rating ?? 0).toFixed(1)}</span>
+              <span className="ml-2 text-muted-foreground">({provider.review_count} {provider.review_count === 1 ? "review" : "reviews"})</span>
+            </div>
+
+            <div className="space-y-3">
+              {reviews.map((review) => {
+                const profile = Array.isArray(review.profiles) ? review.profiles[0] : review.profiles;
+                return (
+                  <div key={review.id} className="rounded-md border border-muted p-3">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <div className="text-yellow-500">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
+                      <div className="text-xs text-muted-foreground">{formatDateTime(review.created_at)}</div>
+                    </div>
+                    {review.comment && <p className="mb-2 whitespace-pre-line text-sm text-muted-foreground">{review.comment}</p>}
+                    <div className="text-xs text-muted-foreground">{profile?.full_name || "Customer"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">No reviews yet.</p>
+        )}
+      </div>
+
       <div className="rounded-lg border p-4">
         <p className="mb-3 text-sm text-muted-foreground">
           Contact details unlock once you send an enquiry and the provider confirms.
@@ -423,8 +478,11 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
         .order("created_at", { ascending: false });
 
       if (!mounted) return;
-      if (!error && data && (data as any).length > 0) {
-        setHistory(data as any);
+      if (!error && data) {
+        const rows = data as Array<{ id: number; message: string | null; status: string; created_at: string | null; customer_id: string }>;
+        if (rows.length > 0) {
+          setHistory(rows);
+        }
       }
       setLoading(false);
     }
@@ -451,8 +509,8 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
       const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
       if (error) throw error;
       setHistory((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
-    } catch (err: any) {
-      setCardError(id, err?.message || "Update failed");
+    } catch (err: unknown) {
+      setCardError(id, err instanceof Error ? err.message : "Update failed");
     } finally {
       setPending(id, false);
     }

@@ -7,6 +7,10 @@ import { createClient } from "@/lib/supabase/client";
 import LoadingSpinner from "@/components/loading-spinner";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { CompletionActions } from "@/components/completion-actions";
+import { ReviewModal } from "@/components/review-modal";
+
+type SentTab = "pending" | "active" | "history" | "reviews";
+type ReceivedTab = "pending" | "active" | "history";
 
 type SentEnquiry = {
   id: number;
@@ -39,6 +43,20 @@ type ReceivedEnquiry = {
   customer_requirements?: { description: string | null } | null;
 };
 
+type ReviewRecord = {
+  id: string;
+  enquiry_id: string | number;
+  rating: number;
+  comment: string | null;
+  created_at: string | null;
+};
+
+type ReviewPrompt = {
+  enquiryId: number;
+  providerName: string;
+  existingReview?: ReviewRecord | null;
+};
+
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -56,13 +74,17 @@ function statusBadge(status: string) {
   return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${cls}`}>{status}</span>;
 }
 
+function getReviewDismissedKey(enquiryId: number) {
+  return `reviews:dismissed:${enquiryId}`;
+}
+
 export default function EnquiriesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isProvider, setIsProvider] = useState(false);
   const [view, setView] = useState<"sent" | "received">("sent");
-  const [sentTab, setSentTab] = useState<"pending" | "active" | "history">("pending");
-  const [receivedTab, setReceivedTab] = useState<"pending" | "active" | "history">("pending");
+  const [sentTab, setSentTab] = useState<SentTab>("pending");
+  const [receivedTab, setReceivedTab] = useState<ReceivedTab>("pending");
   const [sent, setSent] = useState<SentEnquiry[]>([]);
   const [received, setReceived] = useState<ReceivedEnquiry[]>([]);
   const [lastSeenHistory, setLastSeenHistory] = useState<{ sent: string; received: string }>({ sent: "", received: "" });
@@ -71,6 +93,10 @@ export default function EnquiriesPage() {
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Record<number, boolean>>({});
   const [confirmingDecline, setConfirmingDecline] = useState<Record<number, { open: boolean; reason: string }>>({});
   const [confirmingSchedule, setConfirmingSchedule] = useState<Record<number, { mode: "now" | "specific" | null; scheduledStartAt: string }>>({});
+  const [reviewsByEnquiry, setReviewsByEnquiry] = useState<Record<string, ReviewRecord>>({});
+  const [receivedReviewsByEnquiry, setReceivedReviewsByEnquiry] = useState<Record<string, ReviewRecord>>({});
+  const [reviewPromptQueue, setReviewPromptQueue] = useState<ReviewPrompt[]>([]);
+  const [activeReviewPrompt, setActiveReviewPrompt] = useState<ReviewPrompt | null>(null);
   const [minFutureDateTime] = useState(() => new Date(Date.now() + 60000).toISOString().slice(0, 16));
   const [errors, setErrors] = useState<Record<string, string | null>>({});
 
@@ -95,26 +121,89 @@ export default function EnquiriesPage() {
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
 
-    let receivedData: ReceivedEnquiry[] = [];
-    if (amProvider) {
-        const { data, error } = await supabase
-          .from("enquiries")
-          .select(
-            `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),customer_requirements(description)`
-          )
-          .eq("provider_id", userData.user.id)
-          .order("created_at", { ascending: false });
+    const sentList = (sentData as SentEnquiry[]) || [];
+    const completedEnquiryIds = sentList.filter((enquiry) => enquiry.status === "completed").map((enquiry) => String(enquiry.id));
+    const reviewsMap: Record<string, ReviewRecord> = {};
 
-        if (error) console.error("enquiries query failed:", error);
+    if (completedEnquiryIds.length > 0) {
+      const { data: reviewRows, error: reviewError } = await supabase
+        .from("reviews")
+        .select("id,enquiry_id,rating,comment,created_at")
+        .eq("customer_id", userData.user.id)
+        .in("enquiry_id", completedEnquiryIds);
+
+      if (reviewError) {
+        console.error("reviews query failed:", reviewError);
+      }
+
+      for (const row of reviewRows || []) {
+        reviewsMap[String(row.enquiry_id)] = {
+          id: row.id,
+          enquiry_id: row.enquiry_id,
+          rating: row.rating,
+          comment: row.comment,
+          created_at: row.created_at,
+        };
+      }
+    }
+
+    let receivedData: ReceivedEnquiry[] = [];
+    const receivedReviewsMap: Record<string, ReviewRecord> = {};
+    if (amProvider) {
+      const { data, error } = await supabase
+        .from("enquiries")
+        .select(
+          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),customer_requirements(description)`
+        )
+        .eq("provider_id", userData.user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) console.error("enquiries query failed:", error);
       receivedData = (data as ReceivedEnquiry[]) || [];
       receivedData = receivedData.filter((e: ReceivedEnquiry) => {
         if (e.status !== "cancelled" || !e.created_at || !e.updated_at) return true;
         const heldForMs = new Date(e.updated_at).getTime() - new Date(e.created_at).getTime();
         return heldForMs > 2 * 60 * 1000;
       });
+
+      const completedReceivedEnquiryIds = receivedData.filter((enquiry) => enquiry.status === "completed").map((enquiry) => String(enquiry.id));
+      if (completedReceivedEnquiryIds.length > 0) {
+        const { data: receivedReviewRows, error: receivedReviewError } = await supabase
+          .from("reviews")
+          .select("id,enquiry_id,rating,comment,created_at")
+          .in("enquiry_id", completedReceivedEnquiryIds)
+          .eq("provider_id", userData.user.id);
+
+        if (receivedReviewError) {
+          console.error("provider reviews query failed:", receivedReviewError);
+        }
+
+        for (const row of receivedReviewRows || []) {
+          receivedReviewsMap[String(row.enquiry_id)] = {
+            id: row.id,
+            enquiry_id: row.enquiry_id,
+            rating: row.rating,
+            comment: row.comment,
+            created_at: row.created_at,
+          };
+        }
+      }
     }
 
     if (!mountedRef.current) return;
+
+    const queuedPrompts = sentList
+      .filter((enquiry) => enquiry.status === "completed")
+      .filter((enquiry) => !reviewsMap[String(enquiry.id)])
+      .filter((enquiry) => (typeof window === "undefined" ? true : localStorage.getItem(getReviewDismissedKey(enquiry.id)) !== "true"))
+      .map((enquiry) => ({
+        enquiryId: enquiry.id,
+        providerName: enquiry.providers?.business_name || "Provider",
+        existingReview: null,
+      }));
+
+    const [firstPrompt, ...remainingPrompts] = queuedPrompts;
+
     setIsProvider(amProvider);
     localStorage.setItem("enquiries:lastSeenSentActivity", new Date().toISOString());
     const now = new Date().toISOString();
@@ -122,12 +211,17 @@ export default function EnquiriesPage() {
     const storedReceived = localStorage.getItem("enquiries:lastSeenHistory:received");
     if (!storedSent) localStorage.setItem("enquiries:lastSeenHistory:sent", now);
     if (!storedReceived) localStorage.setItem("enquiries:lastSeenHistory:received", now);
+
     setLastSeenHistory({
       sent: storedSent || now,
       received: storedReceived || now,
     });
-    setSent((sentData as SentEnquiry[]) || []);
+    setSent(sentList);
     setReceived(receivedData);
+    setReviewsByEnquiry(reviewsMap);
+    setReceivedReviewsByEnquiry(receivedReviewsMap);
+    setReviewPromptQueue(remainingPrompts);
+    setActiveReviewPrompt((current) => current ?? firstPrompt ?? null);
     setView(amProvider ? "received" : "sent");
     setLoading(false);
   }, [router]);
@@ -153,6 +247,7 @@ export default function EnquiriesPage() {
   function setPending(key: string, v: boolean) {
     setPendingMap((s) => ({ ...s, [key]: v }));
   }
+
   function setCardError(key: string, msg: string | null) {
     setErrors((s) => ({ ...s, [key]: msg }));
   }
@@ -264,8 +359,31 @@ export default function EnquiriesPage() {
   const activeCount = view === "sent" ? sentActiveCount : receivedActiveCount;
   const pendingLabel = view === "sent" ? "Sent" : "New";
 
-  const shownSent = view === "sent" ? bucket(sent, sentTab) : [];
+  const shownSent = view === "sent" && sentTab !== "reviews" ? bucket(sent, sentTab) : [];
   const shownReceived = view === "received" ? bucket(received, receivedTab) : [];
+
+  const pendingReviews =
+    typeof window !== "undefined"
+      ? sent
+          .filter((enquiry) => enquiry.status === "completed")
+          .filter((enquiry) => !reviewsByEnquiry[String(enquiry.id)])
+          .filter((enquiry) => localStorage.getItem(getReviewDismissedKey(enquiry.id)) !== "true")
+          .map((enquiry) => ({
+            enquiryId: enquiry.id,
+            providerName: enquiry.providers?.business_name || "Provider",
+            existingReview: null,
+          }))
+      : [];
+
+  const submittedReviews = sent
+    .filter((enquiry) => enquiry.status === "completed")
+    .map((enquiry) => ({ enquiry, review: reviewsByEnquiry[String(enquiry.id)] }))
+    .filter(({ review }) => !!review)
+    .map(({ enquiry, review }) => ({
+      enquiryId: enquiry.id,
+      providerName: enquiry.providers?.business_name || "Provider",
+      existingReview: review as ReviewRecord,
+    }));
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -315,6 +433,14 @@ export default function EnquiriesPage() {
             </span>
           )}
         </button>
+        {view === "sent" && (
+          <button
+            onClick={() => setActiveTab("reviews")}
+            className={`rounded-md px-3 py-1 text-sm font-medium ${activeTab === "reviews" ? "bg-blue-600 text-white" : "bg-muted"}`}
+          >
+            Your Reviews
+          </button>
+        )}
         {activeTab === "history" && historyUnseen > 0 && (
           <button
             onClick={() => {
@@ -343,7 +469,70 @@ export default function EnquiriesPage() {
         </div>
       )}
 
-      {view === "sent" ? (
+      {view === "sent" && activeTab === "reviews" ? (
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Pending</h2>
+            {pendingReviews.length > 0 ? (
+              pendingReviews.map((prompt) => (
+                <div key={prompt.enquiryId} className="rounded-lg border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium">{prompt.providerName}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {sent.find((enquiry) => enquiry.id === prompt.enquiryId)?.customer_requirements?.description || "Completed project"}
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {(() => {
+                        const enquiry = sent.find((item) => item.id === prompt.enquiryId);
+                        const completedAt = enquiry?.customer_completed_at ?? enquiry?.updated_at;
+                        return completedAt ? `Completed ${formatDateTime(completedAt)}` : "Completed";
+                      })()}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveReviewPrompt({ enquiryId: prompt.enquiryId, providerName: prompt.providerName, existingReview: null })}
+                    className="mt-4 rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+                  >
+                    Leave a review
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-lg border p-4 text-sm text-muted-foreground">No reviews left to submit.</div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Submitted</h2>
+            {submittedReviews.length > 0 ? (
+              submittedReviews.map((prompt) => (
+                <div key={prompt.enquiryId} className="rounded-lg border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium">{prompt.providerName}</div>
+                      <div className="mt-1 text-sm text-yellow-500">{"★".repeat(prompt.existingReview.rating)}{"☆".repeat(5 - prompt.existingReview.rating)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveReviewPrompt({ enquiryId: prompt.enquiryId, providerName: prompt.providerName, existingReview: prompt.existingReview })}
+                      className="text-sm font-medium text-blue-600 underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {prompt.existingReview?.comment && <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">{prompt.existingReview.comment}</p>}
+                  <div className="mt-2 text-xs text-muted-foreground">Submitted {formatDateTime(prompt.existingReview?.created_at ?? sent.find((enquiry) => enquiry.id === prompt.enquiryId)?.updated_at)}</div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-lg border p-4 text-sm text-muted-foreground">No reviews submitted yet.</div>
+            )}
+          </div>
+        </div>
+      ) : view === "sent" ? (
         shownSent.length === 0 ? (
           <div className="rounded-lg border p-6 text-center">
             <p className="text-muted-foreground">
@@ -518,11 +707,18 @@ export default function EnquiriesPage() {
                         customerCompletedAt={enq.customer_completed_at}
                         providerCompletedAt={enq.provider_completed_at}
                         onUpdated={(patch) => setSent((prev) => prev.map((p) => (p.id === enq.id ? { ...p, ...patch } : p)))}
+                        onReviewNeeded={(enquiryId) => {
+                          const enquiry = sent.find((item) => item.id === enquiryId);
+                          if (!enquiry || reviewsByEnquiry[String(enquiryId)]) return;
+                          if (typeof window !== "undefined" && localStorage.getItem(getReviewDismissedKey(enquiryId)) === "true") return;
+                          const candidate = { enquiryId, providerName: enquiry.providers?.business_name || "Provider", existingReview: null };
+                          if (activeReviewPrompt?.enquiryId === enquiryId) return;
+                          setReviewPromptQueue((prev) => (prev.some((item) => item.enquiryId === enquiryId) ? prev : [...prev, candidate]));
+                          setActiveReviewPrompt((current) => current ?? candidate);
+                        }}
                       />
                     </>
                   )}
-
-                  {sentTab === "history" && enq.status === "completed" && null}
 
                   {errors[key] && <p className="mt-2 text-sm text-destructive">{errors[key]}</p>}
                 </div>
@@ -538,6 +734,7 @@ export default function EnquiriesPage() {
         <div className="space-y-4">
           {shownReceived.map((enq) => {
             const key = `received-${enq.id}`;
+            const review = receivedReviewsByEnquiry[String(enq.id)] ?? null;
             return (
               <div key={enq.id} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between">
@@ -557,6 +754,15 @@ export default function EnquiriesPage() {
                     <> · {enq.status === "completed" ? "Completed" : enq.status === "declined" ? "Declined" : "Cancelled"} {formatDateTime(enq.updated_at)}</>
                   )}
                 </div>
+                {receivedTab === "history" && enq.status === "completed" && review && (
+                  <div className="mt-3 rounded-md border border-muted bg-muted/30 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-yellow-500">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
+                      <div className="text-xs text-muted-foreground">Reviewed {formatDateTime(review.created_at)}</div>
+                    </div>
+                    {review.comment && <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">{review.comment}</p>}
+                  </div>
+                )}
                 {receivedTab === "history" && enq.status === "declined" && enq.decline_reason && (
                   <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
                 )}
@@ -631,13 +837,35 @@ export default function EnquiriesPage() {
                   </>
                 )}
 
-                {receivedTab === "history" && enq.status === "completed" && null}
-
                 {errors[key] && <p className="mt-2 text-sm text-destructive">{errors[key]}</p>}
               </div>
             );
           })}
         </div>
+      )}
+
+      {activeReviewPrompt && (
+        <ReviewModal
+          enquiryId={activeReviewPrompt.enquiryId}
+          providerName={activeReviewPrompt.providerName}
+          existingReview={activeReviewPrompt.existingReview ?? null}
+          onClose={() => {
+            const currentId = activeReviewPrompt.enquiryId;
+            if (!activeReviewPrompt.existingReview) {
+              localStorage.setItem(getReviewDismissedKey(currentId), "true");
+            }
+            const remaining = reviewPromptQueue.filter((item) => item.enquiryId !== currentId);
+            setReviewPromptQueue(remaining);
+            setActiveReviewPrompt(remaining[0] ?? null);
+          }}
+          onSubmitted={async () => {
+            await load();
+            const currentId = activeReviewPrompt?.enquiryId;
+            const remaining = reviewPromptQueue.filter((item) => item.enquiryId !== currentId);
+            setReviewPromptQueue(remaining);
+            setActiveReviewPrompt(remaining[0] ?? null);
+          }}
+        />
       )}
     </div>
   );

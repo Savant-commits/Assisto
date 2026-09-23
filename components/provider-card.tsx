@@ -7,7 +7,12 @@ import type { ProviderListItem } from "@/lib/types";
 
 export function ProviderCard({ provider, requirement }: { provider: ProviderListItem; requirement?: string }) {
   const name = provider.profiles?.full_name ?? provider.business_name ?? "Provider";
-  const portfolioItems = (provider.provider_portfolio_items as any[]) || [];
+  const portfolioItems = (provider.provider_portfolio_items ?? []) as Array<{
+    id: string | number;
+    image_url?: string | null;
+    description?: string | null;
+    media_type?: string | null;
+  }>;
   const hasPortfolio = portfolioItems.length > 0;
 
   return (
@@ -28,7 +33,6 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
             </CardTitle>
             <CardDescription className="text-sm truncate">{provider.headline}</CardDescription>
 
-            {/* Reputation line: show star + avg rating and review count, or a muted "New on Assisto" */}
             {(provider.review_count ?? 0) > 0 ? (
               <div className="text-sm mt-1">
                 <span className="text-yellow-500">★</span>
@@ -36,7 +40,7 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
                 <span className="ml-2 text-muted-foreground">({provider.review_count} {provider.review_count === 1 ? "review" : "reviews"})</span>
               </div>
             ) : (
-              <div className="text-sm mt-1 text-muted-foreground">New on Assisto</div>
+              <div className="text-sm mt-1 text-muted-foreground">No reviews yet</div>
             )}
           </div>
         </div>

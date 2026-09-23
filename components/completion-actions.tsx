@@ -8,12 +8,14 @@ export function CompletionActions({
   customerCompletedAt,
   providerCompletedAt,
   onUpdated,
+  onReviewNeeded,
 }: {
   enquiryId: number;
   role: "customer" | "provider";
   customerCompletedAt: string | null;
   providerCompletedAt: string | null;
   onUpdated: (patch: { status?: string; customer_completed_at?: string | null; provider_completed_at?: string | null }) => void;
+  onReviewNeeded?: (enquiryId: number) => void;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,16 +29,32 @@ export function CompletionActions({
     try {
       const supabase = createClient();
       const column = role === "customer" ? "customer_completed_at" : "provider_completed_at";
-      const { data, error: updateError } = await supabase
+
+      const { data: updateData, error: updateError } = await supabase
         .from("enquiries")
         .update({ [column]: new Date().toISOString() })
         .eq("id", enquiryId)
         .select("status, customer_completed_at, provider_completed_at")
         .single();
+
       if (updateError) throw updateError;
-      onUpdated(data);
-    } catch (err: any) {
-      setError(err?.message || "Failed to mark complete");
+      onUpdated(updateData);
+
+      const { data: refreshed, error: refreshError } = await supabase
+        .from("enquiries")
+        .select("status, customer_completed_at, provider_completed_at")
+        .eq("id", enquiryId)
+        .single();
+
+      if (refreshError) throw refreshError;
+      onUpdated(refreshed);
+
+      if (refreshed.status === "completed" && role === "customer" && onReviewNeeded) {
+        onReviewNeeded(enquiryId);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to mark complete";
+      setError(message);
     } finally {
       setPending(false);
     }
