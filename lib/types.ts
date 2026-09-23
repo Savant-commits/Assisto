@@ -12,8 +12,10 @@ export type ProviderProfile = {
 export type ProviderPortfolioItem = {
   id: string;
   image_url?: string | null;
+  caption?: string | null;
   description?: string | null;
   media_type?: string | null;
+  sort_order?: number | null;
   created_at?: string | null;
 };
 

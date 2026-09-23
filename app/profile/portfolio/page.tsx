@@ -1,22 +1,124 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import LoadingSpinner from "@/components/loading-spinner";
 
 type PortfolioItem = {
   id: string;
+  provider_id?: string;
   media_type: "image" | "video";
   image_url: string;
+  caption: string | null;
   description: string | null;
+  sort_order: number | null;
   duration_seconds: number | null;
   created_at: string;
 };
+
+function SortablePortfolioCard({
+  item,
+  onDelete,
+  onSaveCaption,
+}: {
+  item: PortfolioItem;
+  onDelete: (itemId: string) => Promise<void>;
+  onSaveCaption: (itemId: string, nextCaption: string) => Promise<void>;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftCaption, setDraftCaption] = useState(() => item.caption ?? item.description ?? "");
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={`overflow-hidden rounded-lg border bg-card ${isDragging ? "opacity-60" : ""}`}
+    >
+      <div className="relative">
+        {item.media_type === "video" ? (
+          <video src={item.image_url} controls className="aspect-square w-full object-cover" />
+        ) : (
+          <img src={item.image_url} alt={item.caption || item.description || "Portfolio item"} className="aspect-square w-full object-cover" />
+        )}
+
+        {item.media_type === "video" && <Badge className="absolute left-2 top-2">Video</Badge>}
+
+        <div className="absolute right-2 top-2 flex gap-2">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="rounded-full bg-black/70 px-2 py-1 text-xs text-white"
+            aria-label="Reorder portfolio item"
+          >
+            ⋮⋮
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsEditing((current) => !current)}
+            className="rounded-full bg-black/70 px-2 py-1 text-xs text-white"
+            aria-label="Edit caption"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(item.id)}
+            className="rounded-full bg-red-600 px-2 py-1 text-xs text-white"
+            aria-label="Delete portfolio item"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+
+      {isEditing ? (
+        <div className="space-y-2 p-3">
+          <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption</label>
+          <input
+            value={draftCaption}
+            onChange={(event) => setDraftCaption(event.target.value)}
+            placeholder="Add a note for this project"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0"
+          />
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsEditing(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={async () => {
+                await onSaveCaption(item.id, draftCaption);
+                setIsEditing(false);
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      ) : (
+        (item.caption ?? item.description) && (
+          <div className="border-t bg-muted/20 p-3">
+            <p className="text-sm text-foreground">{item.caption ?? item.description}</p>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
 
 export default function PortfolioPage() {
   const router = useRouter();
@@ -24,12 +126,32 @@ export default function PortfolioPage() {
   const [isProvider, setIsProvider] = useState(false);
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [description, setDescription] = useState("");
+  const [caption, setCaption] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  async function loadPortfolioItems(providerId: string): Promise<PortfolioItem[]> {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("provider_portfolio_items")
+      .select("*")
+      .eq("provider_id", providerId)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    return ((data ?? []) as PortfolioItem[]).sort((a, b) => {
+      const left = a.sort_order ?? Number.MAX_SAFE_INTEGER;
+      const right = b.sort_order ?? Number.MAX_SAFE_INTEGER;
+      if (left !== right) return left - right;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+  }
+
   useEffect(() => {
     let mounted = true;
+
     async function load() {
       const supabase = createClient();
       const { data: userData } = await supabase.auth.getUser();
@@ -39,7 +161,6 @@ export default function PortfolioPage() {
         return;
       }
 
-      // Check if user is a provider
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
@@ -52,16 +173,10 @@ export default function PortfolioPage() {
       }
 
       setIsProvider(true);
-
-      // Load existing portfolio items
-      const { data: portfolioData } = await supabase
-        .from("provider_portfolio_items")
-        .select("*")
-        .eq("provider_id", userData.user.id)
-        .order("created_at", { ascending: false });
+      const portfolioItems = await loadPortfolioItems(userData.user.id);
 
       if (mounted) {
-        setItems(portfolioData || []);
+        setItems(portfolioItems);
         setLoading(false);
       }
     }
@@ -70,7 +185,7 @@ export default function PortfolioPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [router]);
 
   async function ensureStorageBucket(bucket: "avatars" | "portfolio") {
     const response = await fetch("/api/storage/ensure", {
@@ -123,16 +238,11 @@ export default function PortfolioPage() {
         return;
       }
 
-      // Upload into a user-scoped folder so storage policies that restrict by
-      // folder (storage.foldername(name))[1] = auth.uid() can authorize each upload.
       const ext = file.name.includes(".") ? file.name.split(".").pop() || "file" : "file";
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const path = `${userData.user.id}/portfolio-${uniqueSuffix}.${ext}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("portfolio")
-        .upload(path, file, { upsert: true });
-
+      const { error: uploadError } = await supabase.storage.from("portfolio").upload(path, file, { upsert: true });
       if (uploadError) {
         setError(uploadError.message);
         return;
@@ -140,6 +250,7 @@ export default function PortfolioPage() {
 
       const { data } = supabase.storage.from("portfolio").getPublicUrl(path);
       const publicUrl = data.publicUrl;
+      const trimmedCaption = caption.trim();
 
       const res = await fetch("/api/profile/portfolio", {
         method: "POST",
@@ -147,7 +258,8 @@ export default function PortfolioPage() {
         body: JSON.stringify({
           image_url: publicUrl,
           media_type: isVideo ? "video" : "image",
-          description: description || null,
+          caption: trimmedCaption || null,
+          description: trimmedCaption || null,
         }),
       });
 
@@ -158,18 +270,12 @@ export default function PortfolioPage() {
       }
 
       setSuccess("Work uploaded successfully!");
-      setDescription("");
-
-      // Reload items
-      const { data: portfolioData } = await supabase
-        .from("provider_portfolio_items")
-        .select("*")
-        .eq("provider_id", userData.user.id)
-        .order("created_at", { ascending: false });
-
-      setItems(portfolioData || []);
-    } catch (err: any) {
-      setError(err.message || "Upload failed");
+      setCaption("");
+      e.target.value = "";
+      setItems(await loadPortfolioItems(userData.user.id));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      setError(message);
     } finally {
       setUploading(false);
     }
@@ -177,18 +283,78 @@ export default function PortfolioPage() {
 
   async function deleteItem(itemId: string) {
     const supabase = createClient();
+    const { error } = await supabase.from("provider_portfolio_items").delete().eq("id", itemId);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setItems((current) => current.filter((item) => item.id !== itemId));
+    setSuccess("Item deleted");
+  }
+
+  async function saveCaption(itemId: string, nextCaption: string) {
+    const trimmed = nextCaption.trim();
+    const supabase = createClient();
     const { error } = await supabase
       .from("provider_portfolio_items")
-      .delete()
+      .update({ caption: trimmed || null, description: trimmed || null })
       .eq("id", itemId);
 
     if (error) {
       setError(error.message);
-    } else {
-      setItems(items.filter((item) => item.id !== itemId));
-      setSuccess("Item deleted");
+      return;
     }
+
+    setItems((current) =>
+      current.map((item) =>
+        item.id === itemId
+          ? { ...item, caption: trimmed || null, description: trimmed || null }
+          : item
+      )
+    );
+    setSuccess("Caption updated");
   }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const previous = [...items];
+    const oldIndex = previous.findIndex((item) => item.id === String(active.id));
+    const newIndex = previous.findIndex((item) => item.id === String(over.id));
+
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const reordered = arrayMove(previous, oldIndex, newIndex).map((item, index) => ({
+      ...item,
+      sort_order: index + 1,
+      caption: item.caption ?? item.description,
+    }));
+
+    setItems(reordered);
+    const supabase = createClient();
+    const { error } = await supabase.from("provider_portfolio_items").upsert(
+      reordered.map((item) => ({
+        id: item.id,
+        sort_order: item.sort_order,
+        caption: item.caption ?? null,
+        description: item.caption ?? item.description ?? null,
+      })),
+      { onConflict: "id" }
+    );
+
+    if (error) {
+      setError(error.message);
+      setItems(previous);
+      return;
+    }
+
+    setSuccess("Portfolio order updated");
+  }
+
+  const itemIds = useMemo(() => items.map((item) => item.id), [items]);
 
   if (loading) {
     return (
@@ -214,19 +380,17 @@ export default function PortfolioPage() {
       <div className="mb-6">
         <h1 className="mb-1 text-2xl font-semibold">Your portfolio</h1>
         <p className="text-muted-foreground">
-          Upload photos and videos of your past work. Add descriptions to showcase your expertise.
+          Upload photos and videos of your past work. Add a quick caption to show customers what you did.
         </p>
       </div>
 
-      {/* Upload Form */}
       <div className="mb-8 rounded-lg border p-6">
         <h2 className="mb-4 font-medium">Upload your work</h2>
 
         <div className="space-y-4">
-        <div>
+          <div>
             <label className="block text-sm font-medium mb-2">Image or video</label>
             <input
-              id="file-upload-main"
               type="file"
               accept="image/*,video/*"
               onChange={handleFileUpload}
@@ -239,85 +403,41 @@ export default function PortfolioPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Description (optional)</label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Tell customers what this work shows — materials used, challenges solved, etc."
-              rows={3}
+            <label className="block text-sm font-medium mb-2">Caption (optional)</label>
+            <input
+              value={caption}
+              onChange={(event) => setCaption(event.target.value)}
+              placeholder="Describe this project, material, or result"
               disabled={uploading}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0"
             />
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
           {success && <p className="text-sm text-green-600">{success}</p>}
-
-          <Button
-            type="button"
-            onClick={() => {
-              const input = document.getElementById("file-upload") as HTMLInputElement;
-              input?.click();
-            }}
-            disabled={uploading}
-          >
-            {uploading ? "Uploading…" : "Upload"}
-          </Button>
         </div>
-
-        <input
-          id="file-upload"
-          type="file"
-          accept="image/*,video/*"
-          onChange={handleFileUpload}
-          disabled={uploading}
-          className="hidden"
-        />
       </div>
 
-      {/* Portfolio Grid */}
       <div>
         <h2 className="mb-4 font-medium">Your work ({items.length})</h2>
 
         {items.length === 0 ? (
           <p className="text-muted-foreground">No items yet. Upload your first work above.</p>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
-            {items.map((item) => (
-              <div key={item.id} className="group relative rounded-lg overflow-hidden bg-muted">
-                {item.media_type === "video" ? (
-                  <video
-                    src={item.image_url}
-                    controls
-                    className="aspect-square w-full object-cover"
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+              <div className="space-y-4">
+                {items.map((item) => (
+                  <SortablePortfolioCard
+                    key={`${item.id}-${item.caption ?? item.description ?? ""}`}
+                    item={item}
+                    onDelete={deleteItem}
+                    onSaveCaption={saveCaption}
                   />
-                ) : (
-                  <img
-                    src={item.image_url}
-                    alt={item.description || "Portfolio item"}
-                    className="aspect-square w-full object-cover"
-                  />
-                )}
-
-                {item.description && (
-                  <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/80 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
-                    <p className="text-sm text-white line-clamp-3">{item.description}</p>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => deleteItem(item.id)}
-                  className="absolute right-2 top-2 rounded-full bg-red-600 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                  title="Delete"
-                >
-                  ✕
-                </button>
-
-                {item.media_type === "video" && (
-                  <Badge className="absolute left-2 top-2">Video</Badge>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 

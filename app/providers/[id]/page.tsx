@@ -42,8 +42,10 @@ type ProviderRecord = {
   provider_portfolio_items?: Array<{
     id: string;
     image_url: string;
-    description: string | null;
+    caption?: string | null;
+    description?: string | null;
     media_type: string;
+    sort_order?: number | null;
   }>;
 };
 
@@ -260,15 +262,20 @@ export default function ProviderProfilePage() {
            avg_rating, review_count,
            profiles ( full_name, email, avatar_url ),
            provider_categories ( service_categories ( id, name ) ),
-           provider_portfolio_items ( id, image_url, description, media_type )`
+           provider_portfolio_items ( id, image_url, caption, description, media_type, sort_order )`
         )
         .eq("id", id)
         .eq("is_active", true)
+        .order("sort_order", { foreignTable: "provider_portfolio_items", ascending: true })
         .maybeSingle();
 
       if (!isMounted) return;
 
-      setProvider(providerData ?? null);
+      const orderedPortfolio = [...((providerData?.provider_portfolio_items as ProviderRecord["provider_portfolio_items"]) ?? [])].sort(
+        (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
+      );
+
+      setProvider(providerData ? { ...providerData, provider_portfolio_items: orderedPortfolio } : null);
 
       const { data: reviewsData } = await supabase
         .from("reviews")
@@ -377,30 +384,34 @@ export default function ProviderProfilePage() {
       {(provider.provider_portfolio_items ?? []).length > 0 && (
         <div className="mb-8">
           <h2 className="mb-2 font-medium">Work</h2>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {(provider.provider_portfolio_items ?? []).map((item) => (
-              <div key={item.id} className="group relative rounded-md overflow-hidden bg-muted">
-                {item.media_type === "video" ? (
-                  <video
-                    src={item.image_url}
-                    controls
-                    className="aspect-square w-full object-cover"
-                  />
-                ) : (
-                  <img
-                    src={item.image_url}
-                    alt={item.description || "Portfolio item"}
-                    className="aspect-square w-full object-cover"
-                  />
-                )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {(provider.provider_portfolio_items ?? []).map((item) => {
+              const captionText = item.caption ?? item.description;
 
-                {item.description && (
-                  <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                    <p className="text-xs text-white line-clamp-3">{item.description}</p>
-                  </div>
-                )}
-              </div>
-            ))}
+              return (
+                <div key={item.id} className="overflow-hidden rounded-md bg-muted">
+                  {item.media_type === "video" ? (
+                    <video
+                      src={item.image_url}
+                      controls
+                      className="aspect-square w-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={item.image_url}
+                      alt={captionText || "Portfolio item"}
+                      className="aspect-square w-full object-cover"
+                    />
+                  )}
+
+                  {captionText && (
+                    <div className="border-t bg-background p-2">
+                      <p className="text-xs text-foreground">{captionText}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
