@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -107,27 +108,33 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
                         <p className="mt-1 text-sm">
                           Reporter: <span className="font-medium">{report.profiles?.full_name || "Unknown"}</span>
                         </p>
-                        {report.reportable_type === "review" && report.reviews ? (
-                          <div className="mt-2 rounded bg-muted p-2">
-                            <p className="text-sm">
-                              <span className="text-yellow-500">{"★".repeat(report.reviews.rating)}{"☆".repeat(5 - report.reviews.rating)}</span>
-                              <span className="ml-2 text-muted-foreground">{report.reviews.comment || "No comment"}</span>
+                        {report.reportable_type === "review" && report.target && (
+                          <div className="mt-2 rounded-md border p-3">
+                            <div className="flex items-center gap-1">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <span key={i} className={i < report.target.rating ? "text-yellow-500" : "text-gray-300"}>
+                                  ★
+                                </span>
+                              ))}
+                            </div>
+                            {report.target.comment && <p className="mt-1 text-sm">{report.target.comment}</p>}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              by {report.target.profiles?.full_name ?? "Unknown"}
                             </p>
-                            {report.reviews.profiles?.full_name && (
-                              <p className="mt-1 text-xs text-muted-foreground">By {report.reviews.profiles.full_name}</p>
-                            )}
                           </div>
-                        ) : null}
-                        {report.reportable_type === "provider" && report.providers ? (
-                          <div className="mt-2">
-                            <a
-                              href={`/providers/${report.providers.id}`}
-                              className="text-sm font-medium text-blue-600 underline"
-                            >
-                              {report.providers.business_name || "Provider"}
-                            </a>
-                          </div>
-                        ) : null}
+                        )}
+                        {report.reportable_type === "review" && !report.target && (
+                          <p className="mt-2 text-sm italic text-muted-foreground">Original review no longer exists</p>
+                        )}
+
+                        {report.reportable_type === "provider" && report.target && (
+                          <Link href={`/providers/${report.target.id}`} className="mt-2 inline-block text-sm underline">
+                            {report.target.business_name}
+                          </Link>
+                        )}
+                        {report.reportable_type === "provider" && !report.target && (
+                          <p className="mt-2 text-sm italic text-muted-foreground">Original provider no longer exists</p>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-2 text-sm text-muted-foreground">
                         <span>{report.status}</span>
