@@ -5,6 +5,7 @@ import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import SessionMenu from "@/components/session-menu";
 import { EnquiriesNavBadge } from "@/components/enquiries-nav-badge";
+import NotificationBell from "@/components/notification-bell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -74,6 +75,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         {children}
+        {userData.user && <NotificationBell />}
       </body>
     </html>
   );
