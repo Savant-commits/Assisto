@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,6 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { ReportDialog } from "@/components/report-dialog";
+import { ReviewModal } from "@/components/review-modal";
+import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib/reviews";
 
 const enquirySchema = z.object({
   message: z.string().trim().min(1, "Add a short message to send with your enquiry"),
@@ -255,6 +257,33 @@ export default function ProviderProfilePage() {
   const [sortDirection, setSortDirection] = useState<"latest" | "oldest">("latest");
   const [profileReported, setProfileReported] = useState(false);
   const [reportedReviews, setReportedReviews] = useState<Set<string>>(new Set());
+  const [eligibleReviewEnquiries, setEligibleReviewEnquiries] = useState<EligibleReviewEnquiry[]>([]);
+  const [reviewPickerOpen, setReviewPickerOpen] = useState(false);
+  const [reviewModalEnquiryId, setReviewModalEnquiryId] = useState<number | null>(null);
+  const [isCurrentUserProvider, setIsCurrentUserProvider] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  const refreshProfileReviews = useCallback(async () => {
+    const { data: reviewsData } = await supabase
+      .from("reviews")
+      .select("id,rating,comment,created_at,customer_id,profiles!reviews_customer_id_fkey(full_name)")
+      .eq("provider_id", id)
+      .order("created_at", { ascending: false });
+
+    setReviews((reviewsData as ProviderReview[]) ?? []);
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id ?? null;
+    setCurrentUserId(userId);
+
+    if (!userId || isCurrentUserProvider) {
+      setEligibleReviewEnquiries([]);
+      return;
+    }
+
+    const eligible = await getEligibleEnquiriesForReview(supabase, userId, id);
+    setEligibleReviewEnquiries(eligible);
+  }, [id, isCurrentUserProvider, supabase]);
 
   useEffect(() => {
     let isMounted = true;
@@ -284,14 +313,21 @@ export default function ProviderProfilePage() {
 
       setProvider(providerData ? { ...providerData, provider_portfolio_items: orderedPortfolio } : null);
 
-      const { data: reviewsData } = await supabase
-        .from("reviews")
-        .select("id,rating,comment,created_at,customer_id,profiles!reviews_customer_id_fkey(full_name)")
-        .eq("provider_id", id)
-        .order("created_at", { ascending: false });
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id ?? null;
+      if (userId) {
+        const { data: providerRow } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
+        if (isMounted) {
+          setCurrentUserId(userId);
+          setIsCurrentUserProvider(Boolean(providerRow));
+        }
+      } else if (isMounted) {
+        setCurrentUserId(null);
+        setIsCurrentUserProvider(false);
+      }
 
       if (isMounted) {
-        setReviews((reviewsData as ProviderReview[]) ?? []);
+        await refreshProfileReviews();
       }
 
       if (requirementId) {
@@ -318,7 +354,7 @@ export default function ProviderProfilePage() {
     return () => {
       isMounted = false;
     };
-  }, [id, requirementId, supabase]);
+  }, [id, refreshProfileReviews, requirementId, supabase]);
 
   if (loading) {
     return <div className="mx-auto max-w-2xl px-4 py-10 text-sm text-muted-foreground">Loading profile…</div>;
@@ -590,7 +626,7 @@ export default function ProviderProfilePage() {
         </p>
         {profileReported ? (
           <div className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
-            Thank you for reporting. We'll review your report and take appropriate action if needed.
+            Thank you for reporting. We&apos;ll review your report and take appropriate action if needed.
           </div>
         ) : (
           <EnquiryWidget
@@ -602,7 +638,54 @@ export default function ProviderProfilePage() {
         )}
       </div>
 
-      <div className="mt-4 flex justify-center">
+      <div className="mt-4 flex flex-col items-center gap-3">
+        {currentUserId && !isCurrentUserProvider && eligibleReviewEnquiries.length > 0 && (
+          <div className="w-full max-w-xs">
+            {eligibleReviewEnquiries.length === 1 ? (
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => setReviewModalEnquiryId(eligibleReviewEnquiries[0].id)}
+              >
+                Leave a review
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <Button type="button" className="w-full" onClick={() => setReviewPickerOpen((current) => !current)}>
+                  Leave a review
+                </Button>
+                {reviewPickerOpen && (
+                  <div className="rounded-md border border-muted bg-background p-3 text-left shadow-sm">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Choose the completed job
+                    </p>
+                    <div className="space-y-2">
+                      {eligibleReviewEnquiries.map((enquiry) => (
+                        <button
+                          key={enquiry.id}
+                          type="button"
+                          onClick={() => {
+                            setReviewPickerOpen(false);
+                            setReviewModalEnquiryId(enquiry.id);
+                          }}
+                          className="w-full rounded-md border border-muted bg-muted/30 p-2 text-left transition hover:bg-muted/50"
+                        >
+                          <div className="text-sm font-medium">
+                            {enquiry.customer_requirements?.description || "Completed project"}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Completed {formatDateTime(enquiry.customer_completed_at ?? enquiry.updated_at)}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {profileReported ? (
           <button disabled className="text-xs text-muted-foreground">
             Reported
@@ -616,6 +699,19 @@ export default function ProviderProfilePage() {
           />
         )}
       </div>
+
+      {reviewModalEnquiryId !== null && (
+        <ReviewModal
+          enquiryId={reviewModalEnquiryId}
+          providerName={name}
+          onClose={() => setReviewModalEnquiryId(null)}
+          onSubmitted={async () => {
+            setReviewPickerOpen(false);
+            setReviewModalEnquiryId(null);
+            await refreshProfileReviews();
+          }}
+        />
+      )}
 
       {/* Your history with this provider (only for authenticated users) */}
       <ProviderEnquiryHistory providerId={provider.id} />

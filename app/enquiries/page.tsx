@@ -8,6 +8,7 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { CompletionActions } from "@/components/completion-actions";
 import { ReviewModal } from "@/components/review-modal";
+import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -122,6 +123,8 @@ export default function EnquiriesPage() {
       .order("created_at", { ascending: false });
 
     const sentList = (sentData as SentEnquiry[]) || [];
+    const eligibleReviewEnquiries = await getEligibleEnquiriesForReview(supabase, userData.user.id);
+    const eligibleReviewIds = new Set(eligibleReviewEnquiries.map((enquiry) => String(enquiry.id)));
     const completedEnquiryIds = sentList.filter((enquiry) => enquiry.status === "completed").map((enquiry) => String(enquiry.id));
     const reviewsMap: Record<string, ReviewRecord> = {};
 
@@ -193,8 +196,7 @@ export default function EnquiriesPage() {
     if (!mountedRef.current) return;
 
     const queuedPrompts = sentList
-      .filter((enquiry) => enquiry.status === "completed")
-      .filter((enquiry) => !reviewsMap[String(enquiry.id)])
+      .filter((enquiry) => eligibleReviewIds.has(String(enquiry.id)))
       .filter((enquiry) => (typeof window === "undefined" ? true : localStorage.getItem(getReviewDismissedKey(enquiry.id)) !== "true"))
       .map((enquiry) => ({
         enquiryId: enquiry.id,
