@@ -46,6 +46,7 @@ type ProviderRecord = {
     description?: string | null;
     media_type: string;
     sort_order?: number | null;
+    created_at?: string | null;
   }>;
 };
 
@@ -249,6 +250,8 @@ export default function ProviderProfilePage() {
   const [initialRequirementMessage, setInitialRequirementMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAllWork, setShowAllWork] = useState(false);
+  const [mediaFilter, setMediaFilter] = useState<"all" | "photos" | "videos">("all");
+  const [sortDirection, setSortDirection] = useState<"latest" | "oldest">("latest");
 
   useEffect(() => {
     let isMounted = true;
@@ -263,7 +266,7 @@ export default function ProviderProfilePage() {
            avg_rating, review_count,
            profiles ( full_name, email, avatar_url ),
            provider_categories ( service_categories ( id, name ) ),
-           provider_portfolio_items ( id, image_url, caption, description, media_type, sort_order )`
+           provider_portfolio_items ( id, image_url, caption, description, media_type, sort_order, created_at )`
         )
         .eq("id", id)
         .eq("is_active", true)
@@ -387,16 +390,65 @@ export default function ProviderProfilePage() {
           <h2 className="mb-2 font-medium">Work</h2>
 
           {(() => {
-            const items = provider.provider_portfolio_items ?? [];
-            const total = items.length;
+            const items = (provider.provider_portfolio_items ?? []) as ProviderRecord["provider_portfolio_items"];
+            const filteredSortedItems = [...items]
+              .filter((item) => {
+                if (mediaFilter === "photos") return item.media_type !== "video";
+                if (mediaFilter === "videos") return item.media_type === "video";
+                return true;
+              })
+              .sort((a, b) => {
+                const aTime = new Date(a.created_at ?? "1970-01-01T00:00:00Z").getTime();
+                const bTime = new Date(b.created_at ?? "1970-01-01T00:00:00Z").getTime();
+                return sortDirection === "latest" ? bTime - aTime : aTime - bTime;
+              });
+
+            const total = filteredSortedItems.length;
             const shouldCollapse = total > 6;
-            const visibleItems = shouldCollapse && !showAllWork ? items.slice(0, 6) : items;
-            const hiddenItems = shouldCollapse && !showAllWork ? items.slice(6) : [];
+            const visible = shouldCollapse && !showAllWork ? filteredSortedItems.slice(0, 6) : filteredSortedItems;
+            const hidden = shouldCollapse && !showAllWork ? filteredSortedItems.slice(6) : [];
 
             return (
               <div className="space-y-3">
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {[
+                    { value: "all", label: "All" },
+                    { value: "photos", label: "Photos" },
+                    { value: "videos", label: "Videos" },
+                  ].map((option) => {
+                    const isActive = mediaFilter === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setMediaFilter(option.value as "all" | "photos" | "videos")}
+                        className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+
+                  {[
+                    { value: "latest", label: "Latest" },
+                    { value: "oldest", label: "Oldest" },
+                  ].map((option) => {
+                    const isActive = sortDirection === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setSortDirection(option.value as "latest" | "oldest")}
+                        className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <div className="grid grid-cols-3 gap-3">
-                  {visibleItems.map((item) => {
+                  {visible.map((item) => {
                     const captionText = item.caption ?? item.description;
 
                     return (
@@ -426,7 +478,7 @@ export default function ProviderProfilePage() {
                     {!showAllWork ? (
                       <>
                         <div className="grid grid-cols-3 gap-3 p-1 opacity-95 blur-[6px]">
-                          {hiddenItems.map((item) => {
+                          {hidden.map((item) => {
                             const captionText = item.caption ?? item.description;
                             return (
                               <div key={item.id} className="overflow-hidden rounded-md bg-background">
@@ -453,7 +505,7 @@ export default function ProviderProfilePage() {
                       <div className="relative">
                         <div className="max-h-[calc(6*150px+5*0.75rem)] overflow-y-auto pr-1 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent">
                           <div className="grid grid-cols-3 gap-3 p-1">
-                            {items.map((item) => {
+                            {hidden.map((item) => {
                               const captionText = item.caption ?? item.description;
                               return (
                                 <div key={item.id} className="overflow-hidden rounded-md bg-background">
