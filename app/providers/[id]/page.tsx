@@ -394,79 +394,87 @@ export default function ProviderProfilePage() {
             const hiddenItems = shouldCollapse && !showAllWork ? items.slice(6) : [];
 
             return (
-              <div className="grid grid-cols-3 gap-3">
-                {visibleItems.map((item) => {
-                  const captionText = item.caption ?? item.description;
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  {visibleItems.map((item) => {
+                    const captionText = item.caption ?? item.description;
 
-                  return (
-                    <div key={item.id} className="overflow-hidden rounded-md bg-muted">
-                      {item.media_type === "video" ? (
-                        <video src={item.image_url} controls className="aspect-square w-full object-cover" />
-                      ) : (
-                        <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
-                      )}
+                    return (
+                      <div key={item.id} className="overflow-hidden rounded-md bg-muted">
+                        {item.media_type === "video" ? (
+                          <video src={item.image_url} controls className="aspect-square w-full object-cover" />
+                        ) : (
+                          <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
+                        )}
 
-                      {captionText && (
-                        <div className="border-t bg-background p-2">
-                          <p className="text-xs text-foreground">{captionText}</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        {captionText && (
+                          <div className="border-t bg-background p-2">
+                            <p className="text-xs text-foreground">{captionText}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
 
-                {hiddenItems.length > 0 && (
+                {shouldCollapse && (
                   <button
                     type="button"
-                    onClick={() => setShowAllWork(true)}
-                    className="relative col-span-3 overflow-hidden rounded-md border bg-muted text-left"
+                    onClick={() => setShowAllWork((current) => !current)}
+                    className="relative w-full overflow-hidden rounded-md border bg-muted text-left"
                   >
-                    <div className="grid grid-cols-3 gap-3 p-1">
-                      {visibleItems.map((item) => {
-                        const captionText = item.caption ?? item.description;
-                        return (
-                          <div key={item.id} className="overflow-hidden rounded-md bg-background">
-                            {item.media_type === "video" ? (
-                              <video src={item.image_url} controls className="aspect-square w-full object-cover" />
-                            ) : (
-                              <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
-                            )}
+                    {!showAllWork ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-3 p-1 opacity-95 blur-[6px]">
+                          {hiddenItems.map((item) => {
+                            const captionText = item.caption ?? item.description;
+                            return (
+                              <div key={item.id} className="overflow-hidden rounded-md bg-background">
+                                {item.media_type === "video" ? (
+                                  <video src={item.image_url} controls className="aspect-square w-full object-cover" />
+                                ) : (
+                                  <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-foreground">
+                          <span className="rounded-full bg-background/80 p-2 shadow-sm backdrop-blur-sm">
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-[2]" aria-hidden="true">
+                              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </span>
+                          <span className="text-sm font-medium">View all work ({total})</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="relative">
+                        <div className="max-h-[calc(6*150px+5*0.75rem)] overflow-y-auto pr-1 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent">
+                          <div className="grid grid-cols-3 gap-3 p-1">
+                            {items.map((item) => {
+                              const captionText = item.caption ?? item.description;
+                              return (
+                                <div key={item.id} className="overflow-hidden rounded-md bg-background">
+                                  {item.media_type === "video" ? (
+                                    <video src={item.image_url} controls className="aspect-square w-full object-cover" />
+                                  ) : (
+                                    <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
+                                  )}
+                                  {captionText && (
+                                    <div className="border-t bg-background p-2">
+                                      <p className="text-xs text-foreground">{captionText}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="pointer-events-none absolute inset-0">
-                      <div
-                        className="grid grid-cols-3 gap-3 p-1 blur-[6px]"
-                        style={{
-                          maskImage: "linear-gradient(to bottom, transparent 0%, transparent 25%, black 55%)",
-                          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, transparent 25%, black 55%)",
-                        }}
-                      >
-                        {hiddenItems.map((item) => {
-                          const captionText = item.caption ?? item.description;
-                          return (
-                            <div key={item.id} className="overflow-hidden rounded-md bg-background">
-                              {item.media_type === "video" ? (
-                                <video src={item.image_url} controls className="aspect-square w-full object-cover" />
-                              ) : (
-                                <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
-                              )}
-                            </div>
-                          );
-                        })}
+                        </div>
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background via-background/70 to-transparent" />
                       </div>
-                    </div>
-
-                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-foreground">
-                      <span className="rounded-full bg-background/80 p-2 shadow-sm backdrop-blur-sm">
-                        <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-[2]" aria-hidden="true">
-                          <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </span>
-                      <span className="text-sm font-medium">View all work ({total})</span>
-                    </div>
+                    )}
                   </button>
                 )}
               </div>

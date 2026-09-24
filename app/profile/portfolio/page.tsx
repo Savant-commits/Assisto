@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -17,10 +17,16 @@ const FILTERS = [
   { value: "videos", label: "Videos" },
 ] as const;
 
+const SORT_OPTIONS = [
+  { value: "latest", label: "Latest" },
+  { value: "oldest", label: "Oldest" },
+] as const;
+
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024;
 
 type MediaFilter = (typeof FILTERS)[number]["value"];
+type SortDirection = (typeof SORT_OPTIONS)[number]["value"];
 
 type PortfolioItem = {
   id: string;
@@ -88,8 +94,26 @@ function SortablePortfolioCard({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftCaption, setDraftCaption] = useState(() => item.caption ?? item.description ?? "");
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+
+  const handleVideoMouseEnter = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.play().catch(() => undefined);
+  };
+
+  const handleVideoMouseLeave = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    video.currentTime = 0;
+  };
 
   return (
     <div
@@ -102,9 +126,31 @@ function SortablePortfolioCard({
     >
       <div className="relative">
         {item.media_type === "video" ? (
-          <video src={item.image_url} controls className="aspect-square w-full max-h-[180px] object-cover" />
+          <video
+            ref={videoRef}
+            src={item.image_url}
+            controls
+            muted
+            loop
+            playsInline
+            onMouseEnter={handleVideoMouseEnter}
+            onMouseLeave={handleVideoMouseLeave}
+            className="aspect-square w-full max-h-[180px] object-cover"
+          />
         ) : (
-          <img src={item.image_url} alt={item.caption || item.description || "Portfolio item"} className="aspect-square w-full max-h-[180px] object-cover" />
+          <>
+            <img src={item.image_url} alt={item.caption || item.description || "Portfolio item"} className="aspect-square w-full max-h-[180px] object-cover" />
+            <button
+              type="button"
+              onClick={() => setIsLightboxOpen(true)}
+              className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow-sm"
+              aria-label="View image full size"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-[2]" aria-hidden="true">
+                <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </>
         )}
 
         {item.media_type === "video" && <Badge className="absolute left-2 top-2">Video</Badge>}
@@ -172,6 +218,27 @@ function SortablePortfolioCard({
           </div>
         )
       )}
+
+      {isLightboxOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={() => setIsLightboxOpen(false)}>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsLightboxOpen(false);
+            }}
+            className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1 text-sm text-white"
+          >
+            Close
+          </button>
+          <img
+            src={item.image_url}
+            alt={item.caption || item.description || "Portfolio item"}
+            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -184,7 +251,9 @@ export default function PortfolioPage() {
   const [stagedUploads, setStagedUploads] = useState<StagedPortfolioFile[]>([]);
   const [uploadingBatch, setUploadingBatch] = useState(false);
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("latest");
   const [reorderMode, setReorderMode] = useState(false);
+  const [reorderSnapshot, setReorderSnapshot] = useState<PortfolioItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const stagedUploadsRef = useRef<StagedPortfolioFile[]>([]);
@@ -201,18 +270,16 @@ export default function PortfolioPage() {
     };
   }, []);
 
-  const sortByCreatedAt = (list: PortfolioItem[]) =>
-    [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const sortByCreatedAt = useCallback(
+    (list: PortfolioItem[], direction: SortDirection = "latest") =>
+      [...list].sort((a, b) => {
+        const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        return direction === "latest" ? -diff : diff;
+      }),
+    []
+  );
 
-  const sortBySortOrder = (list: PortfolioItem[]) =>
-    [...list].sort((a, b) => {
-      const left = a.sort_order ?? Number.MAX_SAFE_INTEGER;
-      const right = b.sort_order ?? Number.MAX_SAFE_INTEGER;
-      if (left !== right) return left - right;
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    });
-
-  async function loadPortfolioItems(providerId: string): Promise<PortfolioItem[]> {
+  const loadPortfolioItems = useCallback(async (providerId: string): Promise<PortfolioItem[]> => {
     const supabase = createClient();
     const { data } = await supabase
       .from("provider_portfolio_items")
@@ -221,7 +288,7 @@ export default function PortfolioPage() {
       .order("created_at", { ascending: false });
 
     return sortByCreatedAt((data ?? []) as PortfolioItem[]);
-  }
+  }, [sortByCreatedAt]);
 
   useEffect(() => {
     let mounted = true;
@@ -259,7 +326,7 @@ export default function PortfolioPage() {
     return () => {
       mounted = false;
     };
-  }, [router]);
+  }, [loadPortfolioItems, router]);
 
   async function ensureStorageBucket(bucket: "avatars" | "portfolio") {
     const response = await fetch("/api/storage/ensure", {
@@ -465,34 +532,38 @@ export default function PortfolioPage() {
     const { active, over } = event;
     if (!reorderMode || !over || active.id === over.id) return;
 
-    const previous = sortBySortOrder(items);
-    const oldIndex = previous.findIndex((item) => item.id === String(active.id));
-    const newIndex = previous.findIndex((item) => item.id === String(over.id));
+    const oldIndex = items.findIndex((item) => item.id === String(active.id));
+    const newIndex = items.findIndex((item) => item.id === String(over.id));
 
     if (oldIndex < 0 || newIndex < 0) return;
 
-    const reorderedItems = arrayMove(previous, oldIndex, newIndex);
-    setItems(reorderedItems);
+    setItems((current) => arrayMove(current, oldIndex, newIndex));
+  }
 
+  async function handleDoneReorder() {
     const supabase = createClient();
     const { error } = await supabase.rpc("reorder_portfolio_items", {
-      p_items: reorderedItems.map((item, index) => ({ id: item.id, sort_order: index })),
+      p_items: items.map((item, index) => ({ id: item.id, sort_order: index })),
     });
 
     if (error) {
       setError(error.message);
-      setItems(previous);
+      setItems(reorderSnapshot);
+      setReorderMode(false);
+      setMediaFilter("all");
       return;
     }
 
     setSuccess("Portfolio order updated");
+    setReorderMode(false);
+    setMediaFilter("all");
   }
 
   const visibleItems = useMemo(() => {
-    const arranged = reorderMode ? sortBySortOrder(items) : sortByCreatedAt(items);
+    const arranged = reorderMode ? items : sortByCreatedAt(items, sortDirection);
     if (mediaFilter === "all") return arranged;
     return arranged.filter((item) => (mediaFilter === "photos" ? item.media_type !== "video" : item.media_type === "video"));
-  }, [items, mediaFilter, reorderMode]);
+  }, [items, mediaFilter, reorderMode, sortDirection]);
 
   const itemIds = useMemo(() => visibleItems.map((item) => item.id), [visibleItems]);
   const hasValidQueuedFiles = stagedUploads.some((item) => !item.error && item.status !== "success");
@@ -624,24 +695,30 @@ export default function PortfolioPage() {
           <h2 className="font-medium">Your work ({items.length})</h2>
           <div className="flex items-center gap-2">
             {reorderMode ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setReorderMode(false);
-                  setItems((current) => sortByCreatedAt(current));
-                  setMediaFilter("all");
-                }}
-              >
-                Done
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setItems(reorderSnapshot.map((item) => ({ ...item })));
+                    setReorderMode(false);
+                    setMediaFilter("all");
+                    setSuccess("Reorder cancelled");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="button" variant="outline" onClick={handleDoneReorder}>
+                  Done
+                </Button>
+              </>
             ) : (
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
+                  setReorderSnapshot(items.map((item) => ({ ...item })));
                   setReorderMode(true);
-                  setItems((current) => sortBySortOrder(current));
                 }}
               >
                 Reorder
@@ -652,19 +729,36 @@ export default function PortfolioPage() {
 
         {!reorderMode && items.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-2">
-            {FILTERS.map((option) => {
-              const isActive = mediaFilter === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setMediaFilter(option.value)}
-                  className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
+            <div className="flex flex-wrap gap-2">
+              {FILTERS.map((option) => {
+                const isActive = mediaFilter === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setMediaFilter(option.value)}
+                    className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {SORT_OPTIONS.map((option) => {
+                const isActive = sortDirection === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setSortDirection(option.value)}
+                    className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
