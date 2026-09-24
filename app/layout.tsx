@@ -58,9 +58,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   Apply
                 </a>
                 {profile?.role === "admin" && (
-                  <a href="/admin/enquiries" className="rounded-full border px-3 py-1">
-                    Admin
-                  </a>
+                  <>
+                    <a href="/admin/enquiries" className="rounded-full border px-3 py-1">
+                      Admin
+                    </a>
+                    <a href="/admin/reports" className="rounded-full border px-3 py-1">
+                      Reports
+                    </a>
+                  </>
                 )}
               </nav>
             <div>

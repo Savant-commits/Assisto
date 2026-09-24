@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ContactUnlock } from "@/components/contact-unlock";
+import { ReportDialog } from "@/components/report-dialog";
 
 const enquirySchema = z.object({
   message: z.string().trim().min(1, "Add a short message to send with your enquiry"),
@@ -252,6 +253,8 @@ export default function ProviderProfilePage() {
   const [showAllWork, setShowAllWork] = useState(false);
   const [mediaFilter, setMediaFilter] = useState<"all" | "photos" | "videos">("all");
   const [sortDirection, setSortDirection] = useState<"latest" | "oldest">("latest");
+  const [profileReported, setProfileReported] = useState(false);
+  const [reportedReviews, setReportedReviews] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let isMounted = true;
@@ -548,11 +551,26 @@ export default function ProviderProfilePage() {
             <div className="space-y-3">
               {reviews.map((review) => {
                 const profile = Array.isArray(review.profiles) ? review.profiles[0] : review.profiles;
+                const isReported = reportedReviews.has(review.id);
                 return (
                   <div key={review.id} className="rounded-md border border-muted p-3">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <div className="text-yellow-500">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
-                      <div className="text-xs text-muted-foreground">{formatDateTime(review.created_at)}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-muted-foreground">{formatDateTime(review.created_at)}</div>
+                        {isReported ? (
+                          <button disabled className="text-xs text-muted-foreground">
+                            Reported
+                          </button>
+                        ) : (
+                          <ReportDialog
+                            reportableType="review"
+                            reportableId={review.id}
+                            triggerLabel="Report"
+                            onSuccess={() => setReportedReviews((prev) => new Set([...prev, review.id]))}
+                          />
+                        )}
+                      </div>
                     </div>
                     {review.comment && <p className="mb-2 whitespace-pre-line text-sm text-muted-foreground">{review.comment}</p>}
                     <div className="text-xs text-muted-foreground">{profile?.full_name || "Customer"}</div>
@@ -570,12 +588,33 @@ export default function ProviderProfilePage() {
         <p className="mb-3 text-sm text-muted-foreground">
           Contact details unlock once you send an enquiry and the provider confirms.
         </p>
-        <EnquiryWidget
-          providerId={provider.id}
-          providerName={name}
-          requirementId={requirementId}
-          initialMessage={initialRequirementMessage}
-        />
+        {profileReported ? (
+          <div className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
+            Thank you for reporting. We'll review your report and take appropriate action if needed.
+          </div>
+        ) : (
+          <EnquiryWidget
+            providerId={provider.id}
+            providerName={name}
+            requirementId={requirementId}
+            initialMessage={initialRequirementMessage}
+          />
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-center">
+        {profileReported ? (
+          <button disabled className="text-xs text-muted-foreground">
+            Reported
+          </button>
+        ) : (
+          <ReportDialog
+            reportableType="provider"
+            reportableId={provider.id}
+            triggerLabel="Report this profile"
+            onSuccess={() => setProfileReported(true)}
+          />
+        )}
       </div>
 
       {/* Your history with this provider (only for authenticated users) */}
