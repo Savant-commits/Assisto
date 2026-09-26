@@ -35,7 +35,7 @@ export default async function AdminReportsPage() {
     reviewIds.length
       ? supabase
           .from("reviews")
-          .select("id,rating,comment,provider_id,profiles!reviews_customer_id_fkey(full_name)")
+          .select("id,rating,comment,provider_id,customer_id,profiles!reviews_customer_id_fkey(full_name)")
           .in("id", reviewIds)
       : Promise.resolve({ data: [] as any[] }),
   ]);
