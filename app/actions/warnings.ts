@@ -41,21 +41,23 @@ export async function sendWarning({
   });
   if (rpcError) throw new Error(rpcError.message);
 
-  // fetch recipient's real email via the admin (service-role) client
   const adminClient = createAdminClient();
   const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(recipientId);
+
   if (userError || !userData?.user?.email) {
-    // in-app notification already sent successfully — log this but
-    // don't throw, so the admin still sees success (email is best-effort)
     console.error("Could not fetch recipient email:", userError);
     return { emailSent: false };
   }
 
-  await sendEmail({
-    to: userData.user.email,
-    subject: title,
-    html: `<p>${body}</p><p style="color:#888;font-size:12px">This is an official warning from the Assisto team.</p>`,
-  });
-
-  return { emailSent: true };
+  try {
+    await sendEmail({
+      to: userData.user.email,
+      subject: title,
+      html: `<p>${body}</p><p style="color:#888;font-size:12px">This is an official warning from the Assisto team.</p>`,
+    });
+    return { emailSent: true };
+  } catch (emailError) {
+    console.error("Email send failed (in-app notification still sent):", emailError);
+    return { emailSent: false };
+  }
 }

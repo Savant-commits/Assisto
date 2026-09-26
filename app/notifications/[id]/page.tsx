@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 
-export default async function NotificationPage({ params }: { params: { id: string } }) {
+export default async function NotificationPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return notFound();
@@ -9,13 +10,13 @@ export default async function NotificationPage({ params }: { params: { id: strin
   const { data: notification } = await supabase
     .from("notifications")
     .select("id,title,body,is_read,type,related_id,created_at,recipient_id")
-    .eq("id", params.id)
+    .eq("id", id)
     .maybeSingle();
 
   if (!notification || notification.recipient_id !== userData.user.id) return notFound();
 
   if (!notification.is_read) {
-    await supabase.from("notifications").update({ is_read: true }).eq("id", params.id);
+    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
   }
 
   return (
