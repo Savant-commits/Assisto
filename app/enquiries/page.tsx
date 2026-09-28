@@ -26,6 +26,7 @@ type SentEnquiry = {
   provider_completed_at: string | null;
   providers?: { id: string; business_name?: string | null } | null;
   customer_requirements?: { description: string | null } | null;
+  projects?: { id: string; project_code: string } | null;
 };
 
 type ReceivedEnquiry = {
@@ -118,7 +119,7 @@ export default function EnquiriesPage() {
     const { data: sentData } = await supabase
       .from("enquiries")
       .select(
-        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name),customer_requirements(description)`
+        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name),customer_requirements(description),projects(id,project_code)`
       )
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
@@ -578,6 +579,15 @@ export default function EnquiriesPage() {
                     <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
                   )}
                   {scheduleLine(enq) && <div className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</div>}
+
+                  {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && (
+                    <Link
+                      href={`/projects/${Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id}`}
+                      className="mt-3 inline-block text-sm text-blue-600 underline"
+                    >
+                      View Project ({Array.isArray(enq.projects) ? enq.projects[0]?.project_code : enq.projects.project_code})
+                    </Link>
+                  )}
 
                   {sentTab === "pending" && enq.status === "sent" && (
                     <div className="mt-4">

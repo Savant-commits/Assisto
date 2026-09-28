@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ContactUnlock } from "@/components/contact-unlock";
-import { CompletionActions } from "@/components/completion-actions";
 
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -138,31 +137,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           {enquiry.status === "confirmed" && isProvider && (
             <div className="mt-6 space-y-4 border-t pt-6">
               <ContactUnlock profileId={enquiry.customer_id} />
-              <CompletionActions
-                enquiryId={enquiry.id}
-                role="provider"
-                customerCompletedAt={enquiry.customer_completed_at}
-                providerCompletedAt={enquiry.provider_completed_at}
-                onUpdated={() => {
-                  // In a real app, would refetch or update state
-                  // For now, just a placeholder since this is a server component
-                }}
-              />
+              <div>
+                <p className="text-sm text-muted-foreground">Mark work complete from your <Link href="/enquiries" className="text-blue-600 underline">Enquiries page</Link>.</p>
+              </div>
             </div>
           )}
 
           {enquiry.status === "confirmed" && isCustomer && (
             <div className="mt-6 border-t pt-6">
-              <CompletionActions
-                enquiryId={enquiry.id}
-                role="customer"
-                customerCompletedAt={enquiry.customer_completed_at}
-                providerCompletedAt={enquiry.provider_completed_at}
-                onUpdated={() => {
-                  // In a real app, would refetch or update state
-                  // For now, just a placeholder since this is a server component
-                }}
-              />
+              <p className="text-sm text-muted-foreground">Mark work complete from your <Link href="/enquiries" className="text-blue-600 underline">Enquiries page</Link>.</p>
             </div>
           )}
         </div>
