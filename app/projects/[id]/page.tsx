@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ContactUnlock } from "@/components/contact-unlock";
-import ProjectChat from "@/components/project-chat";
 
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -91,37 +90,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     return null;
   }
 
-  // Fetch project messages
-  const { data: messages, error: messagesError } = await supabase
-    .from("project_messages")
-    .select("id,sender_id,body,read_at,created_at")
-    .eq("project_id", id)
-    .order("created_at", { ascending: true });
-
-  if (messagesError) {
-    console.error(messagesError);
-  }
-
-  // Determine canSend and readOnlyReason
-  const canSend = (isCustomer || isProvider) && enquiry.status === "confirmed";
-  let readOnlyReason: string | null = null;
-  if (enquiry.status === "completed") {
-    readOnlyReason = "This project is completed. The chat is now read-only.";
-  } else if (isAdmin && !isCustomer && !isProvider) {
-    readOnlyReason = "Viewing as admin (read-only).";
-  }
-
-  // Determine other party name
-  let otherPartyName: string;
-  if (isCustomer) {
-    otherPartyName = enquiry.providers?.business_name || "Provider";
-  } else if (isProvider) {
-    otherPartyName = enquiry.profiles?.full_name || "Customer";
-  } else {
-    // Admin viewing
-    otherPartyName = `${enquiry.profiles?.full_name || "Customer"} and ${enquiry.providers?.business_name || "Provider"}`;
-  }
-
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <div className="mb-6">
@@ -183,14 +151,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      <ProjectChat
-        projectId={id}
-        currentUserId={userData.user.id}
-        canSend={canSend}
-        initialMessages={messages || []}
-        otherPartyName={otherPartyName}
-        readOnlyReason={readOnlyReason}
-      />
+      <div className="mt-10">
+        <Link href={`/enquiries?chat=${id}`} className="text-sm text-blue-600 underline">
+          Open chat
+        </Link>
+      </div>
     </div>
   );
 }

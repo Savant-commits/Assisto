@@ -15,7 +15,7 @@ type ProjectChatProps = {
   projectId: string;
   currentUserId: string;
   canSend: boolean;
-  initialMessages: ProjectMessage[];
+  initialMessages?: ProjectMessage[];
   otherPartyName: string;
   readOnlyReason: string | null;
 };
@@ -29,11 +29,12 @@ export default function ProjectChat({
   projectId,
   currentUserId,
   canSend,
-  initialMessages,
+  initialMessages = [],
   otherPartyName,
   readOnlyReason,
 }: ProjectChatProps) {
   const [messages, setMessages] = useState<ProjectMessage[]>(initialMessages);
+  const [loadingMessages, setLoadingMessages] = useState(initialMessages.length === 0);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +65,33 @@ export default function ProjectChat({
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [canSend]);
+
+  // Load messages on mount if not provided
+  useEffect(() => {
+    if (initialMessages.length > 0) return;
+
+    const loadMessages = async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("project_messages")
+          .select("id,sender_id,body,read_at,created_at")
+          .eq("project_id", projectId)
+          .order("created_at", { ascending: true });
+
+        if (error) {
+          console.error(error);
+          return;
+        }
+
+        setMessages(data || []);
+      } finally {
+        setLoadingMessages(false);
+      }
+    };
+
+    loadMessages();
+  }, [projectId, initialMessages]);
 
   // Mark messages as read
   const markAsRead = async () => {
@@ -210,7 +238,9 @@ export default function ProjectChat({
 
       {/* Message list */}
       <div className="mb-6 max-h-96 space-y-4 overflow-y-auto rounded bg-gray-50 p-4">
-        {messages.length === 0 ? (
+        {loadingMessages ? (
+          <p className="text-center text-sm text-gray-500">Loading messages...</p>
+        ) : messages.length === 0 ? (
           <p className="text-center text-sm text-gray-500">No messages yet. Start the conversation!</p>
         ) : (
           messages.map((msg) => {

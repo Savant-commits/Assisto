@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import LoadingSpinner from "@/components/loading-spinner";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { CompletionActions } from "@/components/completion-actions";
 import { ReviewModal } from "@/components/review-modal";
+import ProjectChat from "@/components/project-chat";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
@@ -102,6 +104,8 @@ export default function EnquiriesPage() {
   const [activeReviewPrompt, setActiveReviewPrompt] = useState<ReviewPrompt | null>(null);
   const [minFutureDateTime] = useState(() => new Date(Date.now() + 60000).toISOString().slice(0, 16));
   const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [openChatModal, setOpenChatModal] = useState<{ projectId: string; enquiryId: number; isCompleted: boolean } | null>(null);
 
   const mountedRef = useRef(true);
 
@@ -209,6 +213,7 @@ export default function EnquiriesPage() {
     const [firstPrompt, ...remainingPrompts] = queuedPrompts;
 
     setIsProvider(amProvider);
+    setCurrentUserId(userData.user.id);
     localStorage.setItem("enquiries:lastSeenSentActivity", new Date().toISOString());
     const now = new Date().toISOString();
     const storedSent = localStorage.getItem("enquiries:lastSeenHistory:sent");
@@ -248,12 +253,75 @@ export default function EnquiriesPage() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [load]);
 
+  // Handle deep link for chat
+  useEffect(() => {
+    if (loading || !sent.length || !received.length) return; // Wait for lists to load
+
+    const params = new URLSearchParams(window.location.search);
+    const chatProjectId = params.get("chat");
+    if (!chatProjectId) return;
+
+    // Find the enquiry with this project
+    const sentEnq = sent.find((e) => e.projects?.id === chatProjectId);
+    const receivedEnq = received.find((e) => e.projects?.id === chatProjectId);
+    const enquiry = sentEnq || receivedEnq;
+
+    if (!enquiry) return;
+
+    const isSent = !!sentEnq;
+    const isCompleted = enquiry.status === "completed";
+
+    // Switch view
+    setView(isSent ? "sent" : "received");
+
+    // Switch tab
+    if (isCompleted) {
+      if (isSent) {
+        setSentTab("history");
+      } else {
+        setReceivedTab("history");
+      }
+    } else {
+      if (isSent) {
+        setSentTab("active");
+      } else {
+        setReceivedTab("active");
+      }
+    }
+
+    // Open chat modal
+    if (enquiry.projects) {
+      setOpenChatModal({
+        projectId: enquiry.projects.id,
+        enquiryId: enquiry.id,
+        isCompleted,
+      });
+    }
+
+    // Replace URL to remove query parameter
+    router.replace("/enquiries");
+  }, [loading, sent, received, router]);
+
   function setPending(key: string, v: boolean) {
     setPendingMap((s) => ({ ...s, [key]: v }));
   }
 
   function setCardError(key: string, msg: string | null) {
     setErrors((s) => ({ ...s, [key]: msg }));
+  }
+
+  function getOtherPartyName(enquiry: SentEnquiry | ReceivedEnquiry): string {
+    if ("customer_id" in enquiry) {
+      // Received enquiry - I'm the provider
+      return enquiry.profiles?.full_name || "Customer";
+    } else {
+      // Sent enquiry - I'm the customer
+      return enquiry.providers?.business_name || "Provider";
+    }
+  }
+
+  function getChatCanSend(enquiry: SentEnquiry | ReceivedEnquiry): boolean {
+    return enquiry.status === "confirmed";
   }
 
   async function updateSentStatus(id: number, status: string) {
@@ -556,7 +624,7 @@ export default function EnquiriesPage() {
               const key = `sent-${enq.id}`;
               return (
                 <div key={enq.id} className="rounded-lg border p-4">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-4">
                     <div>
                       <Link href={`/providers/${enq.providers?.id ?? ""}`} className="font-medium text-blue-600 underline">
                         {enq.providers?.business_name || "Provider"}
@@ -565,7 +633,29 @@ export default function EnquiriesPage() {
                         <div className="mt-1 text-sm text-muted-foreground">Regarding: {enq.customer_requirements.description}</div>
                       )}
                     </div>
-                    <div>{statusBadge(enq.status)}</div>
+                    <div className="flex items-center gap-2">
+                      {(sentTab === "active" || sentTab === "history") && enq.projects && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (enq.projects) {
+                              const projectId = Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id;
+                              setOpenChatModal({
+                                projectId: projectId!,
+                                enquiryId: enq.id,
+                                isCompleted: enq.status === "completed",
+                              });
+                            }
+                          }}
+                          className="p-1 text-gray-600 hover:text-gray-900"
+                          aria-label="Open chat"
+                          title="Open chat"
+                        >
+                          <MessageCircle size={20} />
+                        </button>
+                      )}
+                      <div>{statusBadge(enq.status)}</div>
+                    </div>
                   </div>
 
                   <div className="mt-3 text-sm text-muted-foreground">{enq.message}</div>
@@ -750,14 +840,33 @@ export default function EnquiriesPage() {
             const review = receivedReviewsByEnquiry[String(enq.id)] ?? null;
             return (
               <div key={enq.id} className="rounded-lg border p-4">
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="font-medium">{enq.profiles?.full_name || "Anonymous"}</div>
                     {enq.customer_requirements?.description && (
                       <div className="mt-1 text-sm text-muted-foreground">Regarding: {enq.customer_requirements.description}</div>
                     )}
                   </div>
-                  <div>{receivedTab === "history" && statusBadge(enq.status)}</div>
+                  <div className="flex items-center gap-2">
+                    {(receivedTab === "active" || receivedTab === "history") && enq.projects && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenChatModal({
+                            projectId: enq.projects!.id,
+                            enquiryId: enq.id,
+                            isCompleted: enq.status === "completed",
+                          });
+                        }}
+                        className="p-1 text-gray-600 hover:text-gray-900"
+                        aria-label="Open chat"
+                        title="Open chat"
+                      >
+                        <MessageCircle size={20} />
+                      </button>
+                    )}
+                    {receivedTab === "history" && <div>{statusBadge(enq.status)}</div>}
+                  </div>
                 </div>
 
                 <div className="mt-3 text-sm text-muted-foreground">{enq.message}</div>
@@ -865,6 +974,45 @@ export default function EnquiriesPage() {
           })}
         </div>
       )}
+
+      {openChatModal && (() => {
+        const allEnquiries = [...sent, ...received];
+        const enquiry = allEnquiries.find((e) => e.id === openChatModal.enquiryId);
+        if (!enquiry) return null;
+
+        const otherPartyName = getOtherPartyName(enquiry);
+        const canSend = getChatCanSend(enquiry);
+        const readOnlyReason = openChatModal.isCompleted
+          ? "This project is completed. The chat is now read-only."
+          : null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Chat with {otherPartyName}</h2>
+                <button
+                  type="button"
+                  onClick={() => setOpenChatModal(null)}
+                  className="text-gray-600 hover:text-gray-900"
+                  aria-label="Close chat"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                <ProjectChat
+                  projectId={openChatModal.projectId}
+                  currentUserId={currentUserId}
+                  canSend={canSend}
+                  otherPartyName={otherPartyName}
+                  readOnlyReason={readOnlyReason}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {activeReviewPrompt && (
         <ReviewModal
