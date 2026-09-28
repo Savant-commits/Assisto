@@ -1,16 +1,37 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useEscapeKey } from "@/lib/use-escape-key";
 import SendWarningDialog from "./send-warning-dialog";
+
+type UserRecord = {
+  id: string;
+  full_name: string | null;
+  user_code: string | null;
+};
 
 export default function AdminSendWarning() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [showWarningDialog, setShowWarningDialog] = useState(false);
+
+  useEscapeKey(searchOpen, () => {
+    setSearchOpen(false);
+    setSearch("");
+    setUsers([]);
+  });
+
+  useEscapeKey(showWarningDialog, () => {
+    setShowWarningDialog(false);
+    setSearchOpen(false);
+    setSearch("");
+    setUsers([]);
+    setSelectedUser(null);
+  });
 
   async function handleSearchChange(query: string) {
     setSearch(query);
@@ -39,7 +60,7 @@ export default function AdminSendWarning() {
     }
   }
 
-  function handleSelectUser(user: any) {
+  function handleSelectUser(user: UserRecord) {
     setSelectedUser(user);
     setSearchOpen(false);
     setShowWarningDialog(true);

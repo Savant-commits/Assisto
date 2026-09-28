@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { useEscapeKey } from "@/lib/use-escape-key";
 
 type Notification = {
   id: string;
@@ -33,6 +33,8 @@ export default function NotificationBell() {
   const [count, setCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEscapeKey(open, () => setOpen(false));
 
   useEffect(() => {
     let mounted = true;

@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import LoadingSpinner from "@/components/loading-spinner";
+import { useEscapeKey } from "@/lib/use-escape-key";
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -96,6 +97,8 @@ function SortablePortfolioCard({
   const [draftCaption, setDraftCaption] = useState(() => item.caption ?? item.description ?? "");
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEscapeKey(isLightboxOpen, () => setIsLightboxOpen(false));
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
 

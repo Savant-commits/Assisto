@@ -11,6 +11,7 @@ import { CompletionActions } from "@/components/completion-actions";
 import { ReviewModal } from "@/components/review-modal";
 import ProjectChat from "@/components/project-chat";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
+import { useEscapeKey } from "@/lib/use-escape-key";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -106,6 +107,8 @@ export default function EnquiriesPage() {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [openChatModal, setOpenChatModal] = useState<{ projectId: string; enquiryId: number; isCompleted: boolean } | null>(null);
+
+  useEscapeKey(!!openChatModal, () => setOpenChatModal(null));
 
   const mountedRef = useRef(true);
 
@@ -255,7 +258,7 @@ export default function EnquiriesPage() {
 
   // Handle deep link for chat
   useEffect(() => {
-    if (loading || !sent.length || !received.length) return; // Wait for lists to load
+    if (loading) return;
 
     const params = new URLSearchParams(window.location.search);
     const chatProjectId = params.get("chat");

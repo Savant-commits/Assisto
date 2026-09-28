@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { sendWarning } from "@/app/actions/warnings";
+import { useEscapeKey } from "@/lib/use-escape-key";
 
 interface SendWarningDialogProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ export default function SendWarningDialog({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEscapeKey(isOpen, onClose);
+
   async function handleSend() {
     if (!body.trim()) {
       setError("Please enter a message");
@@ -43,7 +46,7 @@ export default function SendWarningDialog({
       setBody("");
       onClose();
     } catch (err) {
-      setError((err as any)?.message || "Failed to send warning");
+      setError(err instanceof Error ? err.message : "Failed to send warning");
     } finally {
       setSending(false);
     }
