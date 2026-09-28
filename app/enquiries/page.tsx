@@ -42,6 +42,7 @@ type ReceivedEnquiry = {
   provider_completed_at: string | null;
   profiles?: { full_name: string | null } | null;
   customer_requirements?: { description: string | null } | null;
+  projects?: { id: string; project_code: string } | null;
 };
 
 type ReviewRecord = {
@@ -156,7 +157,7 @@ export default function EnquiriesPage() {
       const { data, error } = await supabase
         .from("enquiries")
         .select(
-          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),customer_requirements(description)`
+          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),customer_requirements(description),projects(id,project_code)`
         )
         .eq("provider_id", userData.user.id)
         .order("created_at", { ascending: false });
@@ -769,6 +770,15 @@ export default function EnquiriesPage() {
                   <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
                 )}
                 {scheduleLine(enq) && <div className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</div>}
+
+                {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && (
+                  <Link
+                    href={`/projects/${enq.projects.id}`}
+                    className="mt-3 inline-block text-sm text-blue-600 underline"
+                  >
+                    View Project ({enq.projects.project_code})
+                  </Link>
+                )}
 
                 {receivedTab === "pending" && (
                   <div className="mt-4 flex items-center gap-2">
