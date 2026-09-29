@@ -107,10 +107,12 @@ export default function EnquiriesPage() {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [openChatModal, setOpenChatModal] = useState<{ projectId: string; enquiryId: number; isCompleted: boolean } | null>(null);
+  const [unreadByProject, setUnreadByProject] = useState<Record<string, number>>({});
 
   useEscapeKey(!!openChatModal, () => setOpenChatModal(null));
 
   const mountedRef = useRef(true);
+  const unreadDebounceRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -236,7 +238,52 @@ export default function EnquiriesPage() {
     setActiveReviewPrompt((current) => current ?? firstPrompt ?? null);
     setView(amProvider ? "received" : "sent");
     setLoading(false);
+    // Load unread counts for visible projects
+    // pass the freshly-loaded lists so we count only projects shown
+    loadUnread?.(sentList, receivedData);
   }, [router]);
+
+  const loadUnread = useCallback(
+    async (sentListParam?: SentEnquiry[], receivedListParam?: ReceivedEnquiry[]) => {
+      try {
+        if (!currentUserId) return;
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("project_messages")
+          .select("project_id")
+          .is("read_at", null)
+          .neq("sender_id", currentUserId);
+
+        if (error) {
+          console.error("project_messages unread query failed:", error.message, error.details, error.hint, error.code);
+          return;
+        }
+
+        const rows = (data as { project_id: string }[]) || [];
+
+        const counts: Record<string, number> = {};
+        for (const r of rows) {
+          if (!r.project_id) continue;
+          counts[r.project_id] = (counts[r.project_id] || 0) + 1;
+        }
+
+        // Only keep counts for projects that appear in the sent/received lists
+        const sentIds = new Set((sentListParam || sent).map((s) => s.projects?.id).filter(Boolean) as string[]);
+        const receivedIds = new Set((receivedListParam || received).map((r) => r.projects?.id).filter(Boolean) as string[]);
+        const keep = new Set<string>([...sentIds, ...receivedIds]);
+
+        const filtered: Record<string, number> = {};
+        for (const [k, v] of Object.entries(counts)) {
+          if (keep.has(k)) filtered[k] = v;
+        }
+
+        setUnreadByProject(filtered);
+      } catch (err) {
+        console.error("loadUnread exception:", err);
+      }
+    },
+    [currentUserId, sent, received]
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -245,6 +292,38 @@ export default function EnquiriesPage() {
       mountedRef.current = false;
     };
   }, [load]);
+
+  // Realtime subscription to update unread counts when project_messages change
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase.channel("project_messages_unread");
+
+    const scheduleLoad = () => {
+      if (unreadDebounceRef.current) window.clearTimeout(unreadDebounceRef.current);
+      unreadDebounceRef.current = window.setTimeout(() => {
+        loadUnread();
+        unreadDebounceRef.current = null;
+      }, 300);
+    };
+
+    channel
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "project_messages" },
+        () => scheduleLoad()
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "project_messages" },
+        () => scheduleLoad()
+      )
+      .subscribe();
+
+    return () => {
+      if (unreadDebounceRef.current) window.clearTimeout(unreadDebounceRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, [loadUnread]);
 
   useEffect(() => {
     function handleVisibility() {
@@ -651,10 +730,31 @@ export default function EnquiriesPage() {
                             }
                           }}
                           className="p-1 text-gray-600 hover:text-gray-900"
-                          aria-label="Open chat"
+                          aria-label={
+                            (() => {
+                              const projId = Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id;
+                              const count = projId ? unreadByProject[projId] || 0 : 0;
+                              return count > 0 ? `Open chat, ${count} unread` : "Open chat";
+                            })()
+                          }
                           title="Open chat"
                         >
-                          <MessageCircle size={20} />
+                          <div className="relative">
+                            <MessageCircle size={20} />
+                            {(() => {
+                              const projId = Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id;
+                              const count = projId ? unreadByProject[projId] || 0 : 0;
+                              const isOpen = openChatModal?.projectId === projId;
+                              if (count > 0 && !isOpen) {
+                                return (
+                                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
+                                    {count > 9 ? "9+" : count}
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                         </button>
                       )}
                       <div>{statusBadge(enq.status)}</div>
@@ -862,10 +962,29 @@ export default function EnquiriesPage() {
                           });
                         }}
                         className="p-1 text-gray-600 hover:text-gray-900"
-                        aria-label="Open chat"
+                        aria-label={(() => {
+                          const projId = enq.projects!.id;
+                          const count = projId ? unreadByProject[projId] || 0 : 0;
+                          return count > 0 ? `Open chat, ${count} unread` : "Open chat";
+                        })()}
                         title="Open chat"
                       >
-                        <MessageCircle size={20} />
+                        <div className="relative">
+                          <MessageCircle size={20} />
+                          {(() => {
+                            const projId = enq.projects!.id;
+                            const count = projId ? unreadByProject[projId] || 0 : 0;
+                            const isOpen = openChatModal?.projectId === projId;
+                            if (count > 0 && !isOpen) {
+                              return (
+                                <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
+                                  {count > 9 ? "9+" : count}
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
                       </button>
                     )}
                     {receivedTab === "history" && <div>{statusBadge(enq.status)}</div>}
@@ -996,7 +1115,11 @@ export default function EnquiriesPage() {
                 <h2 className="text-lg font-semibold">Chat with {otherPartyName}</h2>
                 <button
                   type="button"
-                  onClick={() => setOpenChatModal(null)}
+                  onClick={() => {
+                    setOpenChatModal(null);
+                    // reload unread counts when chat closes
+                    loadUnread();
+                  }}
                   className="text-gray-600 hover:text-gray-900"
                   aria-label="Close chat"
                 >

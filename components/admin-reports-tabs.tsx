@@ -41,6 +41,9 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
         report.reportable_type,
         report.reportable_id,
         report.profiles?.full_name,
+        report.profiles?.user_code,
+        report.target?.profiles?.full_name,
+        report.target?.profiles?.user_code,
         report.reason,
       ].filter(Boolean);
 
@@ -54,7 +57,7 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
         <div className="flex items-center gap-2">
           <input
             className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none"
-            placeholder="Search by type, ID, reporter name, or reason"
+            placeholder="Search by type, ID, name, user code, or reason"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -106,7 +109,10 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
                           <p className="mt-0.5 text-sm text-muted-foreground">Reported: {formatDateTime(report.created_at)}</p>
                         )}
                         <p className="mt-1 text-sm">
-                          Reporter: <span className="font-medium">{report.profiles?.full_name || "Unknown"}</span>
+                          Reporter: <span className="font-medium">{report.profiles?.full_name || "Unknown"}</span>{' '}
+                          {report.profiles?.user_code && (
+                            <span className="ml-1 text-xs text-muted-foreground">#{report.profiles.user_code}</span>
+                          )}
                         </p>
                         {report.reportable_type === "review" && report.target && (
                           <div className="mt-2 rounded-md border p-3">
@@ -120,6 +126,9 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
                             {report.target.comment && <p className="mt-1 text-sm">{report.target.comment}</p>}
                             <p className="mt-1 text-xs text-muted-foreground">
                               by {report.target.profiles?.full_name ?? "Unknown"}
+                              {report.target?.profiles?.user_code && (
+                                <span className="ml-1 text-xs text-muted-foreground">#{report.target.profiles.user_code}</span>
+                              )}
                             </p>
                           </div>
                         )}
