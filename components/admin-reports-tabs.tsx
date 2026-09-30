@@ -11,7 +11,35 @@ function formatDateTime(dateStr: string | null | undefined): string {
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export default function AdminReportsTabs({ reports }: { reports: any[] }) {
+type ReportProfile = {
+  full_name?: string | null;
+  user_code?: string | null;
+};
+
+type ReportTarget = {
+  id?: string;
+  rating?: number;
+  comment?: string | null;
+  business_name?: string | null;
+  body?: string;
+  project_id?: string;
+  project_code?: string | null;
+  enquiry_code?: string | null;
+  profiles?: ReportProfile | null;
+};
+
+type ReportRow = {
+  id: string;
+  reportable_type: string;
+  reportable_id: string;
+  profiles?: ReportProfile | null;
+  target?: ReportTarget | null;
+  created_at?: string | null;
+  reason?: string | null;
+  status?: string;
+};
+
+export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) {
   const tabs = [
     { key: "open", label: "Open", statuses: ["open"] },
     { key: "reviewed", label: "Reviewed", statuses: ["reviewed"] },
@@ -25,7 +53,7 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
   const [to, setTo] = useState("");
 
   const filteredReports = useMemo(() => {
-    return (reports || []).filter((report: any) => {
+    return (reports || []).filter((report: ReportRow) => {
       if (from) {
         const fromTime = new Date(from).getTime();
         if (!report.created_at || new Date(report.created_at).getTime() < fromTime) return false;
@@ -37,17 +65,20 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
       if (!search) return true;
 
       const q = search.toLowerCase();
-      const matches = [
+      const matches: Array<string | null | undefined> = [
         report.reportable_type,
         report.reportable_id,
         report.profiles?.full_name,
         report.profiles?.user_code,
         report.target?.profiles?.full_name,
         report.target?.profiles?.user_code,
+        report.target?.body,
+        report.target?.project_code,
+        report.target?.enquiry_code,
         report.reason,
-      ].filter(Boolean);
+      ];
 
-      return matches.some((item: any) => String(item).toLowerCase().includes(q));
+      return matches.some((item) => item && String(item).toLowerCase().includes(q));
     });
   }, [reports, from, search, to]);
 
@@ -77,7 +108,7 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
 
         <TabsList>
           {tabs.map((t) => {
-            const count = filteredReports.filter((r: any) => t.statuses.includes(r.status)).length;
+            const count = filteredReports.filter((r: ReportRow) => t.statuses.includes(r.status)).length;
             return (
               <TabsTrigger key={t.key} value={t.key} className="flex items-center gap-2">
                 {t.label}
@@ -89,7 +120,7 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
       </div>
 
       {tabs.map((t) => {
-        const rows = filteredReports.filter((r: any) => t.statuses.includes(r.status));
+        const rows = filteredReports.filter((r: ReportRow) => t.statuses.includes(r.status));
 
         return (
           <TabsContent key={t.key} value={t.key}>
@@ -97,12 +128,16 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
               <div className="rounded-lg border p-4 text-muted-foreground">No items</div>
             ) : (
               <div className="space-y-4">
-                {rows.map((report: any) => (
+                {rows.map((report: ReportRow) => (
                   <div key={report.id} className="rounded-lg border p-4">
                     <div className="mb-2 flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <p className="font-medium">
-                          {report.reportable_type === "provider" ? "Provider" : "Review"} report
+                          {report.reportable_type === "provider"
+                            ? "Provider"
+                            : report.reportable_type === "project_message"
+                              ? "Project message"
+                              : "Review"} report
                         </p>
                         <p className="mt-0.5 text-sm text-muted-foreground">ID: {report.reportable_id}</p>
                         {report.created_at && (
@@ -134,6 +169,35 @@ export default function AdminReportsTabs({ reports }: { reports: any[] }) {
                         )}
                         {report.reportable_type === "review" && !report.target && (
                           <p className="mt-2 text-sm italic text-muted-foreground">Original review no longer exists</p>
+                        )}
+
+                        {report.reportable_type === "project_message" && report.target && (
+                          <div className="mt-2 rounded-md border p-3">
+                            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Message</p>
+                            <blockquote className="border-l-2 border-muted pl-3 text-sm italic text-muted-foreground">
+                              “{report.target.body}”
+                            </blockquote>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              by {report.target.profiles?.full_name ?? "Unknown"}
+                              {report.target?.profiles?.user_code && (
+                                <span className="ml-1 text-xs text-muted-foreground">#{report.target.profiles.user_code}</span>
+                              )}
+                            </p>
+                            {(report.target.project_code || report.target.enquiry_code) && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {report.target.project_code ? `Project ${report.target.project_code}` : "Project unknown"}
+                                {report.target.enquiry_code ? ` · Enquiry ${report.target.enquiry_code}` : ""}
+                              </p>
+                            )}
+                            {report.target.project_id && (
+                              <Link href={`/enquiries?chat=${report.target.project_id}`} className="mt-2 inline-block text-sm text-blue-600 underline">
+                                Open chat
+                              </Link>
+                            )}
+                          </div>
+                        )}
+                        {report.reportable_type === "project_message" && !report.target && (
+                          <p className="mt-2 text-sm italic text-muted-foreground">Original message no longer exists</p>
                         )}
 
                         {report.reportable_type === "provider" && report.target && (

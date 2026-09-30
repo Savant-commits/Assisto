@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useEscapeKey } from "@/lib/use-escape-key";
 
 type ProjectMessage = {
   id: string;
@@ -38,10 +39,40 @@ export default function ProjectChat({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
+  const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const prevMessageCountRef = useRef(0);
   const supabaseRef = useRef(createClient());
-  const channelRef = useRef<any>(null);
+  const channelRef = useRef<ReturnType<typeof createClient>["channel"] | null>(null);
   const visibilityRef = useRef(true);
+  const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEscapeKey(openMenuFor !== null || reportingMessageId !== null, () => {
+    setOpenMenuFor(null);
+    setReportingMessageId(null);
+  });
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimeoutRef.current) {
+        clearTimeout(copiedTimeoutRef.current);
+      }
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Scroll to bottom
   const scrollToBottom = () => {
@@ -49,8 +80,29 @@ export default function ProjectChat({
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (loadingMessages) return;
+    const lastMsg = messages[messages.length - 1];
+    const isNewMessage = messages.length > prevMessageCountRef.current;
+    const lastIsMine = lastMsg?.sender_id === currentUserId;
+    if (isNearBottomRef.current || (isNewMessage && lastIsMine) || prevMessageCountRef.current === 0) {
+      scrollToBottom();
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages, loadingMessages, currentUserId]);
+
+  const markAsRead = useCallback(async () => {
+    try {
+      const supabase = supabaseRef.current;
+      const { error } = await supabase.rpc("mark_project_messages_read", {
+        p_project_id: projectId,
+      });
+      if (error) {
+        console.error("Mark as read error:", error.message, error.details, error.hint, error.code);
+      }
+    } catch (err) {
+      console.error("Mark as read exception:", err);
+    }
+  }, [projectId]);
 
   // Visibility tracking
   useEffect(() => {
@@ -64,7 +116,7 @@ export default function ProjectChat({
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [canSend]);
+  }, [canSend, markAsRead]);
 
   // Load messages on mount if not provided
   useEffect(() => {
@@ -93,18 +145,81 @@ export default function ProjectChat({
     loadMessages();
   }, [projectId, initialMessages]);
 
-  // Mark messages as read
-  const markAsRead = async () => {
+  const handleCopyMessage = async (msg: ProjectMessage) => {
     try {
-      const supabase = supabaseRef.current;
-      const { error } = await supabase.rpc("mark_project_messages_read", {
-        p_project_id: projectId,
-      });
-      if (error) {
-        console.error("Mark as read error:", error.message, error.details, error.hint, error.code);
+      await navigator.clipboard.writeText(msg.body);
+      setCopiedMessageId(msg.id);
+      if (copiedTimeoutRef.current) {
+        clearTimeout(copiedTimeoutRef.current);
       }
+      copiedTimeoutRef.current = setTimeout(() => {
+        setCopiedMessageId(null);
+        setOpenMenuFor(null);
+      }, 1500);
+    } catch (error) {
+      console.error("Copy message failed:", error);
+      setOpenMenuFor(null);
+    }
+  };
+
+  const closeReportDialog = () => {
+    setReportingMessageId(null);
+    setReportReason("");
+    setReportError(null);
+    setReportSubmitting(false);
+  };
+
+  const handleSubmitReport = async () => {
+    if (!reportingMessageId || reportSubmitting) return;
+
+    const trimmedReason = reportReason.trim();
+    if (!trimmedReason) return;
+
+    setReportSubmitting(true);
+    setReportError(null);
+
+    try {
+      const supabase = createClient();
+      const { error: insertError } = await supabase.from("reports").insert({
+        reportable_type: "project_message",
+        reportable_id: reportingMessageId,
+        reporter_id: currentUserId,
+        reason: trimmedReason,
+        status: "open",
+      });
+
+      if (insertError) {
+        console.error(
+          insertError.message,
+          insertError.details,
+          insertError.hint,
+          insertError.code
+        );
+
+        if (insertError.code === "23505") {
+          setReportedIds((prev) => new Set(prev).add(reportingMessageId));
+          setReportError("You've already reported this message.");
+          return;
+        }
+
+        setReportError("Could not submit the report. Please try again.");
+        return;
+      }
+
+      setReportedIds((prev) => new Set(prev).add(reportingMessageId));
+      setToastMessage("Message reported");
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+      toastTimeoutRef.current = setTimeout(() => {
+        setToastMessage(null);
+      }, 2000);
+      closeReportDialog();
     } catch (err) {
-      console.error("Mark as read exception:", err);
+      console.error("Report submission error:", err);
+      setReportError("Could not submit the report. Please try again.");
+    } finally {
+      setReportSubmitting(false);
     }
   };
 
@@ -174,7 +289,7 @@ export default function ProjectChat({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [projectId, currentUserId, canSend]);
+  }, [projectId, currentUserId, canSend, markAsRead]);
 
   // Send message
   const handleSend = async () => {
@@ -236,8 +351,20 @@ export default function ProjectChat({
     <div className="mt-10 rounded-lg border p-6">
       <h2 className="mb-6 text-lg font-semibold">Chat with {otherPartyName}</h2>
 
+      {toastMessage && (
+        <div className="mb-4 rounded bg-green-50 p-2 text-sm text-green-700">{toastMessage}</div>
+      )}
+
       {/* Message list */}
-      <div className="mb-6 max-h-96 space-y-4 overflow-y-auto rounded bg-gray-50 p-4">
+      <div
+        ref={containerRef}
+        className="mb-6 max-h-96 space-y-4 overflow-y-auto rounded bg-gray-50 p-4"
+        onScroll={() => {
+          const el = containerRef.current;
+          if (!el) return;
+          isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+      >
         {loadingMessages ? (
           <p className="text-center text-sm text-gray-500">Loading messages...</p>
         ) : messages.length === 0 ? (
@@ -245,23 +372,60 @@ export default function ProjectChat({
         ) : (
           messages.map((msg) => {
             const isOwn = msg.sender_id === currentUserId;
-            return (
-              <div key={msg.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-xs rounded-lg px-3 py-2 text-sm ${
-                    isOwn ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-900"
-                  }`}
-                >
+            return isOwn ? (
+              <div key={msg.id} className="flex justify-end">
+                <div className="max-w-xs rounded-lg bg-blue-500 px-3 py-2 text-sm text-white">
                   <p className="break-words">{msg.body}</p>
-                  <div className={`mt-1 text-xs ${isOwn ? "text-blue-100" : "text-gray-600"}`}>
+                  <div className="mt-1 text-xs text-blue-100">
                     {formatTime(msg.created_at)}
-                    {isOwn && (
-                      <span className="ml-2">
-                        {msg.read_at ? "Seen" : "Sent"}
-                      </span>
-                    )}
+                    <span className="ml-2">{msg.read_at ? "Seen" : "Sent"}</span>
                   </div>
                 </div>
+              </div>
+            ) : (
+              <div key={msg.id} className="group flex items-start justify-start gap-1">
+                <div className="max-w-xs rounded-lg bg-gray-200 px-3 py-2 text-sm text-gray-900">
+                  <p className="break-words">{msg.body}</p>
+                  <div className="mt-1 text-xs text-gray-600">
+                    {formatTime(msg.created_at)}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpenMenuFor(openMenuFor === msg.id ? null : msg.id)}
+                  aria-label="Message options"
+                  className={`mt-1 rounded p-1 text-gray-500 hover:bg-gray-200 ${
+                    openMenuFor === msg.id ? "opacity-100" : "opacity-60 group-hover:opacity-100"
+                  }`}
+                >
+                  ⋮
+                </button>
+                {openMenuFor === msg.id && (
+                  <div className="relative">
+                    <div className="absolute left-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
+                      <button
+                        type="button"
+                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                        onClick={() => handleCopyMessage(msg)}
+                      >
+                        {copiedMessageId === msg.id ? "Copied" : "Copy"}
+                      </button>
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                        disabled={reportedIds.has(msg.id)}
+                        onClick={() => {
+                          setOpenMenuFor(null);
+                          setReportingMessageId(msg.id);
+                          setReportReason("");
+                          setReportError(null);
+                        }}
+                      >
+                        {reportedIds.has(msg.id) ? "Reported" : "Report"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })
@@ -269,11 +433,42 @@ export default function ProjectChat({
         <div ref={messagesEndRef} />
       </div>
 
+      {reportingMessageId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
+            <h3 className="mb-3 text-lg font-semibold text-gray-900">Report this message</h3>
+            <textarea
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              rows={4}
+              placeholder="Why are you reporting this message?"
+              className="w-full rounded border border-gray-300 p-2 text-sm outline-none focus:border-blue-500"
+            />
+            {reportError && <p className="mt-2 text-sm text-red-600">{reportError}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                onClick={closeReportDialog}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={reportReason.trim().length === 0 || reportSubmitting}
+                onClick={handleSubmitReport}
+              >
+                {reportSubmitting ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Error message */}
       {error && (
-        <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
+        <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
       {/* Send box or read-only message */}
@@ -289,9 +484,7 @@ export default function ProjectChat({
             rows={3}
           />
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-600">
-              {text.length} / 2000
-            </span>
+            <span className="text-xs text-gray-600">{text.length} / 2000</span>
             <button
               onClick={handleSend}
               disabled={sending || !text.trim()}
@@ -302,9 +495,7 @@ export default function ProjectChat({
           </div>
         </div>
       ) : (
-        <div className="rounded bg-gray-100 p-4 text-sm text-gray-700">
-          {readOnlyReason}
-        </div>
+        <div className="rounded bg-gray-100 p-4 text-sm text-gray-700">{readOnlyReason}</div>
       )}
     </div>
   );
