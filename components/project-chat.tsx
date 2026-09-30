@@ -12,6 +12,8 @@ type ProjectMessage = {
   created_at: string;
 };
 
+const EMPTY_MESSAGES: ProjectMessage[] = [];
+
 type ProjectChatProps = {
   projectId: string;
   currentUserId: string;
@@ -30,7 +32,7 @@ export default function ProjectChat({
   projectId,
   currentUserId,
   canSend,
-  initialMessages = [],
+  initialMessages = EMPTY_MESSAGES,
   otherPartyName,
   readOnlyReason,
 }: ProjectChatProps) {
@@ -143,7 +145,7 @@ export default function ProjectChat({
     };
 
     loadMessages();
-  }, [projectId, initialMessages]);
+  }, [projectId]);
 
   const handleCopyMessage = async (msg: ProjectMessage) => {
     try {
