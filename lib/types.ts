@@ -44,3 +44,12 @@ export type ProjectMessageAttachment = {
   size_bytes: number;
   created_at: string;
 };
+
+export type ProjectMessage = {
+  id: string;
+  sender_id: string;
+  body: string;
+  read_at: string | null;
+  deleted_at: string | null;
+  created_at: string;
+};

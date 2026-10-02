@@ -3,16 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEscapeKey } from "@/lib/use-escape-key";
-import { ProjectMessageAttachment } from "@/lib/types";
-import { v4 as uuidv4 } from "crypto-js/js";
-
-type ProjectMessage = {
-  id: string;
-  sender_id: string;
-  body: string;
-  read_at: string | null;
-  created_at: string;
-};
+import { ProjectMessageAttachment, ProjectMessage } from "@/lib/types";
 
 type PendingFile = {
   id: string;
@@ -203,6 +194,8 @@ export default function ProjectChat({
   const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [confirmDeleteMessageId, setConfirmDeleteMessageId] = useState<string | null>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -214,9 +207,10 @@ export default function ProjectChat({
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEscapeKey(openMenuFor !== null || reportingMessageId !== null, () => {
+  useEscapeKey(openMenuFor !== null || reportingMessageId !== null || confirmDeleteMessageId !== null, () => {
     setOpenMenuFor(null);
     setReportingMessageId(null);
+    setConfirmDeleteMessageId(null);
   });
 
   useEffect(() => {
@@ -283,7 +277,7 @@ export default function ProjectChat({
         const supabase = createClient();
         const { data, error } = await supabase
           .from("project_messages")
-          .select("id,sender_id,body,read_at,created_at")
+          .select("id,sender_id,body,read_at,deleted_at,created_at")
           .eq("project_id", projectId)
           .order("created_at", { ascending: true });
 
@@ -315,6 +309,43 @@ export default function ProjectChat({
     } catch (error) {
       console.error("Copy message failed:", error);
       setOpenMenuFor(null);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    setDeletingMessageId(messageId);
+    setConfirmDeleteMessageId(null);
+    setOpenMenuFor(null);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("delete_project_message", {
+        p_message_id: messageId,
+      });
+
+      if (error) {
+        console.error("Delete message failed:", error);
+        setToastMessage("Failed to delete message");
+        if (toastTimeoutRef.current) {
+          clearTimeout(toastTimeoutRef.current);
+        }
+        toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 3000);
+      } else {
+        setToastMessage("Message deleted");
+        if (toastTimeoutRef.current) {
+          clearTimeout(toastTimeoutRef.current);
+        }
+        toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 2000);
+      }
+    } catch (error) {
+      console.error("Delete message exception:", error);
+      setToastMessage("Failed to delete message");
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+      toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setDeletingMessageId(null);
     }
   };
 
@@ -432,7 +463,7 @@ export default function ProjectChat({
           setMessages((prev) =>
             prev.map((m) =>
               m.id === updatedMessage.id
-                ? { ...m, read_at: updatedMessage.read_at }
+                ? { ...m, read_at: updatedMessage.read_at, deleted_at: updatedMessage.deleted_at }
                 : m
             )
           );
@@ -528,58 +559,102 @@ export default function ProjectChat({
         ) : (
           messages.map((msg) => {
             const isOwn = msg.sender_id === currentUserId;
-            return isOwn ? (
-              <div key={msg.id} className="flex justify-end">
-                <div className="max-w-xs rounded-lg bg-blue-500 px-3 py-2 text-sm text-white">
-                  <p className="break-words">{msg.body}</p>
-                  <div className="mt-1 text-xs text-blue-100">
-                    {formatTime(msg.created_at)}
-                    <span className="ml-2">{msg.read_at ? "Seen" : "Sent"}</span>
+            const isDeleted = msg.deleted_at !== null;
+
+            if (isDeleted) {
+              return (
+                <div key={msg.id} className={isOwn ? "flex justify-end" : "flex items-start justify-start"}>
+                  <div className="max-w-xs rounded-lg bg-gray-100 px-3 py-2 text-sm italic text-gray-500">
+                    <p>This message was deleted</p>
+                    <div className="mt-1 text-xs text-gray-400">{formatTime(msg.created_at)}</div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div key={msg.id} className="group flex items-start justify-start gap-1">
-                <div className="max-w-xs rounded-lg bg-gray-200 px-3 py-2 text-sm text-gray-900">
-                  <p className="break-words">{msg.body}</p>
-                  <div className="mt-1 text-xs text-gray-600">
-                    {formatTime(msg.created_at)}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOpenMenuFor(openMenuFor === msg.id ? null : msg.id)}
-                  aria-label="Message options"
-                  className={`mt-1 rounded p-1 text-gray-500 hover:bg-gray-200 ${
-                    openMenuFor === msg.id ? "opacity-100" : "opacity-60 group-hover:opacity-100"
-                  }`}
-                >
-                  ⋮
-                </button>
-                {openMenuFor === msg.id && (
+              );
+            }
+
+            return (
+              <div key={msg.id} className={isOwn ? "flex justify-end gap-1" : "group flex items-start justify-start gap-1"}>
+                {isOwn && (
                   <div className="relative">
-                    <div className="absolute left-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
-                      <button
-                        type="button"
-                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
-                        onClick={() => handleCopyMessage(msg)}
-                      >
-                        {copiedMessageId === msg.id ? "Copied" : "Copy"}
-                      </button>
-                      <button
-                        type="button"
-                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
-                        disabled={reportedIds.has(msg.id)}
-                        onClick={() => {
-                          setOpenMenuFor(null);
-                          setReportingMessageId(msg.id);
-                          setReportReason("");
-                          setReportError(null);
-                        }}
-                      >
-                        {reportedIds.has(msg.id) ? "Reported" : "Report"}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuFor(openMenuFor === msg.id ? null : msg.id)}
+                      aria-label="Message options"
+                      className={`mt-1 rounded p-1 text-blue-400 hover:bg-blue-100 ${
+                        openMenuFor === msg.id ? "opacity-100" : "opacity-60 group-hover:opacity-100"
+                      }`}
+                    >
+                      ⋮
+                    </button>
+                    {openMenuFor === msg.id && (
+                      <div className="absolute right-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
+                        {msg.body && (
+                          <button
+                            type="button"
+                            className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                            onClick={() => handleCopyMessage(msg)}
+                          >
+                            {copiedMessageId === msg.id ? "Copied" : "Copy"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                          onClick={() => setConfirmDeleteMessageId(msg.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="max-w-xs">
+                  <div className={`rounded-lg px-3 py-2 text-sm ${isOwn ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-900"}`}>
+                    <p className="break-words">{msg.body}</p>
+                  </div>
+                  <div className={`mt-1 text-xs ${isOwn ? "text-blue-100" : "text-gray-600"}`}>
+                    {formatTime(msg.created_at)}
+                    {isOwn && <span className="ml-2">{msg.read_at ? "Seen" : "Sent"}</span>}
+                  </div>
+                </div>
+                {!isOwn && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuFor(openMenuFor === msg.id ? null : msg.id)}
+                      aria-label="Message options"
+                      className={`mt-1 rounded p-1 text-gray-500 hover:bg-gray-200 ${
+                        openMenuFor === msg.id ? "opacity-100" : "opacity-60 group-hover:opacity-100"
+                      }`}
+                    >
+                      ⋮
+                    </button>
+                    {openMenuFor === msg.id && (
+                      <div className="absolute right-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
+                        {msg.body && (
+                          <button
+                            type="button"
+                            className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                            onClick={() => handleCopyMessage(msg)}
+                          >
+                            {copiedMessageId === msg.id ? "Copied" : "Copy"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                          disabled={reportedIds.has(msg.id)}
+                          onClick={() => {
+                            setOpenMenuFor(null);
+                            setReportingMessageId(msg.id);
+                            setReportReason("");
+                            setReportError(null);
+                          }}
+                        >
+                          {reportedIds.has(msg.id) ? "Reported" : "Report"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -616,6 +691,32 @@ export default function ProjectChat({
                 onClick={handleSubmitReport}
               >
                 {reportSubmitting ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteMessageId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+            <h3 className="mb-3 text-lg font-semibold text-gray-900">Delete message?</h3>
+            <p className="mb-4 text-sm text-gray-600">This message will be permanently deleted. You can't undo this action.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                onClick={() => setConfirmDeleteMessageId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={deletingMessageId !== null}
+                onClick={() => handleDeleteMessage(confirmDeleteMessageId)}
+              >
+                {deletingMessageId === confirmDeleteMessageId ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

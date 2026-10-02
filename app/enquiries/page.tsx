@@ -252,6 +252,7 @@ export default function EnquiriesPage() {
           .from("project_messages")
           .select("project_id")
           .is("read_at", null)
+          .is("deleted_at", null)
           .neq("sender_id", currentUserId);
 
         if (error) {
