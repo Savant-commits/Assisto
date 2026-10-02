@@ -9,6 +9,7 @@ type PendingFile = {
   id: string;
   file: File;
   kind: "photo" | "video" | "file";
+  previewUrl?: string;
   error?: string;
 };
 
@@ -78,6 +79,32 @@ function getMimeTypeFromExtension(ext: string): string {
   if (["jpg", "jpeg", "png", "webp"].includes(ext_lower)) return "image/*";
   if (["mp4", "mov", "webm"].includes(ext_lower)) return "video/*";
   return "application/*";
+}
+
+function getContentTypeFromFile(file: File): string {
+  if (file.type) return file.type;
+
+  const ext = getFileExtension(file.name);
+  const extMap: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    webm: "video/webm",
+    pdf: "application/pdf",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    csv: "text/csv",
+    txt: "text/plain",
+  };
+
+  return extMap[ext] || "application/octet-stream";
 }
 
 function determineFileKind(file: File): { kind: "photo" | "video" | "file"; config: typeof FILE_CONFIG.photo } | null {
@@ -210,11 +237,13 @@ export default function ProjectChat({
   const isNearBottomRef = useRef(true);
   const prevMessageCountRef = useRef(0);
   const supabaseRef = useRef(createClient());
-  const channelRef = useRef<ReturnType<typeof createClient>["channel"] | null>(null);
   const visibilityRef = useRef(true);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signedUrlCacheRef = useRef<Record<string, string>>({});
+  const pendingFilesRef = useRef<PendingFile[]>(EMPTY_PENDING_FILES);
+  const displayUrlRetryRef = useRef<Record<string, number>>({});
+  const inFlightDisplayUrlKeysRef = useRef<Set<string>>(new Set());
 
   useEscapeKey(
     lightboxImage !== null || openMenuFor !== null || reportingMessageId !== null || confirmDeleteMessageId !== null,
@@ -363,17 +392,16 @@ export default function ProjectChat({
     });
   }, []);
 
-  const getSignedUrl = useCallback(async (bucket: string, path: string, fileName?: string) => {
-    const cacheKey = `${bucket}:${path}`;
+  const getSignedUrl = useCallback(async (bucket: string, path: string, fileName?: string, mode: "display" | "download" = "display") => {
+    const cacheKey = `${mode}:${bucket}:${path}`;
     if (signedUrlCacheRef.current[cacheKey]) {
       return signedUrlCacheRef.current[cacheKey];
     }
 
     try {
       const supabase = createClient();
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .createSignedUrl(path, 3600, fileName ? { download: fileName } : undefined);
+      const params = mode === "download" && fileName ? { download: fileName } : undefined;
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600, params);
 
       if (error || !data?.signedUrl) {
         console.error("Signed URL failed:", error);
@@ -396,6 +424,75 @@ export default function ProjectChat({
       }
     }
   }, []);
+
+  const handleDisplayUrlError = useCallback((bucket: string, path: string) => {
+    const key = `display:${bucket}:${path}`;
+    const retries = displayUrlRetryRef.current[key] ?? 0;
+
+    delete signedUrlCacheRef.current[key];
+    setSignedUrlsByKey((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+
+    if (retries < 1) {
+      displayUrlRetryRef.current[key] = retries + 1;
+      void getSignedUrl(bucket, path, undefined, "display");
+    }
+  }, [getSignedUrl]);
+
+  const preloadVisibleAttachmentUrls = useCallback(() => {
+    const tasks: Array<{ bucket: string; path: string }> = [];
+
+    for (const msg of messages) {
+      if (msg.deleted_at !== null) continue;
+      const itemAttachments = attachmentsByMessageId[msg.id] || [];
+      for (const attachment of itemAttachments) {
+        if (attachment.kind !== "photo" && attachment.kind !== "video") continue;
+        const key = `display:${attachment.bucket}:${attachment.storage_path}`;
+        if (signedUrlCacheRef.current[key] || inFlightDisplayUrlKeysRef.current.has(key)) continue;
+        tasks.push({ bucket: attachment.bucket, path: attachment.storage_path });
+        inFlightDisplayUrlKeysRef.current.add(key);
+      }
+    }
+
+    if (tasks.length === 0) return;
+
+    const bucketMap: Record<string, string[]> = {};
+    for (const task of tasks) {
+      if (!bucketMap[task.bucket]) bucketMap[task.bucket] = [];
+      bucketMap[task.bucket].push(task.path);
+    }
+
+    Object.entries(bucketMap).forEach(async ([bucket, paths]) => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrls(paths, 3600);
+        if (error || !data) return;
+
+        const nextMap: Record<string, string> = {};
+        data.forEach((row, index) => {
+          const path = paths[index];
+          const key = `display:${bucket}:${path}`;
+          if (row.signedUrl) {
+            signedUrlCacheRef.current[key] = row.signedUrl;
+            nextMap[key] = row.signedUrl;
+          }
+          inFlightDisplayUrlKeysRef.current.delete(key);
+        });
+
+        if (Object.keys(nextMap).length > 0) {
+          setSignedUrlsByKey((prev) => ({ ...prev, ...nextMap }));
+        }
+      } catch (err) {
+        console.error("Preload signed URLs failed:", err);
+        for (const path of paths) {
+          inFlightDisplayUrlKeysRef.current.delete(`display:${bucket}:${path}`);
+        }
+      }
+    });
+  }, [attachmentsByMessageId, messages]);
 
   const handleCopyMessage = async (msg: ProjectMessage) => {
     try {
@@ -664,8 +761,6 @@ export default function ProjectChat({
       )
       .subscribe();
 
-    channelRef.current = channel;
-
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(attachmentChannel);
@@ -673,10 +768,18 @@ export default function ProjectChat({
   }, [projectId, currentUserId, canSend, markAsRead, mergeAttachmentsForMessage]);
 
   useEffect(() => {
+    pendingFilesRef.current = pendingFiles;
+  }, [pendingFiles]);
+
+  useEffect(() => {
     return () => {
-      revokePendingFileUrls(pendingFiles);
+      revokePendingFileUrls(pendingFilesRef.current);
     };
-  }, [pendingFiles, revokePendingFileUrls]);
+  }, [revokePendingFileUrls]);
+
+  useEffect(() => {
+    preloadVisibleAttachmentUrls();
+  }, [messages, attachmentsByMessageId, preloadVisibleAttachmentUrls]);
 
   // Send message
   const handleSend = async () => {
@@ -694,7 +797,7 @@ export default function ProjectChat({
       const supabase = supabaseRef.current;
       const filesToUpload = [...pendingFiles];
 
-      const uploadedFiles = await Promise.all(
+      const results = await Promise.allSettled(
         filesToUpload.map(async (pendingFile) => {
           const config = FILE_CONFIG[pendingFile.kind];
           const ext = getFileExtension(pendingFile.file.name) || {
@@ -703,8 +806,11 @@ export default function ProjectChat({
             file: "bin",
           }[pendingFile.kind];
           const path = `${projectId}/${crypto.randomUUID()}.${ext}`;
+          const contentType = getContentTypeFromFile(pendingFile.file);
 
-          const { error } = await supabase.storage.from(config.bucket).upload(path, pendingFile.file);
+          const { error } = await supabase.storage.from(config.bucket).upload(path, pendingFile.file, {
+            contentType,
+          });
           if (error) {
             throw new Error(`Failed to upload ${pendingFile.file.name}: ${error.message}`);
           }
@@ -716,10 +822,20 @@ export default function ProjectChat({
             fileName: pendingFile.file.name,
             kind: pendingFile.kind,
             sizeBytes: pendingFile.file.size,
-            mimeType: pendingFile.file.type || "application/octet-stream",
+            mimeType: contentType,
           };
         })
       );
+
+      const uploadedFiles = results
+        .filter((result): result is PromiseFulfilledResult<any> => result.status === "fulfilled")
+        .map((result) => result.value);
+
+      if (results.some((result) => result.status === "rejected")) {
+        await cleanupUploadedFiles(uploadedRecords);
+        setError("Some files could not be uploaded. Please try again.");
+        return;
+      }
 
       const { data, error: insertError } = await supabase
         .from("project_messages")
@@ -891,7 +1007,7 @@ export default function ProjectChat({
                   {msgAttachments.length > 0 && (
                     <div className="mt-2 space-y-2">
                       {msgAttachments.filter((attachment) => attachment.kind === "photo").map((attachment) => {
-                        const key = `${attachment.bucket}:${attachment.storage_path}`;
+                        const key = `display:${attachment.bucket}:${attachment.storage_path}`;
                         const signedUrl = signedUrlsByKey[key];
 
                         return (
@@ -900,14 +1016,19 @@ export default function ProjectChat({
                             type="button"
                             className="block overflow-hidden rounded-md border border-gray-200 bg-white"
                             onClick={async () => {
-                              const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name);
+                              const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "display");
                               if (url) setLightboxImage(url);
                             }}
                           >
                             {signedUrl ? (
-                              <img src={signedUrl} alt={attachment.file_name} className="h-32 w-full object-cover" />
+                              <img
+                                src={signedUrl}
+                                alt={attachment.file_name}
+                                className="h-32 w-56 object-cover"
+                                onError={() => handleDisplayUrlError(attachment.bucket, attachment.storage_path)}
+                              />
                             ) : (
-                              <div className="flex h-32 w-full items-center justify-center bg-gray-100 text-xs text-gray-500">
+                              <div className="flex h-32 w-56 items-center justify-center bg-gray-100 text-xs text-gray-500">
                                 Loading…
                               </div>
                             )}
@@ -916,7 +1037,7 @@ export default function ProjectChat({
                       })}
 
                       {msgAttachments.filter((attachment) => attachment.kind === "video").map((attachment) => {
-                        const key = `${attachment.bucket}:${attachment.storage_path}`;
+                        const key = `display:${attachment.bucket}:${attachment.storage_path}`;
                         const signedUrl = signedUrlsByKey[key];
 
                         return (
@@ -924,8 +1045,10 @@ export default function ProjectChat({
                             key={attachment.id}
                             controls
                             preload="metadata"
-                            className="max-h-60 w-full rounded-md bg-black"
+                            playsInline
+                            className="max-h-60 w-full max-w-xs rounded-md bg-black"
                             src={signedUrl || undefined}
+                            onError={() => handleDisplayUrlError(attachment.bucket, attachment.storage_path)}
                           />
                         );
                       })}
@@ -944,7 +1067,7 @@ export default function ProjectChat({
                               type="button"
                               className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
                               onClick={async () => {
-                                const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name);
+                                const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
                                 if (url) window.open(url, "_blank", "noopener,noreferrer");
                               }}
                             >
