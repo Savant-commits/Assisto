@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AdminReportsTabs from "@/components/admin-reports-tabs";
+import type { ProjectMessageAttachment } from "@/lib/types";
 
 type ProjectMessageTarget = {
   id: string;
@@ -8,9 +9,11 @@ type ProjectMessageTarget = {
   sender_id: string;
   project_id: string;
   created_at: string;
+  deleted_at: string | null;
   profiles?: { full_name: string | null; user_code?: string | null } | null;
   project_code?: string | null;
   enquiry_code?: string | null;
+  attachments?: Array<ProjectMessageAttachment & { signedUrl: string | null }> | null;
 };
 
 export default async function AdminReportsPage() {
@@ -40,7 +43,7 @@ export default async function AdminReportsPage() {
   const reviewIds = safeReports.filter(r => r.reportable_type === "review").map(r => r.reportable_id);
   const projectMessageIds = safeReports.filter(r => r.reportable_type === "project_message").map(r => r.reportable_id);
 
-  const [{ data: providers }, { data: reviews }, { data: projectMessages }] = await Promise.all([
+  const [{ data: providers }, { data: reviews }, { data: projectMessages }, { data: projectAttachments }] = await Promise.all([
     providerIds.length
       ? supabase.from("providers").select("id,business_name").in("id", providerIds)
       : Promise.resolve({ data: [] as { id: string; business_name: string }[] }),
@@ -63,7 +66,7 @@ export default async function AdminReportsPage() {
       ? supabase
           .from("project_messages")
           .select(
-            `id,body,sender_id,project_id,created_at,profiles!project_messages_sender_id_fkey(full_name,user_code),projects(id,project_code,enquiries(id,enquiry_code))`
+            `id,body,sender_id,project_id,created_at,deleted_at,profiles!project_messages_sender_id_fkey(full_name,user_code),projects(id,project_code,enquiries(id,enquiry_code))`
           )
           .in("id", projectMessageIds)
       : Promise.resolve({
@@ -73,6 +76,7 @@ export default async function AdminReportsPage() {
             sender_id: string;
             project_id: string;
             created_at: string;
+            deleted_at: string | null;
             profiles?: { full_name: string | null; user_code?: string | null }[] | null;
             projects?: Array<{
               project_code?: string | null;
@@ -80,7 +84,66 @@ export default async function AdminReportsPage() {
             }> | null;
           }[],
         }),
+    projectMessageIds.length
+      ? supabase
+          .from("project_message_attachments")
+          .select("*")
+          .in("message_id", projectMessageIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [] as ProjectMessageAttachment[] }),
   ]);
+
+  const attachmentMapByMessageId = new Map<string, Array<ProjectMessageAttachment & { signedUrl: string | null }>>();
+  const bucketPathsByBucket: Record<string, string[]> = {};
+
+  for (const attachment of projectAttachments || []) {
+    const baseAttachment = { ...attachment, signedUrl: null } as ProjectMessageAttachment & { signedUrl: string | null };
+    const existing = attachmentMapByMessageId.get(attachment.message_id) ?? [];
+    attachmentMapByMessageId.set(attachment.message_id, [...existing, baseAttachment]);
+
+    if (attachment.bucket && attachment.storage_path) {
+      if (!bucketPathsByBucket[attachment.bucket]) {
+        bucketPathsByBucket[attachment.bucket] = [];
+      }
+      bucketPathsByBucket[attachment.bucket].push(attachment.storage_path);
+    }
+  }
+
+  const signedUrlByBucketAndPath = new Map<string, string | null>();
+
+  await Promise.all(
+    Object.entries(bucketPathsByBucket).map(async ([bucket, paths]) => {
+      if (!bucket || !paths.length) return;
+
+      try {
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrls(paths, 3600);
+        if (error || !data) {
+          for (const path of paths) {
+            signedUrlByBucketAndPath.set(`${bucket}:${path}`, null);
+          }
+          return;
+        }
+
+        for (const [index, path] of paths.entries()) {
+          signedUrlByBucketAndPath.set(`${bucket}:${path}`, data[index]?.signedUrl ?? null);
+        }
+      } catch {
+        for (const path of paths) {
+          signedUrlByBucketAndPath.set(`${bucket}:${path}`, null);
+        }
+      }
+    })
+  );
+
+  for (const [messageId, attachments] of attachmentMapByMessageId.entries()) {
+    attachmentMapByMessageId.set(
+      messageId,
+      attachments.map((attachment) => ({
+        ...attachment,
+        signedUrl: signedUrlByBucketAndPath.get(`${attachment.bucket}:${attachment.storage_path}`) ?? null,
+      }))
+    );
+  }
 
   const providerMap = new Map((providers || []).map(p => [p.id, p]));
   const reviewMap = new Map((reviews || []).map(r => [r.id, r]));
@@ -114,6 +177,7 @@ export default async function AdminReportsPage() {
           profiles: Array.isArray(message.profiles) ? message.profiles[0] ?? null : message.profiles ?? null,
           project_code: project?.project_code ?? null,
           enquiry_code: enquiry?.enquiry_code ?? null,
+          attachments: attachmentMapByMessageId.get(message.id) ?? [],
         },
       ];
     })

@@ -11,9 +11,35 @@ function formatDateTime(dateStr: string | null | undefined): string {
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function formatFileSize(sizeBytes: number | null | undefined): string {
+  if (!sizeBytes) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB"];
+  const exponent = Math.min(Math.floor(Math.log(sizeBytes) / Math.log(1024)), units.length - 1);
+  const value = sizeBytes / 1024 ** exponent;
+
+  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+}
+
 type ReportProfile = {
   full_name?: string | null;
   user_code?: string | null;
+};
+
+type ReportAttachment = {
+  id: string;
+  message_id: string;
+  project_id: string;
+  uploader_id: string;
+  kind: "photo" | "video" | "file";
+  bucket: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  deleted_at: string | null;
+  signedUrl?: string | null;
 };
 
 type ReportTarget = {
@@ -21,10 +47,12 @@ type ReportTarget = {
   rating?: number;
   comment?: string | null;
   business_name?: string | null;
-  body?: string;
+  body?: string | null;
   project_id?: string;
   project_code?: string | null;
   enquiry_code?: string | null;
+  deleted_at?: string | null;
+  attachments?: ReportAttachment[] | null;
   profiles?: ReportProfile | null;
 };
 
@@ -65,6 +93,7 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
       if (!search) return true;
 
       const q = search.toLowerCase();
+      const attachmentNames = (report.target?.attachments ?? []).map((attachment) => attachment.file_name).filter(Boolean);
       const matches: Array<string | null | undefined> = [
         report.reportable_type,
         report.reportable_id,
@@ -76,6 +105,7 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
         report.target?.project_code,
         report.target?.enquiry_code,
         report.reason,
+        ...attachmentNames,
       ];
 
       return matches.some((item) => item && String(item).toLowerCase().includes(q));
@@ -174,9 +204,73 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
                         {report.reportable_type === "project_message" && report.target && (
                           <div className="mt-2 rounded-md border p-3">
                             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Message</p>
-                            <blockquote className="border-l-2 border-muted pl-3 text-sm italic text-muted-foreground">
-                              “{report.target.body}”
-                            </blockquote>
+                            {report.target.deleted_at && (
+                              <Badge variant="secondary" className="mb-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wide">
+                                Deleted by sender {formatDateTime(report.target.deleted_at)}
+                              </Badge>
+                            )}
+                            {report.target.body?.trim() ? (
+                              <blockquote className="border-l-2 border-muted pl-3 text-sm italic text-muted-foreground">
+                                “{report.target.body}”
+                              </blockquote>
+                            ) : (
+                              <p className="text-sm italic text-muted-foreground">(no text, attachments only)</p>
+                            )}
+
+                            {report.target.attachments && report.target.attachments.length > 0 && (
+                              <div className="mt-3 space-y-2">
+                                {report.target.attachments.map((attachment) => (
+                                  <div key={attachment.id} className="rounded border bg-muted/30 p-2">
+                                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                                      <span className="text-sm font-medium">{attachment.file_name}</span>
+                                      {attachment.deleted_at && (
+                                        <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                          Removed by sender
+                                        </Badge>
+                                      )}
+                                      {!attachment.signedUrl && <span className="text-xs text-muted-foreground">Preview unavailable</span>}
+                                      <span className="text-xs text-muted-foreground">{formatFileSize(attachment.size_bytes)}</span>
+                                    </div>
+
+                                    {attachment.kind === "photo" && attachment.signedUrl ? (
+                                      <a href={attachment.signedUrl} target="_blank" rel="noopener noreferrer">
+                                        <img src={attachment.signedUrl} alt={attachment.file_name} className="max-w-[160px] rounded-md border object-cover" />
+                                      </a>
+                                    ) : attachment.kind === "photo" ? (
+                                      <p className="text-xs text-muted-foreground">Preview unavailable</p>
+                                    ) : null}
+
+                                    {attachment.kind === "video" && attachment.signedUrl ? (
+                                      <video controls preload="metadata" className="max-w-[320px] w-full rounded-md border bg-black">
+                                        <source src={attachment.signedUrl} type={attachment.mime_type || "video/mp4"} />
+                                      </video>
+                                    ) : null}
+                                    {attachment.kind === "video" && !attachment.signedUrl && (
+                                      <p className="text-xs text-muted-foreground">Preview unavailable</p>
+                                    )}
+
+                                    {attachment.kind === "file" && (
+                                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                                        <span className="text-xs text-muted-foreground">{attachment.file_name}</span>
+                                        {attachment.signedUrl ? (
+                                          <a
+                                            href={attachment.signedUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center rounded border px-2 py-1 text-xs text-blue-600 underline"
+                                          >
+                                            Open
+                                          </a>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">Preview unavailable</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
                             <p className="mt-2 text-xs text-muted-foreground">
                               by {report.target.profiles?.full_name ?? "Unknown"}
                               {report.target?.profiles?.user_code && (
