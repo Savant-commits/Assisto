@@ -43,6 +43,7 @@ export type ProjectMessageAttachment = {
   mime_type: string;
   size_bytes: number;
   created_at: string;
+  deleted_at: string | null;
 };
 
 export type ProjectMessage = {

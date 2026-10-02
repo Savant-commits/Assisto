@@ -219,6 +219,7 @@ export default function ProjectChat({
   const [error, setError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
+  const [openAttachmentMenuFor, setOpenAttachmentMenuFor] = useState<string | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState("");
   const [reportError, setReportError] = useState<string | null>(null);
@@ -227,7 +228,13 @@ export default function ProjectChat({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [confirmDeleteMessageId, setConfirmDeleteMessageId] = useState<string | null>(null);
+  const [confirmDeleteAttachment, setConfirmDeleteAttachment] = useState<{
+    id: string;
+    kind: "photo" | "video" | "file";
+    fileName: string;
+  } | null>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [signedUrlsByKey, setSignedUrlsByKey] = useState<Record<string, string>>({});
 
@@ -246,15 +253,36 @@ export default function ProjectChat({
   const inFlightDisplayUrlKeysRef = useRef<Set<string>>(new Set());
 
   useEscapeKey(
-    lightboxImage !== null || openMenuFor !== null || reportingMessageId !== null || confirmDeleteMessageId !== null,
+    lightboxImage !== null ||
+      confirmDeleteAttachment !== null ||
+      reportingMessageId !== null ||
+      confirmDeleteMessageId !== null ||
+      openAttachmentMenuFor !== null ||
+      openMenuFor !== null,
     () => {
       if (lightboxImage !== null) {
         setLightboxImage(null);
         return;
       }
-      setOpenMenuFor(null);
-      setReportingMessageId(null);
-      setConfirmDeleteMessageId(null);
+      if (confirmDeleteAttachment !== null) {
+        setConfirmDeleteAttachment(null);
+        return;
+      }
+      if (reportingMessageId !== null) {
+        setReportingMessageId(null);
+        return;
+      }
+      if (confirmDeleteMessageId !== null) {
+        setConfirmDeleteMessageId(null);
+        return;
+      }
+      if (openAttachmentMenuFor !== null) {
+        setOpenAttachmentMenuFor(null);
+        return;
+      }
+      if (openMenuFor !== null) {
+        setOpenMenuFor(null);
+      }
     }
   );
 
@@ -380,7 +408,10 @@ export default function ProjectChat({
       const merged = [...existing];
 
       for (const attachment of nextAttachments) {
-        if (!merged.some((item) => item.id === attachment.id)) {
+        const index = merged.findIndex((item) => item.id === attachment.id);
+        if (index >= 0) {
+          merged[index] = { ...merged[index], ...attachment };
+        } else {
           merged.push(attachment);
         }
       }
@@ -449,7 +480,7 @@ export default function ProjectChat({
       if (msg.deleted_at !== null) continue;
       const itemAttachments = attachmentsByMessageId[msg.id] || [];
       for (const attachment of itemAttachments) {
-        if (attachment.kind !== "photo" && attachment.kind !== "video") continue;
+        if (attachment.deleted_at !== null || (attachment.kind !== "photo" && attachment.kind !== "video")) continue;
         const key = `display:${attachment.bucket}:${attachment.storage_path}`;
         if (signedUrlCacheRef.current[key] || inFlightDisplayUrlKeysRef.current.has(key)) continue;
         tasks.push({ bucket: attachment.bucket, path: attachment.storage_path });
@@ -492,6 +523,66 @@ export default function ProjectChat({
         }
       }
     });
+  }, [attachmentsByMessageId, messages]);
+
+  const handleDeleteAttachment = useCallback(async (attachmentId: string) => {
+    const target = Object.values(attachmentsByMessageId)
+      .flat()
+      .find((item) => item.id === attachmentId);
+    if (!target) return;
+
+    const messageId = target.message_id;
+    const deletedAt = new Date().toISOString();
+    setConfirmDeleteAttachment(null);
+    setOpenAttachmentMenuFor(null);
+    setDeletingAttachmentId(attachmentId);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("delete_project_attachment", { p_attachment_id: attachmentId });
+
+      if (error) {
+        console.error("Delete attachment failed:", error);
+        setToastMessage("Failed to delete");
+        if (toastTimeoutRef.current) {
+          clearTimeout(toastTimeoutRef.current);
+        }
+        toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 3000);
+        return;
+      }
+
+      setAttachmentsByMessageId((prev) => {
+        const next = { ...prev };
+        for (const [messageKey, items] of Object.entries(next)) {
+          next[messageKey] = items.map((item) => (item.id === attachmentId ? { ...item, deleted_at: deletedAt } : item));
+        }
+        return next;
+      });
+
+      const message = messages.find((item) => item.id === messageId);
+      const remainingVisibleAttachments = (attachmentsByMessageId[messageId] || []).filter(
+        (item) => item.id !== attachmentId && item.deleted_at === null
+      );
+
+      if (message && !message.body.trim() && remainingVisibleAttachments.length === 0) {
+        setMessages((prev) => prev.map((item) => (item.id === messageId ? { ...item, deleted_at: deletedAt } : item)));
+      }
+
+      setToastMessage("Attachment deleted");
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+      toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 2000);
+    } catch (error) {
+      console.error("Delete attachment exception:", error);
+      setToastMessage("Failed to delete");
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+      toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setDeletingAttachmentId(null);
+    }
   }, [attachmentsByMessageId, messages]);
 
   const handleCopyMessage = async (msg: ProjectMessage) => {
@@ -759,6 +850,19 @@ export default function ProjectChat({
           mergeAttachmentsForMessage(attachment.message_id, [attachment]);
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "project_message_attachments",
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload) => {
+          const attachment = payload.new as ProjectMessageAttachment;
+          mergeAttachmentsForMessage(attachment.message_id, [attachment]);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -933,7 +1037,7 @@ export default function ProjectChat({
 
       <div
         ref={containerRef}
-        className="mb-6 max-h-[50vh] space-y-4 overflow-y-auto rounded bg-gray-50 p-4"
+        className="mb-6 max-h-[60vh] space-y-4 overflow-y-auto rounded bg-gray-50 p-4"
         onScroll={() => {
           const el = containerRef.current;
           if (!el) return;
@@ -953,7 +1057,7 @@ export default function ProjectChat({
             if (isDeleted) {
               return (
                 <div key={msg.id} className={isOwn ? "flex justify-end" : "flex items-start justify-start"}>
-                  <div className="max-w-xs rounded-lg bg-gray-100 px-3 py-2 text-sm italic text-gray-500">
+                  <div className="max-w-md rounded-lg bg-gray-100 px-3 py-2 text-sm italic text-gray-500">
                     <p>This message was deleted</p>
                     <div className="mt-1 text-xs text-gray-400">{formatTime(msg.created_at)}</div>
                   </div>
@@ -976,7 +1080,7 @@ export default function ProjectChat({
                       ⋮
                     </button>
                     {openMenuFor === msg.id && (
-                      <div className="absolute right-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
+                      <div className="absolute left-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
                         {msg.body && (
                           <button
                             type="button"
@@ -997,7 +1101,7 @@ export default function ProjectChat({
                     )}
                   </div>
                 )}
-                <div className="max-w-xs">
+                <div className="max-w-md">
                   {msg.body && (
                     <div className={`rounded-lg px-3 py-2 text-sm ${isOwn ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-900"}`}>
                       <p className="break-words">{msg.body}</p>
@@ -1006,76 +1110,297 @@ export default function ProjectChat({
 
                   {msgAttachments.length > 0 && (
                     <div className="mt-2 space-y-2">
-                      {msgAttachments.filter((attachment) => attachment.kind === "photo").map((attachment) => {
-                        const key = `display:${attachment.bucket}:${attachment.storage_path}`;
-                        const signedUrl = signedUrlsByKey[key];
+                      {msgAttachments
+                        .filter((attachment) => attachment.deleted_at === null && attachment.kind === "photo")
+                        .map((attachment) => {
+                          const key = `display:${attachment.bucket}:${attachment.storage_path}`;
+                          const signedUrl = signedUrlsByKey[key];
+                          const showDelete = isOwn && canSend;
 
-                        return (
-                          <button
-                            key={attachment.id}
-                            type="button"
-                            className="block overflow-hidden rounded-md border border-gray-200 bg-white"
-                            onClick={async () => {
-                              const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "display");
-                              if (url) setLightboxImage(url);
-                            }}
-                          >
-                            {signedUrl ? (
-                              <img
-                                src={signedUrl}
-                                alt={attachment.file_name}
-                                className="h-32 w-56 object-cover"
+                          return (
+                            <div key={attachment.id} className={`relative flex items-start ${isOwn ? "justify-start" : "justify-end"}`}>
+                              {showDelete && (
+                                <div className="relative mr-2">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id);
+                                    }}
+                                    aria-label={`Options for ${attachment.file_name}`}
+                                    className="mt-1 rounded p-1 text-gray-700 hover:bg-gray-200"
+                                  >
+                                    ⋮
+                                  </button>
+                                  {openAttachmentMenuFor === attachment.id && (
+                                    <div className="absolute left-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                      <button
+                                        type="button"
+                                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={async () => {
+                                          setOpenAttachmentMenuFor(null);
+                                          const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
+                                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                        }}
+                                      >
+                                        Download
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={() => {
+                                          setOpenAttachmentMenuFor(null);
+                                          setConfirmDeleteAttachment({
+                                            id: attachment.id,
+                                            kind: attachment.kind,
+                                            fileName: attachment.file_name,
+                                          });
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                className="block overflow-hidden rounded-md border border-gray-200 bg-white"
+                                onClick={async () => {
+                                  const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "display");
+                                  if (url) setLightboxImage(url);
+                                }}
+                              >
+                                {signedUrl ? (
+                                  <img
+                                    src={signedUrl}
+                                    alt={attachment.file_name}
+                                    className="h-44 w-72 object-cover"
+                                    onError={() => handleDisplayUrlError(attachment.bucket, attachment.storage_path)}
+                                  />
+                                ) : (
+                                  <div className="flex h-44 w-72 items-center justify-center bg-gray-100 text-xs text-gray-500">
+                                    Loading…
+                                  </div>
+                                )}
+                              </button>
+                              {!showDelete && (
+                                <div className="relative ml-2">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id);
+                                    }}
+                                    aria-label={`Options for ${attachment.file_name}`}
+                                    className="mt-1 rounded p-1 text-gray-700 hover:bg-gray-200"
+                                  >
+                                    ⋮
+                                  </button>
+                                  {openAttachmentMenuFor === attachment.id && (
+                                    <div className="absolute right-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                      <button
+                                        type="button"
+                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={async () => {
+                                          setOpenAttachmentMenuFor(null);
+                                          const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
+                                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                        }}
+                                      >
+                                        Download
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                      {msgAttachments
+                        .filter((attachment) => attachment.deleted_at === null && attachment.kind === "video")
+                        .map((attachment) => {
+                          const key = `display:${attachment.bucket}:${attachment.storage_path}`;
+                          const signedUrl = signedUrlsByKey[key];
+                          const showDelete = isOwn && canSend;
+
+                          return (
+                            <div key={attachment.id} className={`relative flex items-start ${isOwn ? "justify-start" : "justify-end"}`}>
+                              {showDelete && (
+                                <div className="relative mr-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id)}
+                                    aria-label={`Options for ${attachment.file_name}`}
+                                    className="mt-1 rounded p-1 text-gray-700 hover:bg-gray-200"
+                                  >
+                                    ⋮
+                                  </button>
+                                  {openAttachmentMenuFor === attachment.id && (
+                                    <div className="absolute left-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                      <button
+                                        type="button"
+                                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={async () => {
+                                          setOpenAttachmentMenuFor(null);
+                                          const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
+                                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                        }}
+                                      >
+                                        Download
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={() => {
+                                          setOpenAttachmentMenuFor(null);
+                                          setConfirmDeleteAttachment({
+                                            id: attachment.id,
+                                            kind: attachment.kind,
+                                            fileName: attachment.file_name,
+                                          });
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              <video
+                                controls
+                                preload="metadata"
+                                playsInline
+                                className="max-h-72 w-full max-w-sm rounded-md bg-black"
+                                src={signedUrl || undefined}
                                 onError={() => handleDisplayUrlError(attachment.bucket, attachment.storage_path)}
                               />
-                            ) : (
-                              <div className="flex h-32 w-56 items-center justify-center bg-gray-100 text-xs text-gray-500">
-                                Loading…
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-
-                      {msgAttachments.filter((attachment) => attachment.kind === "video").map((attachment) => {
-                        const key = `display:${attachment.bucket}:${attachment.storage_path}`;
-                        const signedUrl = signedUrlsByKey[key];
-
-                        return (
-                          <video
-                            key={attachment.id}
-                            controls
-                            preload="metadata"
-                            playsInline
-                            className="max-h-60 w-full max-w-xs rounded-md bg-black"
-                            src={signedUrl || undefined}
-                            onError={() => handleDisplayUrlError(attachment.bucket, attachment.storage_path)}
-                          />
-                        );
-                      })}
-
-                      {msgAttachments.filter((attachment) => attachment.kind === "file").map((attachment) => {
-                        const key = `${attachment.bucket}:${attachment.storage_path}`;
-                        const signedUrl = signedUrlsByKey[key];
-
-                        return (
-                          <div key={attachment.id} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-3 py-2">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-gray-800">{attachment.file_name}</p>
-                              <p className="text-xs text-gray-500">{formatFileSize(attachment.size_bytes)}</p>
+                              {!showDelete && (
+                                <div className="relative ml-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id)}
+                                    aria-label={`Options for ${attachment.file_name}`}
+                                    className="mt-1 rounded p-1 text-gray-700 hover:bg-gray-200"
+                                  >
+                                    ⋮
+                                  </button>
+                                  {openAttachmentMenuFor === attachment.id && (
+                                    <div className="absolute right-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                      <button
+                                        type="button"
+                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={async () => {
+                                          setOpenAttachmentMenuFor(null);
+                                          const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
+                                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                        }}
+                                      >
+                                        Download
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                            <button
-                              type="button"
-                              className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
-                              onClick={async () => {
-                                const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
-                                if (url) window.open(url, "_blank", "noopener,noreferrer");
-                              }}
-                            >
-                              Download
-                            </button>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+
+                      {msgAttachments
+                        .filter((attachment) => attachment.deleted_at === null && attachment.kind === "file")
+                        .map((attachment) => {
+                          const showDelete = isOwn && canSend;
+
+                          return (
+                            <div key={attachment.id} className={`relative flex items-center ${isOwn ? "justify-start" : "justify-end"}`}>
+                              {showDelete && (
+                                <div className="relative mr-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id)}
+                                    aria-label={`Options for ${attachment.file_name}`}
+                                    className="rounded p-1 text-gray-700 hover:bg-gray-200"
+                                  >
+                                    ⋮
+                                  </button>
+                                  {openAttachmentMenuFor === attachment.id && (
+                                    <div className="absolute left-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                      <button
+                                        type="button"
+                                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={async () => {
+                                          setOpenAttachmentMenuFor(null);
+                                          const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
+                                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                        }}
+                                      >
+                                        Download
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={() => {
+                                          setOpenAttachmentMenuFor(null);
+                                          setConfirmDeleteAttachment({
+                                            id: attachment.id,
+                                            kind: attachment.kind,
+                                            fileName: attachment.file_name,
+                                          });
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              <div className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-3 py-2">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-gray-800">{attachment.file_name}</p>
+                                  <p className="text-xs text-gray-500">{formatFileSize(attachment.size_bytes)}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
+                                  onClick={async () => {
+                                    const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
+                                    if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                  }}
+                                >
+                                  Download
+                                </button>
+                              </div>
+                              {!showDelete && (
+                                <div className="relative ml-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id)}
+                                    aria-label={`Options for ${attachment.file_name}`}
+                                    className="rounded p-1 text-gray-700 hover:bg-gray-200"
+                                  >
+                                    ⋮
+                                  </button>
+                                  {openAttachmentMenuFor === attachment.id && (
+                                    <div className="absolute right-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                      <button
+                                        type="button"
+                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        onClick={async () => {
+                                          setOpenAttachmentMenuFor(null);
+                                          const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
+                                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                        }}
+                                      >
+                                        Download
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                     </div>
                   )}
 
@@ -1200,6 +1525,34 @@ export default function ProjectChat({
                 onClick={() => handleDeleteMessage(confirmDeleteMessageId)}
               >
                 {deletingMessageId === confirmDeleteMessageId ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteAttachment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+            <h3 className="mb-3 text-lg font-semibold text-gray-900">
+              Delete this {confirmDeleteAttachment.kind} for everyone? This can't be undone.
+            </h3>
+            <p className="mb-4 text-sm text-gray-600">{confirmDeleteAttachment.fileName}</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                onClick={() => setConfirmDeleteAttachment(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={deletingAttachmentId !== null}
+                onClick={() => handleDeleteAttachment(confirmDeleteAttachment.id)}
+              >
+                {deletingAttachmentId === confirmDeleteAttachment.id ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
