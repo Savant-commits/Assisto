@@ -12,24 +12,15 @@ type PendingFile = {
   error?: string;
 };
 
-type PendingAttachment = {
-  id: string;
-  message_id: string;
-  kind: "photo" | "video" | "file";
-  file_name: string;
-  size_bytes: number;
-  storage_path: string;
-  bucket: string;
-  mime_type: string;
-};
-
 const EMPTY_MESSAGES: ProjectMessage[] = [];
-const EMPTY_ATTACHMENTS: PendingAttachment[] = [];
+const EMPTY_PENDING_FILES: PendingFile[] = [];
+const EMPTY_ATTACHMENTS_BY_MESSAGE_ID: Record<string, ProjectMessageAttachment[]> = {};
 
 type ProjectChatProps = {
   projectId: string;
   currentUserId: string;
   canSend: boolean;
+  initialMessages?: ProjectMessage[];
   otherPartyName: string;
   readOnlyReason: string | null;
 };
@@ -90,9 +81,13 @@ function getMimeTypeFromExtension(ext: string): string {
 }
 
 function determineFileKind(file: File): { kind: "photo" | "video" | "file"; config: typeof FILE_CONFIG.photo } | null {
+  const ext = getFileExtension(file.name);
+  if (ext === "heic" || ext === "heif") {
+    return null;
+  }
+
   let mimeType = file.type;
   if (!mimeType) {
-    const ext = getFileExtension(file.name);
     mimeType = getMimeTypeFromExtension(ext);
   }
 
@@ -114,6 +109,11 @@ function determineFileKind(file: File): { kind: "photo" | "video" | "file"; conf
 }
 
 function validateFile(file: File): { valid: true; kind: "photo" | "video" | "file" } | { valid: false; error: string } {
+  const ext = getFileExtension(file.name);
+  if (ext === "heic" || ext === "heif") {
+    return { valid: false, error: "Please use JPG or PNG" };
+  }
+
   const fileKindResult = determineFileKind(file);
 
   if (!fileKindResult) {
@@ -182,10 +182,15 @@ export default function ProjectChat({
   readOnlyReason,
 }: ProjectChatProps) {
   const [messages, setMessages] = useState<ProjectMessage[]>(initialMessages);
+  const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, ProjectMessageAttachment[]>>(
+    EMPTY_ATTACHMENTS_BY_MESSAGE_ID
+  );
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>(EMPTY_PENDING_FILES);
   const [loadingMessages, setLoadingMessages] = useState(initialMessages.length === 0);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState("");
@@ -196,9 +201,12 @@ export default function ProjectChat({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [confirmDeleteMessageId, setConfirmDeleteMessageId] = useState<string | null>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [signedUrlsByKey, setSignedUrlsByKey] = useState<Record<string, string>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isNearBottomRef = useRef(true);
   const prevMessageCountRef = useRef(0);
   const supabaseRef = useRef(createClient());
@@ -206,12 +214,20 @@ export default function ProjectChat({
   const visibilityRef = useRef(true);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const signedUrlCacheRef = useRef<Record<string, string>>({});
 
-  useEscapeKey(openMenuFor !== null || reportingMessageId !== null || confirmDeleteMessageId !== null, () => {
-    setOpenMenuFor(null);
-    setReportingMessageId(null);
-    setConfirmDeleteMessageId(null);
-  });
+  useEscapeKey(
+    lightboxImage !== null || openMenuFor !== null || reportingMessageId !== null || confirmDeleteMessageId !== null,
+    () => {
+      if (lightboxImage !== null) {
+        setLightboxImage(null);
+        return;
+      }
+      setOpenMenuFor(null);
+      setReportingMessageId(null);
+      setConfirmDeleteMessageId(null);
+    }
+  );
 
   useEffect(() => {
     return () => {
@@ -268,7 +284,7 @@ export default function ProjectChat({
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [canSend, markAsRead]);
 
-  // Load messages on mount if not provided
+  // Load messages and attachments on mount if not provided
   useEffect(() => {
     if (initialMessages.length > 0) return;
 
@@ -292,8 +308,94 @@ export default function ProjectChat({
       }
     };
 
+    const loadAttachments = async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("project_message_attachments")
+          .select("*")
+          .eq("project_id", projectId);
+
+        if (error) {
+          console.error("project_message_attachments load failed:", error);
+          return;
+        }
+
+        const grouped: Record<string, ProjectMessageAttachment[]> = {};
+        for (const row of (data as ProjectMessageAttachment[]) || []) {
+          if (!grouped[row.message_id]) grouped[row.message_id] = [];
+          grouped[row.message_id].push(row);
+        }
+        setAttachmentsByMessageId(grouped);
+      } catch (err) {
+        console.error("Attachment load exception:", err);
+      }
+    };
+
     loadMessages();
-  }, [projectId]);
+    loadAttachments();
+  }, [projectId, initialMessages]);
+
+  const upsertMessage = useCallback((nextMessage: ProjectMessage) => {
+    setMessages((prev) => {
+      if (prev.some((message) => message.id === nextMessage.id)) {
+        return prev.map((message) => (message.id === nextMessage.id ? nextMessage : message));
+      }
+      return [...prev, nextMessage];
+    });
+  }, []);
+
+  const mergeAttachmentsForMessage = useCallback((messageId: string, nextAttachments: ProjectMessageAttachment[]) => {
+    setAttachmentsByMessageId((prev) => {
+      const existing = prev[messageId] || [];
+      const merged = [...existing];
+
+      for (const attachment of nextAttachments) {
+        if (!merged.some((item) => item.id === attachment.id)) {
+          merged.push(attachment);
+        }
+      }
+
+      return {
+        ...prev,
+        [messageId]: merged,
+      };
+    });
+  }, []);
+
+  const getSignedUrl = useCallback(async (bucket: string, path: string, fileName?: string) => {
+    const cacheKey = `${bucket}:${path}`;
+    if (signedUrlCacheRef.current[cacheKey]) {
+      return signedUrlCacheRef.current[cacheKey];
+    }
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, 3600, fileName ? { download: fileName } : undefined);
+
+      if (error || !data?.signedUrl) {
+        console.error("Signed URL failed:", error);
+        return null;
+      }
+
+      signedUrlCacheRef.current[cacheKey] = data.signedUrl;
+      setSignedUrlsByKey((prev) => ({ ...prev, [cacheKey]: data.signedUrl }));
+      return data.signedUrl;
+    } catch (err) {
+      console.error("Signed URL exception:", err);
+      return null;
+    }
+  }, []);
+
+  const revokePendingFileUrls = useCallback((files: PendingFile[]) => {
+    for (const file of files) {
+      if (file.previewUrl) {
+        URL.revokeObjectURL(file.previewUrl);
+      }
+    }
+  }, []);
 
   const handleCopyMessage = async (msg: ProjectMessage) => {
     try {
@@ -330,13 +432,18 @@ export default function ProjectChat({
           clearTimeout(toastTimeoutRef.current);
         }
         toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 3000);
-      } else {
-        setToastMessage("Message deleted");
-        if (toastTimeoutRef.current) {
-          clearTimeout(toastTimeoutRef.current);
-        }
-        toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 2000);
+        return;
       }
+
+      const deletedAt = new Date().toISOString();
+      setMessages((prev) =>
+        prev.map((message) => (message.id === messageId ? { ...message, deleted_at: deletedAt } : message))
+      );
+      setToastMessage("Message deleted");
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+      toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 2000);
     } catch (error) {
       console.error("Delete message exception:", error);
       setToastMessage("Failed to delete message");
@@ -410,6 +517,82 @@ export default function ProjectChat({
     }
   };
 
+  const handleAddFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setUploadError(null);
+
+    const nextPending: PendingFile[] = [];
+    const errors: string[] = [];
+    const newFiles: PendingFile[] = [];
+
+    for (const file of files) {
+      const validation = validateFile(file);
+      if (!validation.valid) {
+        errors.push(`${file.name}: ${validation.error}`);
+        continue;
+      }
+
+      const fileEntry: PendingFile = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        file,
+        kind: validation.kind,
+        previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      };
+      newFiles.push(fileEntry);
+    }
+
+    if (errors.length > 0) {
+      setUploadError(errors.join("\n"));
+    }
+
+    setPendingFiles((prev) => {
+      const combined = [...prev, ...newFiles];
+      if (combined.length > 5) {
+        const trimmed = combined.slice(0, 5);
+        for (const file of combined.slice(5)) {
+          if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+        }
+        setUploadError("Maximum 5 files per message");
+        return trimmed;
+      }
+      return combined;
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveFile = (fileId: string) => {
+    setPendingFiles((prev) => {
+      const target = prev.find((item) => item.id === fileId);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((item) => item.id !== fileId);
+    });
+    setUploadError(null);
+  };
+
+  const cleanupUploadedFiles = useCallback(async (records: Array<{ bucket: string; path: string }>) => {
+    if (!records.length) return;
+    const supabase = createClient();
+    const grouped: Record<string, string[]> = {};
+    for (const record of records) {
+      if (!grouped[record.bucket]) grouped[record.bucket] = [];
+      grouped[record.bucket].push(record.path);
+    }
+
+    await Promise.all(
+      Object.entries(grouped).map(([bucket, paths]) =>
+        supabase.storage
+          .from(bucket)
+          .remove(paths)
+          .catch(() => undefined)
+      )
+    );
+  }, []);
+
   // On mount: mark as read and set up realtime
   useEffect(() => {
     const supabase = supabaseRef.current;
@@ -419,7 +602,6 @@ export default function ProjectChat({
       markAsRead();
     }
 
-    // Subscribe to realtime updates
     const channel = supabase
       .channel(`project_messages:${projectId}`)
       .on(
@@ -433,19 +615,13 @@ export default function ProjectChat({
         (payload) => {
           const newMessage = payload.new as ProjectMessage;
           setMessages((prev) => {
-            // Dedupe by id
             if (prev.some((m) => m.id === newMessage.id)) {
               return prev;
             }
             return [...prev, newMessage];
           });
 
-          // Mark as read if it's from the other party and we're visible and not an admin
-          if (
-            newMessage.sender_id !== currentUserId &&
-            canSend &&
-            visibilityRef.current
-          ) {
+          if (newMessage.sender_id !== currentUserId && canSend && visibilityRef.current) {
             markAsRead();
           }
         }
@@ -471,29 +647,86 @@ export default function ProjectChat({
       )
       .subscribe();
 
+    const attachmentChannel = supabase
+      .channel(`project_message_attachments:${projectId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "project_message_attachments",
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload) => {
+          const attachment = payload.new as ProjectMessageAttachment;
+          mergeAttachmentsForMessage(attachment.message_id, [attachment]);
+        }
+      )
+      .subscribe();
+
     channelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(attachmentChannel);
     };
-  }, [projectId, currentUserId, canSend, markAsRead]);
+  }, [projectId, currentUserId, canSend, markAsRead, mergeAttachmentsForMessage]);
+
+  useEffect(() => {
+    return () => {
+      revokePendingFileUrls(pendingFiles);
+    };
+  }, [pendingFiles, revokePendingFileUrls]);
 
   // Send message
   const handleSend = async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    const hasPendingFiles = pendingFiles.length > 0;
+    if ((!trimmed && !hasPendingFiles) || sending) return;
 
     setSending(true);
     setError(null);
+    setUploadError(null);
+
+    const uploadedRecords: Array<{ bucket: string; path: string }> = [];
 
     try {
       const supabase = supabaseRef.current;
+      const filesToUpload = [...pendingFiles];
+
+      const uploadedFiles = await Promise.all(
+        filesToUpload.map(async (pendingFile) => {
+          const config = FILE_CONFIG[pendingFile.kind];
+          const ext = getFileExtension(pendingFile.file.name) || {
+            photo: "jpg",
+            video: "mp4",
+            file: "bin",
+          }[pendingFile.kind];
+          const path = `${projectId}/${crypto.randomUUID()}.${ext}`;
+
+          const { error } = await supabase.storage.from(config.bucket).upload(path, pendingFile.file);
+          if (error) {
+            throw new Error(`Failed to upload ${pendingFile.file.name}: ${error.message}`);
+          }
+
+          uploadedRecords.push({ bucket: config.bucket, path });
+          return {
+            bucket: config.bucket,
+            path,
+            fileName: pendingFile.file.name,
+            kind: pendingFile.kind,
+            sizeBytes: pendingFile.file.size,
+            mimeType: pendingFile.file.type || "application/octet-stream",
+          };
+        })
+      );
+
       const { data, error: insertError } = await supabase
         .from("project_messages")
         .insert({
           project_id: projectId,
           sender_id: currentUserId,
-          body: trimmed,
+          body: trimmed || "",
         })
         .select()
         .single();
@@ -505,22 +738,64 @@ export default function ProjectChat({
           insertError.hint,
           insertError.code
         );
+        await cleanupUploadedFiles(uploadedRecords);
         setError("Failed to send message. Please try again.");
         return;
       }
 
-      // Append to messages, dedupe by id
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === data.id)) {
-          return prev;
-        }
-        return [...prev, data];
-      });
+      const message = data as ProjectMessage;
+      upsertMessage(message);
 
+      const successfulAttachments: ProjectMessageAttachment[] = [];
+      const failedAttachments: Array<{ bucket: string; path: string }> = [];
+
+      await Promise.all(
+        uploadedFiles.map(async (uploadedFile) => {
+          const { data: attachmentRow, error: attachmentError } = await supabase
+            .from("project_message_attachments")
+            .insert({
+              message_id: message.id,
+              project_id: projectId,
+              uploader_id: currentUserId,
+              kind: uploadedFile.kind,
+              bucket: uploadedFile.bucket,
+              storage_path: uploadedFile.path,
+              file_name: uploadedFile.fileName,
+              mime_type: uploadedFile.mimeType,
+              size_bytes: uploadedFile.sizeBytes,
+            })
+            .select()
+            .single();
+
+          if (attachmentError) {
+            console.error("Attachment insert failed:", attachmentError);
+            failedAttachments.push({ bucket: uploadedFile.bucket, path: uploadedFile.path });
+            return;
+          }
+
+          successfulAttachments.push(attachmentRow as ProjectMessageAttachment);
+        })
+      );
+
+      if (failedAttachments.length > 0) {
+        setError("Some attachments could not be saved. Please try again.");
+        await cleanupUploadedFiles(failedAttachments);
+      }
+
+      if (successfulAttachments.length > 0) {
+        mergeAttachmentsForMessage(message.id, successfulAttachments);
+      }
+
+      revokePendingFileUrls(filesToUpload);
+      setPendingFiles(EMPTY_PENDING_FILES);
       setText("");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } catch (err) {
       console.error("Send exception:", err);
       setError("An error occurred. Please try again.");
+      await cleanupUploadedFiles(uploadedRecords);
     } finally {
       setSending(false);
     }
@@ -535,17 +810,14 @@ export default function ProjectChat({
   };
 
   return (
-    <div className="mt-10 rounded-lg border p-6">
-      <h2 className="mb-6 text-lg font-semibold">Chat with {otherPartyName}</h2>
-
+    <div className="w-full">
       {toastMessage && (
         <div className="mb-4 rounded bg-green-50 p-2 text-sm text-green-700">{toastMessage}</div>
       )}
 
-      {/* Message list */}
       <div
         ref={containerRef}
-        className="mb-6 max-h-96 space-y-4 overflow-y-auto rounded bg-gray-50 p-4"
+        className="mb-6 max-h-[50vh] space-y-4 overflow-y-auto rounded bg-gray-50 p-4"
         onScroll={() => {
           const el = containerRef.current;
           if (!el) return;
@@ -560,6 +832,7 @@ export default function ProjectChat({
           messages.map((msg) => {
             const isOwn = msg.sender_id === currentUserId;
             const isDeleted = msg.deleted_at !== null;
+            const msgAttachments = attachmentsByMessageId[msg.id] || [];
 
             if (isDeleted) {
               return (
@@ -574,7 +847,7 @@ export default function ProjectChat({
 
             return (
               <div key={msg.id} className={isOwn ? "flex justify-end gap-1" : "group flex items-start justify-start gap-1"}>
-                {isOwn && (
+                {isOwn && canSend && (
                   <div className="relative">
                     <button
                       type="button"
@@ -609,15 +882,86 @@ export default function ProjectChat({
                   </div>
                 )}
                 <div className="max-w-xs">
-                  <div className={`rounded-lg px-3 py-2 text-sm ${isOwn ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-900"}`}>
-                    <p className="break-words">{msg.body}</p>
-                  </div>
+                  {msg.body && (
+                    <div className={`rounded-lg px-3 py-2 text-sm ${isOwn ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-900"}`}>
+                      <p className="break-words">{msg.body}</p>
+                    </div>
+                  )}
+
+                  {msgAttachments.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      {msgAttachments.filter((attachment) => attachment.kind === "photo").map((attachment) => {
+                        const key = `${attachment.bucket}:${attachment.storage_path}`;
+                        const signedUrl = signedUrlsByKey[key];
+
+                        return (
+                          <button
+                            key={attachment.id}
+                            type="button"
+                            className="block overflow-hidden rounded-md border border-gray-200 bg-white"
+                            onClick={async () => {
+                              const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name);
+                              if (url) setLightboxImage(url);
+                            }}
+                          >
+                            {signedUrl ? (
+                              <img src={signedUrl} alt={attachment.file_name} className="h-32 w-full object-cover" />
+                            ) : (
+                              <div className="flex h-32 w-full items-center justify-center bg-gray-100 text-xs text-gray-500">
+                                Loading…
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      {msgAttachments.filter((attachment) => attachment.kind === "video").map((attachment) => {
+                        const key = `${attachment.bucket}:${attachment.storage_path}`;
+                        const signedUrl = signedUrlsByKey[key];
+
+                        return (
+                          <video
+                            key={attachment.id}
+                            controls
+                            preload="metadata"
+                            className="max-h-60 w-full rounded-md bg-black"
+                            src={signedUrl || undefined}
+                          />
+                        );
+                      })}
+
+                      {msgAttachments.filter((attachment) => attachment.kind === "file").map((attachment) => {
+                        const key = `${attachment.bucket}:${attachment.storage_path}`;
+                        const signedUrl = signedUrlsByKey[key];
+
+                        return (
+                          <div key={attachment.id} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-gray-800">{attachment.file_name}</p>
+                              <p className="text-xs text-gray-500">{formatFileSize(attachment.size_bytes)}</p>
+                            </div>
+                            <button
+                              type="button"
+                              className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
+                              onClick={async () => {
+                                const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name);
+                                if (url) window.open(url, "_blank", "noopener,noreferrer");
+                              }}
+                            >
+                              Download
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div className={`mt-1 text-xs ${isOwn ? "text-blue-100" : "text-gray-600"}`}>
                     {formatTime(msg.created_at)}
                     {isOwn && <span className="ml-2">{msg.read_at ? "Seen" : "Sent"}</span>}
                   </div>
                 </div>
-                {!isOwn && (
+                {!isOwn && !isDeleted && (
                   <div className="relative">
                     <button
                       type="button"
@@ -630,7 +974,7 @@ export default function ProjectChat({
                       ⋮
                     </button>
                     {openMenuFor === msg.id && (
-                      <div className="absolute right-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
+                      <div className="absolute left-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
                         {msg.body && (
                           <button
                             type="button"
@@ -663,6 +1007,22 @@ export default function ProjectChat({
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {lightboxImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightboxImage(null)}>
+          <div className="relative max-h-[90vh] max-w-4xl rounded-lg bg-white p-2 shadow-2xl">
+            <button
+              type="button"
+              className="absolute -right-3 -top-3 rounded-full bg-white p-2 text-gray-700 shadow"
+              aria-label="Close image"
+              onClick={() => setLightboxImage(null)}
+            >
+              ✕
+            </button>
+            <img src={lightboxImage} alt="Attachment preview" className="max-h-[85vh] max-w-full rounded-md object-contain" />
+          </div>
+        </div>
+      )}
 
       {reportingMessageId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -701,7 +1061,7 @@ export default function ProjectChat({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
             <h3 className="mb-3 text-lg font-semibold text-gray-900">Delete message?</h3>
-            <p className="mb-4 text-sm text-gray-600">This message will be permanently deleted. You can't undo this action.</p>
+            <p className="mb-4 text-sm text-gray-600">Delete this message for everyone? This can't be undone.</p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -723,31 +1083,78 @@ export default function ProjectChat({
         </div>
       )}
 
-      {/* Error message */}
       {error && (
         <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
-      {/* Send box or read-only message */}
       {canSend ? (
         <div className="space-y-2">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={sending}
-            placeholder="Type a message..."
-            className="w-full rounded border p-2 text-sm disabled:opacity-50"
-            rows={3}
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-600">{text.length} / 2000</span>
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {pendingFiles.map((pendingFile) => (
+                <div key={pendingFile.id} className="relative w-24 rounded-md border border-gray-200 bg-white p-2">
+                  <button
+                    type="button"
+                    aria-label={`Remove ${pendingFile.file.name}`}
+                    className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-gray-700 text-[10px] text-white"
+                    onClick={() => handleRemoveFile(pendingFile.id)}
+                  >
+                    ×
+                  </button>
+                  {pendingFile.kind === "photo" && pendingFile.previewUrl ? (
+                    <img src={pendingFile.previewUrl} alt={pendingFile.file.name} className="h-16 w-full rounded object-cover" />
+                  ) : (
+                    <div className="flex h-16 w-full items-center justify-center rounded bg-gray-100 text-xl">
+                      {pendingFile.kind === "video" ? "🎬" : "📄"}
+                    </div>
+                  )}
+                  <p className="mt-2 truncate text-[10px] text-gray-700">{pendingFile.file.name}</p>
+                  <p className="text-[10px] text-gray-500">{formatFileSize(pendingFile.file.size)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {uploadError && (
+            <div className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700 whitespace-pre-line">{uploadError}</div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Add files"
+            >
+              📎
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+              onChange={handleAddFiles}
+              disabled={sending}
+            />
+
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={sending}
+              placeholder="Type a message..."
+              className="flex-1 rounded border p-2 text-sm disabled:opacity-50"
+              rows={3}
+            />
+
             <button
               onClick={handleSend}
-              disabled={sending || !text.trim()}
+              disabled={sending || (!text.trim() && pendingFiles.length === 0)}
               className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-blue-700"
             >
-              {sending ? "Sending..." : "Send"}
+              {sending ? "Uploading…" : "Send"}
             </button>
           </div>
         </div>

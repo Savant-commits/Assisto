@@ -1127,15 +1127,14 @@ export default function EnquiriesPage() {
                   ✕
                 </button>
               </div>
-              <div className="max-h-96 overflow-y-auto">
-                <ProjectChat
-                  projectId={openChatModal.projectId}
-                  currentUserId={currentUserId}
-                  canSend={canSend}
-                  otherPartyName={otherPartyName}
-                  readOnlyReason={readOnlyReason}
-                />
-              </div>
+
+              <ProjectChat
+                projectId={openChatModal.projectId}
+                currentUserId={currentUserId}
+                canSend={canSend}
+                otherPartyName={otherPartyName}
+                readOnlyReason={readOnlyReason}
+              />
             </div>
           </div>
         );
