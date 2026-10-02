@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEscapeKey } from "@/lib/use-escape-key";
+import { ProjectMessageAttachment } from "@/lib/types";
+import { v4 as uuidv4 } from "crypto-js/js";
 
 type ProjectMessage = {
   id: string;
@@ -12,20 +14,172 @@ type ProjectMessage = {
   created_at: string;
 };
 
+type PendingFile = {
+  id: string;
+  file: File;
+  kind: "photo" | "video" | "file";
+  error?: string;
+};
+
+type PendingAttachment = {
+  id: string;
+  message_id: string;
+  kind: "photo" | "video" | "file";
+  file_name: string;
+  size_bytes: number;
+  storage_path: string;
+  bucket: string;
+  mime_type: string;
+};
+
 const EMPTY_MESSAGES: ProjectMessage[] = [];
+const EMPTY_ATTACHMENTS: PendingAttachment[] = [];
 
 type ProjectChatProps = {
   projectId: string;
   currentUserId: string;
   canSend: boolean;
-  initialMessages?: ProjectMessage[];
   otherPartyName: string;
   readOnlyReason: string | null;
+};
+
+// File validation constants
+const FILE_CONFIG: Record<string, { kind: "photo" | "video" | "file"; bucket: string; maxSize: number; mimeTypes: string[] }> = {
+  photo: {
+    kind: "photo",
+    bucket: "chat-photos",
+    maxSize: 10 * 1024 * 1024, // 10 MB
+    mimeTypes: ["image/jpeg", "image/png", "image/webp"],
+  },
+  video: {
+    kind: "video",
+    bucket: "chat-videos",
+    maxSize: 50 * 1024 * 1024, // 50 MB
+    mimeTypes: ["video/mp4", "video/quicktime", "video/webm"],
+  },
+  file: {
+    kind: "file",
+    bucket: "chat-files",
+    maxSize: 10 * 1024 * 1024, // 10 MB
+    mimeTypes: [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "text/csv",
+      "text/plain",
+    ],
+  },
 };
 
 function formatTime(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function getFileExtension(fileName: string): string {
+  const parts = fileName.split(".");
+  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
+}
+
+function getMimeTypeFromExtension(ext: string): string {
+  const ext_lower = ext.toLowerCase();
+  if (["jpg", "jpeg", "png", "webp"].includes(ext_lower)) return "image/*";
+  if (["mp4", "mov", "webm"].includes(ext_lower)) return "video/*";
+  return "application/*";
+}
+
+function determineFileKind(file: File): { kind: "photo" | "video" | "file"; config: typeof FILE_CONFIG.photo } | null {
+  let mimeType = file.type;
+  if (!mimeType) {
+    const ext = getFileExtension(file.name);
+    mimeType = getMimeTypeFromExtension(ext);
+  }
+
+  // Check photo
+  if (mimeType.startsWith("image/")) {
+    if (mimeType === "image/heic" || mimeType === "image/heif") {
+      return null; // HEIC not supported
+    }
+    return { kind: "photo", config: FILE_CONFIG.photo };
+  }
+
+  // Check video
+  if (mimeType.startsWith("video/")) {
+    return { kind: "video", config: FILE_CONFIG.video };
+  }
+
+  // Check document/file
+  return { kind: "file", config: FILE_CONFIG.file };
+}
+
+function validateFile(file: File): { valid: true; kind: "photo" | "video" | "file" } | { valid: false; error: string } {
+  const fileKindResult = determineFileKind(file);
+
+  if (!fileKindResult) {
+    return { valid: false, error: "Please use JPG or PNG" };
+  }
+
+  const { kind, config } = fileKindResult;
+
+  // Check MIME type
+  if (config.mimeTypes.length > 0 && !config.mimeTypes.includes(file.type || "")) {
+    if (file.type === "") {
+      // Fall back to checking by extension if type is empty
+      const ext = getFileExtension(file.name);
+      const expectedMimes = FILE_CONFIG[kind].mimeTypes;
+      let mimeMatches = false;
+
+      for (const mime of expectedMimes) {
+        const mimeParts = mime.split("/");
+        if (mimeParts[1] === "*") continue;
+        const knownExts: Record<string, string[]> = {
+          "image/jpeg": ["jpg", "jpeg"],
+          "image/png": ["png"],
+          "image/webp": ["webp"],
+          "video/mp4": ["mp4"],
+          "video/quicktime": ["mov"],
+          "video/webm": ["webm"],
+          "application/pdf": ["pdf"],
+          "application/msword": ["doc"],
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ["docx"],
+          "application/vnd.ms-excel": ["xls"],
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ["xlsx"],
+          "application/vnd.ms-powerpoint": ["ppt"],
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation": ["pptx"],
+          "text/csv": ["csv"],
+          "text/plain": ["txt"],
+        };
+
+        if (knownExts[mime] && knownExts[mime].includes(ext)) {
+          mimeMatches = true;
+          break;
+        }
+      }
+
+      if (!mimeMatches) {
+        return { valid: false, error: `File type not supported for ${kind}s` };
+      }
+    } else {
+      return { valid: false, error: `File type not supported for ${kind}s` };
+    }
+  }
+
+  // Check size
+  if (file.size > config.maxSize) {
+    return { valid: false, error: `File exceeds ${formatFileSize(config.maxSize)} limit` };
+  }
+
+  return { valid: true, kind };
 }
 
 export default function ProjectChat({

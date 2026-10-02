@@ -30,3 +30,17 @@ export type ProviderListItem = {
   profiles?: ProviderProfile | null;
   provider_portfolio_items?: ProviderPortfolioItem[] | null;
 };
+
+export type ProjectMessageAttachment = {
+  id: string;
+  message_id: string;
+  project_id: string;
+  uploader_id: string;
+  kind: "photo" | "video" | "file";
+  bucket: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+};
