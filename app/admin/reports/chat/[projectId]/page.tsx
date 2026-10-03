@@ -35,7 +35,7 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
   // load messages
   const { data: messages, error: messagesError } = await supabase
     .from("project_messages")
-    .select("id,body,sender_id,created_at,deleted_at")
+    .select("id,body,sender_id,created_at,deleted_at,admin_removed_at")
     .eq("project_id", resolvedParams.projectId)
     .order("created_at", { ascending: true });
 
@@ -112,7 +112,7 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
 
   const { data: reports, error: reportsError } = await supabase
     .from("reports")
-    .select("id,reportable_id,status,reason,reporter_id,created_at,profiles!reports_reporter_id_fkey(full_name)")
+    .select("id,reportable_id,status,reason,reporter_id,created_at,admin_notes,profiles!reports_reporter_id_fkey(full_name)")
     .in("reportable_id", messageIds)
     .eq("reportable_type", "project_message")
     .order("created_at", { ascending: false });

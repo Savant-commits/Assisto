@@ -20,6 +20,7 @@ type Message = {
   sender_id: string;
   created_at: string;
   deleted_at?: string | null;
+  admin_removed_at?: string | null;
   attachments?: Attachment[];
   reports?: ReportRow[];
 };
@@ -88,20 +89,23 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
 
       <p className="mb-4 text-sm text-muted-foreground">Chat opened: {formatDateTime(openedAt)} · {enquiry?.status === 'confirmed' ? `Open for ${/* humanDuration called on server */ ''}` : `Was open for ${''}`}</p>
 
-      <div className="rounded border bg-muted p-3 mb-4">
-        <p className="text-sm">Read-only admin view. You can see this chat because a message in it was reported.</p>
-      </div>
-
-      <div className="sticky top-14 z-40 mt-2 mb-4 flex items-center gap-2">
-        <span className="text-sm">Reported message highlighted below</span>
-        <button className="rounded border px-2 py-1" onClick={() => gotoReported(currentIdx)}>Jump to reported message</button>
-        {reportedIds.length > 1 && (
-          <div className="ml-2 inline-flex items-center gap-2">
-            <button className="rounded border px-2 py-1" onClick={() => gotoReported((currentIdx - 1 + reportedIds.length) % reportedIds.length)}>Previous</button>
-            <button className="rounded border px-2 py-1" onClick={() => gotoReported((currentIdx + 1) % reportedIds.length)}>Next</button>
+          <div className="rounded border bg-muted p-3 mb-4">
+            <p className="text-sm">Read-only admin view. You can see this chat because a message in it was reported.</p>
           </div>
-        )}
-      </div>
+
+          <div className="sticky top-14 z-40 mt-2 mb-4 flex items-center gap-2 bg-background border rounded shadow-sm p-2">
+            <span className="text-sm">Reported message highlighted below</span>
+            <button className="rounded border px-2 py-1" onClick={() => gotoReported(currentIdx)}>Jump to reported message</button>
+            {reportedIds.length > 1 && (
+              <>
+                <div className="ml-2 text-sm text-muted-foreground">Reported message {currentIdx + 1} of {reportedIds.length}</div>
+                <div className="ml-2 inline-flex items-center gap-2">
+                  <button className="rounded border px-2 py-1" onClick={() => gotoReported((currentIdx - 1 + reportedIds.length) % reportedIds.length)}>Previous</button>
+                  <button className="rounded border px-2 py-1" onClick={() => gotoReported((currentIdx + 1) % reportedIds.length)}>Next</button>
+                </div>
+              </>
+            )}
+          </div>
 
       <div className="space-y-6">
         {messages.map((m) => {
@@ -111,14 +115,21 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
           const showBody = !!(m.body && m.body.trim());
 
           return (
-            <div key={m.id} id={`msg-${m.id}`} className={`w-full p-2 ${reported ? 'border-l-4 border-red-500' : ''} ${highlightedId === m.id ? 'ring-4 ring-red-200 bg-red-50' : ''}`}>
+            <div key={m.id} id={`msg-${m.id}`} className={`w-full p-2 scroll-mt-24 ${reported ? 'border-l-4 border-red-500' : ''} ${highlightedId === m.id ? 'ring-4 ring-red-200 bg-red-50' : ''}`}>
               <div className="mb-1 flex items-center justify-between">
                 <div className="text-sm font-medium">{isProvider ? (provider?.business_name ?? 'Provider') : (customer?.full_name ?? 'Customer')} <span className="ml-2 text-xs text-muted-foreground">{isProvider ? 'Provider' : 'Customer'}</span></div>
                 <div className="text-xs text-muted-foreground">{formatDateTime(m.created_at)}</div>
               </div>
 
+              {m.admin_removed_at && (
+                <div className="mb-2 inline-flex items-center gap-2 rounded bg-orange-50 px-2 py-0.5 text-orange-700 font-medium">
+                  <span>⚠</span>
+                  <span>Removed by admin {formatDateTime(m.admin_removed_at)}</span>
+                </div>
+              )}
+
               {showBody && (
-                <div className={`rounded-md p-3 ${isProvider ? 'bg-blue-600 text-white ml-auto max-w-[70%]' : 'bg-gray-100 text-black max-w-[70%]'}`}>
+                <div className={`rounded-md p-3 ${isProvider ? 'bg-blue-600 text-white ml-auto max-w-[70%]' : 'bg-gray-100 text-black max-w-[70%]'} ${m.admin_removed_at ? 'opacity-80' : ''}`}>
                   <div className="whitespace-pre-wrap">{m.body}</div>
                 </div>
               )}
@@ -127,6 +138,13 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
                 <div className="mt-2 flex flex-col gap-2">
                   {m.attachments.map((att) => (
                     <div key={att.id} className="rounded border p-2">
+                      {/* Removed/Deleted label above content if present */}
+                      {att.deleted_at && (
+                        <div className="mb-2 inline-flex items-center gap-2 rounded bg-red-50 px-2 py-0.5 text-red-600 font-medium">
+                          <span>⚠</span>
+                          <span>Removed by sender {formatDateTime(att.deleted_at)}</span>
+                        </div>
+                      )}
                       {att.kind === 'photo' && att.signedUrl ? (
                         <a href={att.signedUrl} target="_blank" rel="noopener noreferrer"><img src={att.signedUrl} className="h-44 w-72 object-cover" alt={att.file_name} /></a>
                       ) : att.kind === 'photo' ? (
@@ -156,7 +174,12 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
                 </div>
               )}
 
-              {m.deleted_at && <div className="mt-1 text-xs text-muted-foreground">Deleted by sender {formatDateTime(m.deleted_at)}</div>}
+              {m.deleted_at && (
+                <div className="mb-2 inline-flex items-center gap-2 rounded bg-red-50 px-2 py-0.5 text-red-600 font-medium">
+                  <span>⚠</span>
+                  <span>Deleted by sender {formatDateTime(m.deleted_at)}</span>
+                </div>
+              )}
 
               {reported && (
                 <div className="mt-2 text-sm text-red-700">

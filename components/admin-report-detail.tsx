@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import SendWarningDialog from "./send-warning-dialog";
 
@@ -25,8 +26,13 @@ export default function AdminReportDetail({ report }: { report: any }) {
       });
       if (rpcError) throw rpcError;
       setEditing(false);
-      // simple feedback: reload to pick up server-side changes
-      window.location.reload();
+      // refresh the current route to pick up server-side changes without losing scroll
+      try {
+        const router = useRouter();
+        router.refresh();
+      } catch {
+        window.location.reload();
+      }
     } catch (err) {
       setError((err as any)?.message || "Failed to save changes");
     } finally {
@@ -40,6 +46,8 @@ export default function AdminReportDetail({ report }: { report: any }) {
     } else if (report.reportable_type === "review") {
       return report.target?.customer_id || null;
     }
+    // for project_message, the recipient is the sender of the reported message
+    if (report.reportable_type === "project_message") return report.target?.sender_id ?? null;
     return null;
   }
 
