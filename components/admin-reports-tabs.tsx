@@ -241,9 +241,7 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
                                     ) : null}
 
                                     {attachment.kind === "video" && attachment.signedUrl ? (
-                                      <video controls preload="metadata" className="max-w-[320px] w-full rounded-md border bg-black">
-                                        <source src={attachment.signedUrl} type={attachment.mime_type || "video/mp4"} />
-                                      </video>
+                                      <video controls preload="metadata" className="max-w-[320px] w-full rounded-md border bg-black" src={attachment.signedUrl} />
                                     ) : null}
                                     {attachment.kind === "video" && !attachment.signedUrl && (
                                       <p className="text-xs text-muted-foreground">Preview unavailable</p>
@@ -251,7 +249,6 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
 
                                     {attachment.kind === "file" && (
                                       <div className="mt-1 flex flex-wrap items-center gap-2">
-                                        <span className="text-xs text-muted-foreground">{attachment.file_name}</span>
                                         {attachment.signedUrl ? (
                                           <a
                                             href={attachment.signedUrl}
@@ -259,10 +256,10 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
                                             rel="noopener noreferrer"
                                             className="inline-flex items-center rounded border px-2 py-1 text-xs text-blue-600 underline"
                                           >
-                                            Open
+                                            {attachment.file_name}
                                           </a>
                                         ) : (
-                                          <span className="text-xs text-muted-foreground">Preview unavailable</span>
+                                          <span className="text-xs text-muted-foreground">{attachment.file_name} — Preview unavailable</span>
                                         )}
                                       </div>
                                     )}
@@ -284,8 +281,8 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
                               </p>
                             )}
                             {report.target.project_id && (
-                              <Link href={`/enquiries?chat=${report.target.project_id}`} className="mt-2 inline-block text-sm text-blue-600 underline">
-                                Open chat
+                              <Link href={`/admin/reports/chat/${report.target.project_id}?message=${report.target.id}`} className="mt-2 inline-block text-sm text-blue-600 underline">
+                                View full chat
                               </Link>
                             )}
                           </div>

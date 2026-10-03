@@ -66,6 +66,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                     <a href="/admin/reports" className="rounded-full border px-3 py-1">
                       Reports
                     </a>
+                    <a href="/admin/chats" className="rounded-full border px-3 py-1">
+                      Chats
+                    </a>
                   </>
                 )}
               </nav>
