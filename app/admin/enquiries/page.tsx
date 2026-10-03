@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import AdminEnquiryDetail from "@/components/admin-enquiry-detail";
 import AdminEnquiriesTabs from "@/components/admin-enquiries-tabs";
 
-export default async function AdminEnquiriesPage() {
+export default async function AdminEnquiriesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const resolvedSearchParams = await searchParams;
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
@@ -31,7 +32,7 @@ export default async function AdminEnquiriesPage() {
       <h1 className="mb-1 text-2xl font-semibold">Enquiries (admin)</h1>
       <p className="mb-6 text-muted-foreground">{enquiries?.length ?? 0} enquiries</p>
 
-      <AdminEnquiriesTabs enquiries={enquiries || []} />
+      <AdminEnquiriesTabs enquiries={enquiries || []} initialSearch={resolvedSearchParams?.q ?? ""} />
     </div>
   );
 }

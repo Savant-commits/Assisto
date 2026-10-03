@@ -52,5 +52,8 @@ export type ProjectMessage = {
   body: string;
   read_at: string | null;
   deleted_at: string | null;
+  admin_removed_at: string | null;
   created_at: string;
 };
+
+export type BanDuration = "1_week" | "1_year" | "permanent";

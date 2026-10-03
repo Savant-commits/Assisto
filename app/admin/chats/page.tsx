@@ -69,9 +69,11 @@ export default async function AdminChatsPage() {
     });
 
     const totalReports = projectReports.length;
-    const unresolvedReports = projectReports.filter((r: any) => r.status === "open").length;
+    const unresolvedReports = projectReports.filter((r: any) => r.status === "open" || r.status === "reviewed").length;
     const latestReport = projectReports.reduce((acc: any, cur: any) => (acc && acc.created_at > cur.created_at ? acc : cur), projectReports[0]);
-    const oldestUnresolved = projectReports.filter((r: any) => r.status === "open").sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+    const oldestUnresolved = projectReports
+      .filter((r: any) => r.status === "open" || r.status === "reviewed")
+      .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
     const jumpMessageId = (oldestUnresolved || latestReport)?.reportable_id ?? null;
 
     const enquiry = Array.isArray(p.enquiries) ? p.enquiries[0] : p.enquiries ?? null;

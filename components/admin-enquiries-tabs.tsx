@@ -10,7 +10,7 @@ function formatDateTime(dateStr: string | null | undefined): string {
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export default function AdminEnquiriesTabs({ enquiries }: { enquiries: any[] }) {
+export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { enquiries: any[]; initialSearch?: string }) {
   const tabs = [
     { key: "active_services", label: "Active services", statuses: ["confirmed"] },
     { key: "active_enquiries", label: "Active enquiries", statuses: ["sent"] },
@@ -20,7 +20,7 @@ export default function AdminEnquiriesTabs({ enquiries }: { enquiries: any[] }) 
   ];
 
   const [value, setValue] = useState(tabs[0].key);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 

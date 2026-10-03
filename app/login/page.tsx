@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,6 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/";
   const [formError, setFormError] = useState<string | null>(null);
@@ -46,6 +45,12 @@ export default function LoginPage() {
     });
 
     if (error) {
+      const lowerMessage = (error.message ?? "").toLowerCase();
+      if (error.code === "user_banned" || lowerMessage.includes("banned")) {
+        setFormError("This account has been suspended. If you think this is a mistake, contact support.");
+        return;
+      }
+
       setFormError(
         error.message === "Invalid login credentials"
           ? "Incorrect email or password."
@@ -56,7 +61,7 @@ export default function LoginPage() {
 
     // Force a full reload so Server Components (which read cookies) see the
     // new session immediately. router.refresh() alone may not update cookies.
-    window.location.href = redirectTo;
+    window.location.assign(redirectTo);
   }
 
   return (

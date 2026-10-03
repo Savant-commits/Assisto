@@ -6,8 +6,10 @@ import { useEscapeKey } from "@/lib/use-escape-key";
 
 interface SendWarningDialogProps {
   isOpen: boolean;
-  recipientId: string;
+  recipientId: string | null | undefined;
   reportId?: string;
+  recipientName?: string;
+  recipientUserCode?: string;
   onClose: () => void;
   onSuccess: (emailSent: boolean) => void;
 }
@@ -16,6 +18,8 @@ export default function SendWarningDialog({
   isOpen,
   recipientId,
   reportId,
+  recipientName,
+  recipientUserCode,
   onClose,
   onSuccess,
 }: SendWarningDialogProps) {
@@ -58,6 +62,11 @@ export default function SendWarningDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
         <h2 className="mb-4 text-lg font-semibold">Send Warning</h2>
+        {(recipientName || recipientUserCode) && (
+          <p className="mb-3 text-sm text-muted-foreground">
+            Sending to {recipientName ?? "recipient"}{recipientUserCode ? ` (#${recipientUserCode})` : ""}
+          </p>
+        )}
 
         <div className="mb-4 space-y-4">
           <div>

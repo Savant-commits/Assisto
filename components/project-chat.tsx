@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEscapeKey } from "@/lib/use-escape-key";
@@ -200,14 +201,14 @@ function validateFile(file: File): { valid: true; kind: "photo" | "video" | "fil
   return { valid: true, kind };
 }
 
-export default function ProjectChat({
-  projectId,
-  currentUserId,
-  canSend,
-  initialMessages = EMPTY_MESSAGES,
-  otherPartyName,
-  readOnlyReason,
-}: ProjectChatProps) {
+export default function ProjectChat(props: ProjectChatProps) {
+  const {
+    projectId,
+    currentUserId,
+    canSend,
+    initialMessages = EMPTY_MESSAGES,
+    readOnlyReason,
+  } = props;
   const [messages, setMessages] = useState<ProjectMessage[]>(initialMessages);
   const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, ProjectMessageAttachment[]>>(
     EMPTY_ATTACHMENTS_BY_MESSAGE_ID
@@ -350,7 +351,7 @@ export default function ProjectChat({
         const supabase = createClient();
         const { data, error } = await supabase
           .from("project_messages")
-          .select("id,sender_id,body,read_at,deleted_at,created_at")
+          .select("id,sender_id,body,read_at,deleted_at,admin_removed_at,created_at")
           .eq("project_id", projectId)
           .order("created_at", { ascending: true });
 
@@ -477,7 +478,7 @@ export default function ProjectChat({
     const tasks: Array<{ bucket: string; path: string }> = [];
 
     for (const msg of messages) {
-      if (msg.deleted_at !== null) continue;
+      if (msg.deleted_at !== null || msg.admin_removed_at !== null) continue;
       const itemAttachments = attachmentsByMessageId[msg.id] || [];
       for (const attachment of itemAttachments) {
         if (attachment.deleted_at !== null || (attachment.kind !== "photo" && attachment.kind !== "video")) continue;
@@ -695,7 +696,7 @@ export default function ProjectChat({
       }
       toastTimeoutRef.current = setTimeout(() => {
         setToastMessage(null);
-      }, 2000);
+      }, 3000);
       closeReportDialog();
     } catch (err) {
       console.error("Report submission error:", err);
@@ -709,7 +710,6 @@ export default function ProjectChat({
     const files = Array.from(e.target.files || []);
     setUploadError(null);
 
-    const nextPending: PendingFile[] = [];
     const errors: string[] = [];
     const newFiles: PendingFile[] = [];
 
@@ -827,7 +827,12 @@ export default function ProjectChat({
           setMessages((prev) =>
             prev.map((m) =>
               m.id === updatedMessage.id
-                ? { ...m, read_at: updatedMessage.read_at, deleted_at: updatedMessage.deleted_at }
+                ? {
+                    ...m,
+                    read_at: updatedMessage.read_at,
+                    deleted_at: updatedMessage.deleted_at ?? m.deleted_at,
+                    admin_removed_at: updatedMessage.admin_removed_at ?? m.admin_removed_at,
+                  }
                 : m
             )
           );
@@ -931,8 +936,17 @@ export default function ProjectChat({
         })
       );
 
+      type UploadedFile = {
+        bucket: string;
+        path: string;
+        fileName: string;
+        kind: "photo" | "video" | "file";
+        sizeBytes: number;
+        mimeType: string;
+      };
+
       const uploadedFiles = results
-        .filter((result): result is PromiseFulfilledResult<any> => result.status === "fulfilled")
+        .filter((result): result is PromiseFulfilledResult<UploadedFile> => result.status === "fulfilled")
         .map((result) => result.value);
 
       if (results.some((result) => result.status === "rejected")) {
@@ -1032,7 +1046,9 @@ export default function ProjectChat({
   return (
     <div className="w-full">
       {toastMessage && (
-        <div className="mb-4 rounded bg-green-50 p-2 text-sm text-green-700">{toastMessage}</div>
+        <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+          {toastMessage}
+        </div>
       )}
 
       <div
@@ -1052,13 +1068,14 @@ export default function ProjectChat({
           messages.map((msg) => {
             const isOwn = msg.sender_id === currentUserId;
             const isDeleted = msg.deleted_at !== null;
+            const isAdminRemoved = msg.admin_removed_at !== null;
             const msgAttachments = attachmentsByMessageId[msg.id] || [];
 
-            if (isDeleted) {
+            if (isDeleted || isAdminRemoved) {
               return (
                 <div key={msg.id} className={isOwn ? "flex justify-end" : "flex items-start justify-start"}>
                   <div className="max-w-md rounded-lg bg-gray-100 px-3 py-2 text-sm italic text-gray-500">
-                    <p>This message was deleted</p>
+                    <p>{isAdminRemoved ? "This message was removed by an admin." : "This message was deleted"}</p>
                     <div className="mt-1 text-xs text-gray-400">{formatTime(msg.created_at)}</div>
                   </div>
                 </div>
@@ -1172,9 +1189,12 @@ export default function ProjectChat({
                                 }}
                               >
                                 {signedUrl ? (
-                                  <img
+                                  <Image
                                     src={signedUrl}
                                     alt={attachment.file_name}
+                                    width={720}
+                                    height={176}
+                                    unoptimized
                                     className="h-44 w-72 object-cover"
                                     onError={() => handleDisplayUrlError(attachment.bucket, attachment.storage_path)}
                                   />
@@ -1210,7 +1230,7 @@ export default function ProjectChat({
                                       >
                                         Download
                                       </button>
-                                      {(!isOwn && !msg.deleted_at) && (
+                                      {(!isOwn && !msg.deleted_at && !msg.admin_removed_at) && (
                                         <button
                                           type="button"
                                           className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
@@ -1482,7 +1502,7 @@ export default function ProjectChat({
             >
               ✕
             </button>
-            <img src={lightboxImage} alt="Attachment preview" className="max-h-[85vh] max-w-full rounded-md object-contain" />
+            <Image src={lightboxImage} alt="Attachment preview" width={1200} height={900} unoptimized className="max-h-[85vh] max-w-full rounded-md object-contain" />
           </div>
         </div>
       )}
@@ -1524,7 +1544,7 @@ export default function ProjectChat({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
             <h3 className="mb-3 text-lg font-semibold text-gray-900">Delete message?</h3>
-            <p className="mb-4 text-sm text-gray-600">Delete this message for everyone? This can't be undone.</p>
+            <p className="mb-4 text-sm text-gray-600">Delete this message for everyone? This cannot be undone.</p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -1550,7 +1570,7 @@ export default function ProjectChat({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
             <h3 className="mb-3 text-lg font-semibold text-gray-900">
-              Delete this {confirmDeleteAttachment.kind} for everyone? This can't be undone.
+              Delete this {confirmDeleteAttachment.kind} for everyone? This cannot be undone.
             </h3>
             <p className="mb-4 text-sm text-gray-600">{confirmDeleteAttachment.fileName}</p>
             <div className="flex justify-end gap-2">
@@ -1593,7 +1613,7 @@ export default function ProjectChat({
                     ×
                   </button>
                   {pendingFile.kind === "photo" && pendingFile.previewUrl ? (
-                    <img src={pendingFile.previewUrl} alt={pendingFile.file.name} className="h-16 w-full rounded object-cover" />
+                    <Image src={pendingFile.previewUrl} alt={pendingFile.file.name} width={200} height={64} unoptimized className="h-16 w-full rounded object-cover" />
                   ) : (
                     <div className="flex h-16 w-full items-center justify-center rounded bg-gray-100 text-xl">
                       {pendingFile.kind === "video" ? "🎬" : "📄"}
