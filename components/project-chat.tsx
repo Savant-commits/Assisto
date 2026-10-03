@@ -1210,6 +1210,21 @@ export default function ProjectChat({
                                       >
                                         Download
                                       </button>
+                                      {(!isOwn && !msg.deleted_at) && (
+                                        <button
+                                          type="button"
+                                          className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                                          disabled={reportedIds.has(msg.id)}
+                                          onClick={() => {
+                                            setOpenAttachmentMenuFor(null);
+                                            setReportingMessageId(msg.id);
+                                            setReportReason("");
+                                            setReportError(null);
+                                          }}
+                                        >
+                                          {reportedIds.has(msg.id) ? "Reported" : "Report"}
+                                        </button>
+                                      )}
                                     </div>
                                   )}
                                 </div>

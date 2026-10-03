@@ -3,29 +3,50 @@ import { createClient } from "@/lib/supabase/server";
 import AdminChatViewer from "@/components/admin-chat-viewer";
 import { formatDateTime, humanDuration } from "@/lib/chat-duration";
 
-export default async function AdminReportChatPage({ params, searchParams }: { params: any; searchParams: any }) {
+export default async function AdminReportChatPage({ params, searchParams }: { params: Promise<{ projectId: string }>; searchParams: Promise<{ message?: string }> }) {
+  const resolvedParams = await params;
+  const resolvedSearch = await searchParams;
+
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
-  if (!userData.user) redirect(`/login?redirect=/admin/reports/chat/${params.projectId}`);
+  if (!userData.user) redirect(`/login?redirect=/admin/reports/chat/${resolvedParams.projectId}`);
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", userData.user.id).single();
   if (profile?.role !== "admin") redirect("/");
 
-  const { data: project } = await supabase
+  const { data: project, error: projectError } = await supabase
     .from("projects")
-    .select("id,project_code,created_at,enquiries(id,enquiry_code,status,completed_at,admin_cancelled_at,updated_at),profiles!enquiries_customer_id_fkey(full_name,user_code),providers(id,business_name,profiles!providers_id_fkey(user_code))")
-    .eq("id", params.projectId)
+    .select("id,project_code,created_at,enquiries(id,enquiry_code,status,completed_at,admin_cancelled_at,updated_at,customer_id,provider_id,profiles!enquiries_customer_id_fkey(full_name,user_code),providers(id,business_name,profiles!providers_id_fkey(user_code)))")
+    .eq("id", resolvedParams.projectId)
     .single();
+
+  if (projectError) {
+    console.error("project query failed:", {
+      message: projectError.message,
+      details: projectError.details,
+      hint: projectError.hint,
+      code: projectError.code,
+    });
+  }
 
   if (!project) notFound();
 
   // load messages
-  const { data: messages } = await supabase
+  const { data: messages, error: messagesError } = await supabase
     .from("project_messages")
     .select("id,body,sender_id,created_at,deleted_at")
-    .eq("project_id", params.projectId)
+    .eq("project_id", resolvedParams.projectId)
     .order("created_at", { ascending: true });
+
+  if (messagesError) {
+    console.error("project_messages query failed:", {
+      message: messagesError.message,
+      details: messagesError.details,
+      hint: messagesError.hint,
+      code: messagesError.code,
+    });
+  }
 
   if (!messages || messages.length === 0) {
     // chat not reported or RLS blocked — show short notice
@@ -40,11 +61,20 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
 
   const messageIds = messages.map((m: any) => m.id);
 
-  const { data: attachments } = await supabase
+  const { data: attachments, error: attachmentsError } = await supabase
     .from("project_message_attachments")
     .select("*")
     .in("message_id", messageIds)
     .order("created_at", { ascending: true });
+
+  if (attachmentsError) {
+    console.error("attachments query failed:", {
+      message: attachmentsError.message,
+      details: attachmentsError.details,
+      hint: attachmentsError.hint,
+      code: attachmentsError.code,
+    });
+  }
 
   // signed urls per bucket
   const bucketPathsByBucket: Record<string, string[]> = {};
@@ -80,16 +110,26 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
     attachmentsByMessage.set(att.message_id, [...arr, row]);
   }
 
-  const { data: reports } = await supabase
+  const { data: reports, error: reportsError } = await supabase
     .from("reports")
     .select("id,reportable_id,status,reason,reporter_id,created_at,profiles!reports_reporter_id_fkey(full_name)")
     .in("reportable_id", messageIds)
+    .eq("reportable_type", "project_message")
     .order("created_at", { ascending: false });
+
+  if (reportsError) {
+    console.error("reports query failed:", {
+      message: reportsError.message,
+      details: reportsError.details,
+      hint: reportsError.hint,
+      code: reportsError.code,
+    });
+  }
 
   const reportedMessageIds = (reports || []).map((r: any) => r.reportable_id);
 
   // choose target message
-  const requested = searchParams?.message;
+  const requested = resolvedSearch?.message;
   const targetFromParams = requested && reportedMessageIds.includes(requested) ? requested : null;
   const oldestUnresolved = (reports || []).filter((r: any) => r.status === "open").sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
   const fallback = oldestUnresolved?.reportable_id ?? reportedMessageIds[reportedMessageIds.length - 1] ?? messages[0].id;
@@ -106,8 +146,8 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
       <AdminChatViewer
         project={{ id: project.id, project_code: project.project_code, openedAt: project.created_at }}
         enquiry={Array.isArray(project.enquiries) ? project.enquiries[0] : project.enquiries}
-        customer={project.profiles}
-        provider={project.providers}
+        customer={Array.isArray(project.enquiries) ? (project.enquiries[0]?.profiles ?? null) : (project.enquiries?.profiles ?? null)}
+        provider={Array.isArray(project.enquiries) ? (Array.isArray(project.enquiries[0]?.providers) ? project.enquiries[0]?.providers[0] ?? null : project.enquiries[0]?.providers ?? null) : (project.enquiries?.providers ?? null)}
         messages={enrichedMessages}
         targetMessageId={targetMessageId}
       />

@@ -12,28 +12,55 @@ export default async function AdminChatsPage() {
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", userData.user.id).single();
   if (profile?.role !== "admin") redirect("/");
 
-  const { data: reports } = await supabase
+  const { data: reports, error: reportsError } = await supabase
     .from("reports")
     .select("id,reportable_id,status,reason,created_at")
     .eq("reportable_type", "project_message")
     .order("created_at", { ascending: false });
 
+  if (reportsError) {
+    console.error("reports query failed:", {
+      message: reportsError.message,
+      details: reportsError.details,
+      hint: reportsError.hint,
+      code: reportsError.code,
+    });
+  }
+
   const reportIds = (reports || []).map((r: any) => r.reportable_id);
 
-  const { data: projectMessages } = reportIds.length
+  const { data: projectMessages, error: pmError } = reportIds.length
     ? await supabase.from("project_messages").select("id,project_id").in("id", reportIds)
     : { data: [] };
 
+  if (pmError) {
+    console.error("project_messages query failed:", {
+      message: pmError.message,
+      details: pmError.details,
+      hint: pmError.hint,
+      code: pmError.code,
+    });
+  }
+
   const projectIds = Array.from(new Set((projectMessages || []).map((m: any) => m.project_id)));
 
-  const { data: projects } = projectIds.length
+  const { data: projects, error: projectsError } = projectIds.length
     ? await supabase
         .from("projects")
         .select(
-          `id,project_code,created_at,enquiries(id,enquiry_code,status,completed_at,admin_cancelled_at,updated_at),profiles!enquiries_customer_id_fkey(full_name,user_code),providers(id,business_name,profiles!providers_id_fkey(user_code))`
+          `id,project_code,created_at,enquiries(id,enquiry_code,status,completed_at,admin_cancelled_at,updated_at,customer_id,provider_id,profiles!enquiries_customer_id_fkey(full_name,user_code),providers(id,business_name,profiles!providers_id_fkey(user_code)))`
         )
         .in("id", projectIds)
     : { data: [] };
+
+  if (projectsError) {
+    console.error("projects query failed:", {
+      message: projectsError.message,
+      details: projectsError.details,
+      hint: projectsError.hint,
+      code: projectsError.code,
+    });
+  }
 
   const byProject = (projects || []).map((p: any) => {
     const projectReports = (reports || []).filter((r: any) => {
@@ -49,15 +76,19 @@ export default async function AdminChatsPage() {
 
     const enquiry = Array.isArray(p.enquiries) ? p.enquiries[0] : p.enquiries ?? null;
     const openedAt = p.created_at;
-    const closedAt = enquiry?.status === "completed" ? enquiry.completed_at ?? enquiry.updated_at : enquiry?.admin_cancelled_at ?? null;
+    // closedAt: for any non-confirmed enquiry use completed/admin_cancelled/updated, otherwise leave null so duration is "Open for"
+    const closedAt = enquiry?.status !== "confirmed" ? enquiry?.completed_at ?? enquiry?.admin_cancelled_at ?? enquiry?.updated_at ?? null : null;
+
+    const customer = enquiry?.profiles ?? null;
+    const provider = Array.isArray(enquiry?.providers) ? enquiry?.providers[0] ?? null : enquiry?.providers ?? null;
 
     return {
       id: p.id,
       project_code: p.project_code,
       enquiry_code: enquiry?.enquiry_code ?? null,
       enquiry_status: enquiry?.status ?? null,
-      customer: p.profiles ?? null,
-      provider: p.providers ?? null,
+      customer,
+      provider,
       openedAt,
       duration: humanDuration(openedAt, closedAt),
       totalReports,
