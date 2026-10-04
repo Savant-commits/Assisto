@@ -80,6 +80,36 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
     redirect(`/enquiries?chat=${notification.related_id}`);
   }
 
+  if (notification.type === "new_report" && notification.related_id) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userData.user.id)
+      .single();
+
+    if (profile?.role === "admin") {
+      const { data: report } = await supabase
+        .from("reports")
+        .select("id,reportable_type,reportable_id,status")
+        .eq("id", notification.related_id)
+        .maybeSingle();
+
+      if (report?.reportable_type === "project_message" && report.reportable_id) {
+        const { data: message } = await supabase
+          .from("project_messages")
+          .select("project_id")
+          .eq("id", report.reportable_id)
+          .maybeSingle();
+
+        if (message?.project_id) {
+          redirect(`/admin/reports/chat/${message.project_id}?message=${report.reportable_id}`);
+        }
+      }
+
+      redirect("/admin/reports");
+    }
+  }
+
   // Handle review_received type
   let review: Review | null = null;
   let enquiry: Enquiry | null = null;

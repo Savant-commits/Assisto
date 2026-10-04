@@ -57,3 +57,4 @@ export type ProjectMessage = {
 };
 
 export type BanDuration = "1_week" | "1_year" | "permanent";
+export type ReportStatus = "open" | "reviewed" | "actioned" | "dismissed";

@@ -22,6 +22,7 @@ type ReportRecord = {
   reason?: string | null;
   reporter_id?: string | null;
   created_at: string;
+  updated_at?: string | null;
   admin_notes?: string | null;
   profiles?: { full_name?: string | null } | null;
 };
@@ -165,7 +166,7 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
 
   const { data: reports, error: reportsError } = await supabase
     .from("reports")
-    .select("id,reportable_id,status,reason,reporter_id,created_at,admin_notes,profiles!reports_reporter_id_fkey(full_name)")
+    .select("id,reportable_id,status,reason,reporter_id,created_at,updated_at,admin_notes,profiles!reports_reporter_id_fkey(full_name)")
     .in("reportable_id", messageIds)
     .eq("reportable_type", "project_message")
     .order("created_at", { ascending: false });
@@ -189,6 +190,7 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
       status: r.status,
       reason: r.reason,
       reporter_name: r.profiles?.full_name ?? null,
+      updated_at: r.updated_at ?? null,
       admin_notes: r.admin_notes ?? null,
       target: {
         sender_id: message?.sender_id ?? null,

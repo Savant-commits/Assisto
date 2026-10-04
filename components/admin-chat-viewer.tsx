@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEscapeKey } from "@/lib/use-escape-key";
-import AdminReportDetail from "./admin-report-detail";
 import BanUserDialog, { type BanDuration } from "./ban-user-dialog";
 import SendWarningDialog from "./send-warning-dialog";
+import AdminTakeActionMenu from "./admin-take-action-menu";
 
 type Attachment = {
   id: string;
@@ -26,6 +26,7 @@ type ReportRow = {
   reason?: string | null;
   admin_notes?: string | null;
   reporter_name?: string | null;
+  updated_at?: string | null;
   target?: { sender_id?: string | null; full_name?: string | null; user_code?: string | null } | null;
 };
 
@@ -61,6 +62,11 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
   const [removeAlsoActioned, setRemoveAlsoActioned] = useState(true);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [removingMessageId, setRemovingMessageId] = useState<string | null>(null);
+
+  function showToast(message: string) {
+    setBanToast(message);
+    window.setTimeout(() => setBanToast(null), 5000);
+  }
 
   useEscapeKey(removeMessageId !== null, () => setRemoveMessageId(null));
 
@@ -219,9 +225,21 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
 
           return (
             <div key={m.id} id={`msg-${m.id}`} className={`w-full p-2 scroll-mt-24 ${reported ? 'border-l-4 border-red-500' : ''} ${highlightedId === m.id ? 'ring-4 ring-red-200 bg-red-50' : ''}`}>
-              <div className="mb-1 flex items-center justify-between">
+              <div className="mb-1 flex items-center justify-between gap-3">
                 <div className="text-sm font-medium">{isProvider ? (provider?.business_name ?? 'Provider') : (customer?.full_name ?? 'Customer')} <span className="ml-2 text-xs text-muted-foreground">{isProvider ? 'Provider' : 'Customer'}</span></div>
-                <div className="text-xs text-muted-foreground">{formatDateTime(m.created_at)}</div>
+                <div className="flex items-center gap-2">
+                  {reported && (
+                    <AdminTakeActionMenu
+                      message={m}
+                      authorName={isProvider ? (provider?.business_name ?? 'Provider') : (customer?.full_name ?? 'Customer')}
+                      authorUserCode={isProvider ? provider?.profiles?.user_code ?? null : customer?.user_code ?? null}
+                      isAuthorAdmin={false}
+                      onRemoveToggle={(messageId) => setRemoveMessageId(messageId)}
+                      onToast={showToast}
+                    />
+                  )}
+                  <div className="text-xs text-muted-foreground">{formatDateTime(m.created_at)}</div>
+                </div>
               </div>
 
               {m.admin_removed_at && (
@@ -291,13 +309,13 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
                 </div>
               )}
 
-              {!m.deleted_at && !m.admin_removed_at && (
+              {!reported && !m.deleted_at && !m.admin_removed_at && (
                 <div className="mt-2">
-                  <button type="button" className="text-xs text-blue-600 underline" onClick={() => setRemoveMessageId(m.id)}>{m.admin_removed_at ? "Restore message" : "Remove message"}</button>
+                  <button type="button" className="text-xs text-blue-600 underline" onClick={() => setRemoveMessageId(m.id)}>Remove message</button>
                 </div>
               )}
 
-              {m.admin_removed_at && (
+              {!reported && m.admin_removed_at && (
                 <div className="mt-2">
                   <button type="button" className="text-xs text-blue-600 underline" onClick={() => handleMessageRemoval(m)}>{removingMessageId === m.id ? "Restoring..." : "Restore message"}</button>
                 </div>
@@ -309,15 +327,9 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
                   {(m.reports || []).map((r) => (
                     <div key={r.id} className="mt-1 text-xs text-muted-foreground">{r.status} · {r.reason} · {r.reporter_name}</div>
                   ))}
-                </div>
-              )}
-
-              {reported && (m.reports || []).some((report) => report.status === "open" || report.status === "reviewed") && (
-                <div className="mt-3 rounded border border-red-200 bg-red-50 p-2">
-                  <div className="mb-2 text-xs font-medium text-red-700">Resolve this report</div>
-                  {(m.reports || []).map((report) => (
-                    <div key={report.id} className="mt-2 rounded border bg-background p-2">
-                      <AdminReportDetail report={{ ...report, target: report.target ?? { sender_id: m.sender_id, admin_removed_at: m.admin_removed_at ?? null } }} />
+                  {(m.reports || []).filter((r) => !!r.admin_notes?.trim()).map((r) => (
+                    <div key={`notes-${r.id}`} className="mt-2 rounded border bg-muted/60 p-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">Admin note:</span> {r.admin_notes}
                     </div>
                   ))}
                 </div>
