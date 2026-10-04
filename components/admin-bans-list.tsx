@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { liftBan } from "@/app/actions/bans";
+import ConfirmDialog from "@/components/confirm-dialog";
 
 export type UserBanListItem = {
   id: string;
@@ -47,6 +48,7 @@ export default function AdminBansList({ bans }: { bans: UserBanListItem[] }) {
   const [tab, setTab] = useState<TabKey>("active");
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingLift, setPendingLift] = useState<{ ban: UserBanListItem; reactivate: boolean } | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -73,18 +75,25 @@ export default function AdminBansList({ bans }: { bans: UserBanListItem[] }) {
   }, [bans, query, tab]);
 
   async function handleLift(ban: UserBanListItem) {
-    const confirmText = ban.provider_was_active && ban.provider && !ban.provider.is_active
-      ? "Lift this ban and reactivate the provider listing?"
-      : "Lift this ban?";
-    if (!window.confirm(confirmText)) return;
+    const reactivate = !!ban.provider_was_active && !!ban.provider && ban.provider.is_active === false;
+    setPendingLift({ ban, reactivate });
+  }
 
-    setBusyId(ban.id);
+  async function confirmLift() {
+    if (!pendingLift) return;
+
+    setBusyId(pendingLift.ban.id);
     try {
-      await liftBan(ban.id);
+      await liftBan(pendingLift.ban.id);
     } finally {
       setBusyId(null);
+      setPendingLift(null);
     }
   }
+
+  const confirmUserName = pendingLift?.ban.user?.full_name || pendingLift?.ban.user?.user_code
+    ? `${pendingLift.ban.user?.full_name || "User"}${pendingLift.ban.user?.user_code ? ` (#${pendingLift.ban.user.user_code})` : ""}`
+    : "This user";
 
   return (
     <div>
@@ -180,6 +189,17 @@ export default function AdminBansList({ bans }: { bans: UserBanListItem[] }) {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!pendingLift}
+        title="Lift this ban?"
+        message={`${confirmUserName} will be able to sign in again.${pendingLift?.reactivate ? " Their provider listing will be shown again." : ""}`}
+        confirmLabel="Lift ban"
+        cancelLabel="Cancel"
+        busy={pendingLift ? busyId === pendingLift.ban.id : false}
+        onConfirm={() => void confirmLift()}
+        onCancel={() => setPendingLift(null)}
+      />
     </div>
   );
 }
