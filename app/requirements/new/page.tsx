@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import ServiceCombobox from "@/components/service-combobox";
+import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +33,8 @@ type FormValues = z.infer<typeof schema>;
 
 export default function NewRequirementPage() {
   const router = useRouter();
+  const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
+  const [pendingValues, setPendingValues] = useState<FormValues | null>(null);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { title: "", description: "", city: "Cuddalore", budget_range: "", service: "" },
@@ -44,6 +48,17 @@ export default function NewRequirementPage() {
 
     if (!userData.user) {
       router.push(`/login?redirect=/requirements/new`);
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("phone_verified_at")
+      .eq("id", userData.user.id)
+      .single();
+    if (!profile?.phone_verified_at) {
+      setPendingValues(values);
+      setIsPhoneGateOpen(true);
       return;
     }
 
@@ -79,6 +94,11 @@ export default function NewRequirementPage() {
       .single();
       
     if (error) {
+      if (error.message === "PHONE_NOT_VERIFIED") {
+        setPendingValues(values);
+        setIsPhoneGateOpen(true);
+        return;
+      }
       console.error("requirements insert error", error);
       // Show a basic client-side message if insert failed
       // (could be improved with a UI component)
@@ -100,6 +120,13 @@ export default function NewRequirementPage() {
       params.set("requirement", data.id);
       router.push(`/discover?${params.toString()}`);
     }
+  }
+
+  function handlePhoneVerified() {
+    setIsPhoneGateOpen(false);
+    const values = pendingValues;
+    setPendingValues(null);
+    if (values) void onSubmit(values);
   }
 
   return (
@@ -193,6 +220,11 @@ export default function NewRequirementPage() {
           </Button>
         </form>
       </Form>
+      <PhoneGateDialog
+        isOpen={isPhoneGateOpen}
+        onClose={() => setIsPhoneGateOpen(false)}
+        onVerified={handlePhoneVerified}
+      />
     </div>
   );
 }

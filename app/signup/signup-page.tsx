@@ -141,10 +141,11 @@ export default function SignupPage() {
             name="phone"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Phone</FormLabel>
+                <FormLabel>Mobile number</FormLabel>
                 <FormControl>
                   <Input placeholder="Mobile number" {...field} />
                 </FormControl>
+                <p className="text-xs text-muted-foreground">You will verify it with a code before you can send enquiries.</p>
                 <FormMessage />
               </FormItem>
             )}

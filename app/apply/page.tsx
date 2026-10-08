@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,6 +54,8 @@ export default function ApplyPage() {
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
+  const [pendingValues, setPendingValues] = useState<FormValues | null>(null);
 
   const [existingApp, setExistingApp] = useState<any | null>(null);
   const [isProvider, setIsProvider] = useState(false);
@@ -133,6 +136,16 @@ export default function ApplyPage() {
       }
 
       const userId = userData.user.id;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("phone_verified_at")
+        .eq("id", userId)
+        .single();
+      if (!profile?.phone_verified_at) {
+        setPendingValues(values);
+        setIsPhoneGateOpen(true);
+        return;
+      }
 
       // Prevent duplicates: check existing application or provider
       const { data: existing } = await supabase.from("provider_applications").select("id,status").eq("user_id", userId).single();
@@ -158,6 +171,11 @@ export default function ApplyPage() {
         .single();
 
       if (error) {
+        if (error.message === "PHONE_NOT_VERIFIED") {
+          setPendingValues(values);
+          setIsPhoneGateOpen(true);
+          return;
+        }
         console.error("apply: insert error", error);
         setSubmitError(error.message || "An unexpected error occurred");
       } else {
@@ -166,6 +184,13 @@ export default function ApplyPage() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handlePhoneVerified() {
+    setIsPhoneGateOpen(false);
+    const values = pendingValues;
+    setPendingValues(null);
+    if (values) void onSubmit(values);
   }
 
   return (
@@ -196,8 +221,9 @@ export default function ApplyPage() {
           )}
         </div>
       ) : (
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+        <>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
             <FormField
               control={form.control}
               name="professional_type"
@@ -309,8 +335,14 @@ export default function ApplyPage() {
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || isSubmitting}>
               {isSubmitting ? "Submitting…" : "Submit application"}
             </Button>
-          </form>
-        </Form>
+            </form>
+          </Form>
+          <PhoneGateDialog
+            isOpen={isPhoneGateOpen}
+            onClose={() => setIsPhoneGateOpen(false)}
+            onVerified={handlePhoneVerified}
+          />
+        </>
       )}
     </div>
   );

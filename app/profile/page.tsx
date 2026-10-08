@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
+import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,6 @@ import {
 
 const schema = z.object({
   full_name: z.string().min(2),
-  phone: z.string().min(6).optional(),
   city: z.enum(["Cuddalore", "Chidambaram"]).optional(),
 });
 
@@ -32,11 +32,11 @@ type Profile = {
   role: string | null;
   avatar_url: string | null;
   user_code: string | null;
+  phone_verified_at: string | null;
 };
 
 const emptyFormValues: FormValues = {
   full_name: "",
-  phone: "",
   city: "Cuddalore",
 };
 
@@ -50,6 +50,9 @@ export default function ProfilePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isProvider, setIsProvider] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
+  const [phoneVerifiedAt, setPhoneVerifiedAt] = useState<string | null>(null);
+  const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [savedFormValues, setSavedFormValues] = useState<FormValues>(emptyFormValues);
 
@@ -70,7 +73,7 @@ export default function ProfilePage() {
 
       const { data: profileData } = await supabase
         .from("profiles")
-        .select("full_name, city, role, avatar_url, user_code")
+        .select("full_name, city, role, avatar_url, user_code, phone_verified_at")
         .eq("id", userData.user.id)
         .single();
       const { data: phoneData } = await supabase.rpc("get_profile_phone", {
@@ -81,11 +84,12 @@ export default function ProfilePage() {
       if (mounted && profileData) {
         const nextValues: FormValues = {
           full_name: profileData.full_name || "",
-          phone: phoneData || "",
           city: profileData.city || "Cuddalore",
         };
 
         setProfile(profileData);
+        setPhoneNumber(phoneData || null);
+        setPhoneVerifiedAt(profileData.phone_verified_at);
         setSavedFormValues(nextValues);
         form.reset(nextValues);
         setAvatarUrl(profileData.avatar_url);
@@ -117,6 +121,20 @@ export default function ProfilePage() {
       setIsEditing(false);
       router.refresh();
     }
+  }
+
+  async function refreshPhoneDetails() {
+    const supabase = createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    const [{ data: phoneData }, { data: profileData }] = await Promise.all([
+      supabase.rpc("get_profile_phone", { profile_id: userData.user.id }),
+      supabase.from("profiles").select("phone_verified_at").eq("id", userData.user.id).single(),
+    ]);
+    setPhoneNumber(phoneData || null);
+    setPhoneVerifiedAt(profileData?.phone_verified_at || null);
+    router.refresh();
   }
 
   function handleCancelEdit() {
@@ -235,16 +253,35 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      <div className="mb-6">
+        <p className="mb-1 text-sm font-medium text-muted-foreground">Phone</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-base">{phoneNumber || "Not provided"}</p>
+          {phoneVerifiedAt ? (
+            <Badge variant="outline" className="border-green-600 text-green-700 dark:text-green-400">
+              Verified · {new Date(phoneVerifiedAt).toLocaleDateString()}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="border-amber-600 text-amber-700 dark:text-amber-400">
+              Not verified
+            </Badge>
+          )}
+          {!phoneVerifiedAt && (
+            <Button type="button" size="sm" variant="outline" onClick={() => setIsPhoneGateOpen(true)}>
+              Verify
+            </Button>
+          )}
+          <Button type="button" size="sm" variant="outline" onClick={() => setIsPhoneGateOpen(true)}>
+            Change number
+          </Button>
+        </div>
+      </div>
+
       {!isEditing ? (
         <div className="space-y-5">
           <div>
             <p className="text-lg font-medium">{profile?.full_name || savedFormValues.full_name || "Not provided"}</p>
             {profile?.user_code ? <p className="mt-1 text-xs text-muted-foreground">#{profile.user_code}</p> : null}
-          </div>
-
-          <div>
-            <p className="mb-1 text-sm font-medium text-muted-foreground">Phone</p>
-            <p className="text-base">{savedFormValues.phone || "Not provided"}</p>
           </div>
 
           <div>
@@ -271,20 +308,6 @@ export default function ProfilePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Full name</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -322,7 +345,15 @@ export default function ProfilePage() {
           </Form>
         </>
       )}
-
+      <PhoneGateDialog
+        isOpen={isPhoneGateOpen}
+        onClose={() => setIsPhoneGateOpen(false)}
+        onVerified={() => {
+          setIsPhoneGateOpen(false);
+          void refreshPhoneDetails();
+        }}
+        initialPhone={phoneNumber || undefined}
+      />
     </div>
   );
 }

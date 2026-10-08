@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ContactUnlock } from "@/components/contact-unlock";
+import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { ReportDialog } from "@/components/report-dialog";
 import { ReviewModal } from "@/components/review-modal";
 import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib/reviews";
@@ -88,6 +89,8 @@ function EnquiryWidget({
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
+  const [pendingValues, setPendingValues] = useState<EnquiryFormValues | null>(null);
 
   const form = useForm<EnquiryFormValues>({
     resolver: zodResolver(enquirySchema),
@@ -141,6 +144,17 @@ function EnquiryWidget({
       return;
     }
 
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("phone_verified_at")
+      .eq("id", user.id)
+      .single();
+    if (!profile?.phone_verified_at) {
+      setPendingValues(values);
+      setIsPhoneGateOpen(true);
+      return;
+    }
+
     const { data: existing } = await supabase
       .from("enquiries")
       .select("id")
@@ -170,12 +184,25 @@ function EnquiryWidget({
         return;
       }
 
+      if (error.message === "PHONE_NOT_VERIFIED") {
+        setPendingValues(values);
+        setIsPhoneGateOpen(true);
+        return;
+      }
+
       setErrorMessage(error.message || "Unable to send your enquiry right now.");
       return;
     }
 
     setIsSuccess(true);
     setIsOpen(false);
+  }
+
+  function handlePhoneVerified() {
+    setIsPhoneGateOpen(false);
+    const values = pendingValues;
+    setPendingValues(null);
+    if (values) void onSubmit(values);
   }
 
   if (isSuccess) {
@@ -206,8 +233,9 @@ function EnquiryWidget({
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+    <>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <FormField
           control={form.control}
           name="message"
@@ -236,8 +264,14 @@ function EnquiryWidget({
             Send enquiry
           </Button>
         </div>
-      </form>
-    </Form>
+        </form>
+      </Form>
+      <PhoneGateDialog
+        isOpen={isPhoneGateOpen}
+        onClose={() => setIsPhoneGateOpen(false)}
+        onVerified={handlePhoneVerified}
+      />
+    </>
   );
 }
 
