@@ -5,11 +5,17 @@ import AdminSendWarning from "@/components/admin-send-warning";
 
 export default async function AdminPage() {
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) {
+    console.error("admin dashboard auth lookup failed:", userError.message, undefined, undefined, userError.code);
+  }
 
   if (!userData.user) redirect("/login?redirect=/admin");
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", userData.user.id).single();
+  const { data: profile, error: profileError } = await supabase.from("profiles").select("role").eq("id", userData.user.id).maybeSingle();
+  if (profileError) {
+    console.error("admin dashboard role lookup failed:", profileError.message, profileError.details, profileError.hint, profileError.code);
+  }
   if (profile?.role !== "admin") redirect("/");
 
   return (
@@ -39,6 +45,21 @@ export default async function AdminPage() {
         >
           <h2 className="font-semibold">Applications</h2>
           <p className="mt-1 text-sm text-muted-foreground">Review provider applications</p>
+        </Link>
+
+        <Link href="/admin/credentials" className="rounded-lg border p-6 hover:bg-muted">
+          <h2 className="font-semibold">Credentials</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Review provider certificates and licences</p>
+        </Link>
+
+        <Link href="/admin/bans" className="rounded-lg border p-6 hover:bg-muted">
+          <h2 className="font-semibold">Bans</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Review active and historical account suspensions</p>
+        </Link>
+
+        <Link href="/admin/chats" className="rounded-lg border p-6 hover:bg-muted">
+          <h2 className="font-semibold">Chats</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Review reported project conversations</p>
         </Link>
       </div>
 

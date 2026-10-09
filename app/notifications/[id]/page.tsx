@@ -44,7 +44,7 @@ type Review = {
   created_at: string;
   enquiry_id: number;
   customer_id: string;
-  profiles?: { full_name: string | null } | null;
+  profiles?: { full_name: string | null } | Array<{ full_name: string | null }> | null;
 };
 
 type Enquiry = {
@@ -54,26 +54,44 @@ type Enquiry = {
   contact_unlocked_at: string | null;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
-  customer_requirements?: { description: string | null } | null;
-  projects?: { id: string; project_code: string } | null;
+  customer_requirements?: { description: string | null } | Array<{ description: string | null }> | null;
+  projects?: { id: string; project_code: string } | Array<{ id: string; project_code: string }> | null;
 };
 
 export default async function NotificationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) {
+    console.error("notification auth lookup failed:", userError.message, undefined, undefined, userError.code);
+  }
   if (!userData.user) return notFound();
 
-  const { data: notification } = await supabase
+  const { data: notification, error: notificationError } = await supabase
     .from("notifications")
     .select("id,title,body,is_read,type,related_id,created_at,recipient_id")
     .eq("id", id)
     .maybeSingle();
 
+  if (notificationError) {
+    console.error("notification lookup failed:", notificationError.message, notificationError.details, notificationError.hint, notificationError.code);
+  }
+
   if (!notification || notification.recipient_id !== userData.user.id) return notFound();
 
   if (!notification.is_read) {
-    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
+    const { error: updateError } = await supabase.from("notifications").update({ is_read: true }).eq("id", id);
+    if (updateError) {
+      console.error("notification read update failed:", updateError.message, updateError.details, updateError.hint, updateError.code);
+    }
+  }
+
+  if (notification.type === "credential_submitted" && notification.related_id) {
+    redirect(`/admin/credentials?credential=${encodeURIComponent(notification.related_id)}`);
+  }
+
+  if (notification.type === "credential_reviewed") {
+    redirect("/provider/credentials");
   }
 
   if (notification.type === "project_message" && notification.related_id) {
@@ -81,25 +99,37 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
   }
 
   if (notification.type === "new_report" && notification.related_id) {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", userData.user.id)
-      .single();
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("notification admin role lookup failed:", profileError.message, profileError.details, profileError.hint, profileError.code);
+    }
 
     if (profile?.role === "admin") {
-      const { data: report } = await supabase
+      const { data: report, error: reportError } = await supabase
         .from("reports")
         .select("id,reportable_type,reportable_id,status")
         .eq("id", notification.related_id)
         .maybeSingle();
 
+      if (reportError) {
+        console.error("notification report lookup failed:", reportError.message, reportError.details, reportError.hint, reportError.code);
+      }
+
       if (report?.reportable_type === "project_message" && report.reportable_id) {
-        const { data: message } = await supabase
+        const { data: message, error: messageError } = await supabase
           .from("project_messages")
           .select("project_id")
           .eq("id", report.reportable_id)
           .maybeSingle();
+
+        if (messageError) {
+          console.error("notification project message lookup failed:", messageError.message, messageError.details, messageError.hint, messageError.code);
+        }
 
         if (message?.project_id) {
           redirect(`/admin/reports/chat/${message.project_id}?message=${report.reportable_id}`);
@@ -127,7 +157,7 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
     }
 
     if (reviewData) {
-      review = reviewData as Review;
+      review = reviewData as unknown as Review;
     } else {
       // Try to find review by enquiry_id
       const { data: reviewByEnquiry, error: reviewByEnquiryError } = await supabase
@@ -141,7 +171,7 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
       }
 
       if (reviewByEnquiry) {
-        review = reviewByEnquiry as Review;
+        review = reviewByEnquiry as unknown as Review;
       }
     }
 
@@ -158,10 +188,16 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
       }
 
       if (enquiryData) {
-        enquiry = enquiryData as Enquiry;
+        enquiry = enquiryData as unknown as Enquiry;
       }
     }
   }
+
+  const reviewProfile = Array.isArray(review?.profiles) ? review.profiles[0] : review?.profiles;
+  const customerRequirements = Array.isArray(enquiry?.customer_requirements)
+    ? enquiry.customer_requirements[0]
+    : enquiry?.customer_requirements;
+  const project = Array.isArray(enquiry?.projects) ? enquiry.projects[0] : enquiry?.projects;
 
   return (
     <main className="mx-auto max-w-3xl p-6">
@@ -184,19 +220,19 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
           </div>
 
           {/* Customer name and review date */}
-          {review.profiles?.full_name && (
+          {reviewProfile?.full_name && (
             <div>
               <h2 className="text-sm font-semibold text-muted-foreground">From</h2>
-              <p className="mt-1">{review.profiles.full_name}</p>
+              <p className="mt-1">{reviewProfile.full_name}</p>
               <p className="text-xs text-muted-foreground mt-1">Reviewed {formatDateTime(review.created_at)}</p>
             </div>
           )}
 
           {/* Type of work */}
-          {enquiry.customer_requirements?.description && (
+          {customerRequirements?.description && (
             <div>
               <h2 className="text-sm font-semibold text-muted-foreground">Type of work</h2>
-              <p className="mt-1">{enquiry.customer_requirements.description}</p>
+              <p className="mt-1">{customerRequirements.description}</p>
             </div>
           )}
 
@@ -258,11 +294,11 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
           })()}
 
           {/* Project code */}
-          {enquiry.projects?.id && (
+          {project?.id && (
             <div>
               <h2 className="text-sm font-semibold text-muted-foreground">Project</h2>
-              <a href={`/projects/${enquiry.projects.id}`} className="mt-1 text-sm text-blue-600 underline">
-                {enquiry.projects.project_code}
+              <a href={`/projects/${project.id}`} className="mt-1 text-sm text-blue-600 underline">
+                {project.project_code}
               </a>
             </div>
           )}

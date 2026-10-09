@@ -33,10 +33,11 @@ export async function getEligibleEnquiriesForReview(
   const { data, error } = await query;
 
   if (error) {
+    console.error("eligible review enquiries query failed:", error.message, error.details, error.hint, error.code);
     throw error;
   }
 
-  const enquiryRows = (data as EligibleReviewEnquiry[] | null) ?? [];
+  const enquiryRows = (data as unknown as EligibleReviewEnquiry[] | null) ?? [];
   if (enquiryRows.length === 0) {
     return [];
   }
@@ -50,6 +51,7 @@ export async function getEligibleEnquiriesForReview(
     .in("enquiry_id", enquiryIds);
 
   if (reviewError) {
+    console.error("eligible review history query failed:", reviewError.message, reviewError.details, reviewError.hint, reviewError.code);
     throw reviewError;
   }
 

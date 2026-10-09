@@ -62,6 +62,16 @@ type ProviderReview = {
   profiles?: { full_name?: string | null } | null;
 };
 
+type VerifiedCredential = {
+  type_label: string;
+  issuing_body: string;
+  verified_at: string;
+};
+
+function logSupabaseError(context: string, error: { message: string; details?: string; hint?: string; code?: string }) {
+  console.error(context, error.message, error.details, error.hint, error.code);
+}
+
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric" });
@@ -107,20 +117,24 @@ function EnquiryWidget({
     setErrorMessage(null);
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
+    if (userError) logSupabaseError("provider enquiry auth lookup failed:", userError);
 
     if (!user) {
       router.push(buildLoginRedirect(providerId, requirementId));
       return;
     }
 
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from("enquiries")
       .select("id")
       .eq("customer_id", user.id)
       .eq("provider_id", providerId)
       .eq("status", "sent")
       .limit(1);
+
+    if (existingError) logSupabaseError("existing provider enquiry lookup failed:", existingError);
 
     if (existing && existing.length > 0) {
       setIsPending(true);
@@ -137,31 +151,36 @@ function EnquiryWidget({
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
+    if (userError) logSupabaseError("provider enquiry submit auth lookup failed:", userError);
 
     if (!user) {
       router.push(buildLoginRedirect(providerId, requirementId));
       return;
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("phone_verified_at")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
+    if (profileError) logSupabaseError("provider enquiry phone verification lookup failed:", profileError);
     if (!profile?.phone_verified_at) {
       setPendingValues(values);
       setIsPhoneGateOpen(true);
       return;
     }
 
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from("enquiries")
       .select("id")
       .eq("customer_id", user.id)
       .eq("provider_id", providerId)
       .eq("status", "sent")
       .limit(1);
+
+    if (existingError) logSupabaseError("existing provider enquiry lookup failed:", existingError);
 
     if (existing && existing.length > 0) {
       setIsPending(true);
@@ -178,6 +197,7 @@ function EnquiryWidget({
     });
 
     if (error) {
+      logSupabaseError("provider enquiry insert failed:", error);
       if (error.code === "23505") {
         setIsPending(true);
         setIsOpen(false);
@@ -284,6 +304,7 @@ export default function ProviderProfilePage() {
 
   const [provider, setProvider] = useState<ProviderRecord | null>(null);
   const [reviews, setReviews] = useState<ProviderReview[]>([]);
+  const [verifiedCredentials, setVerifiedCredentials] = useState<VerifiedCredential[]>([]);
   const [initialRequirementMessage, setInitialRequirementMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAllWork, setShowAllWork] = useState(false);
@@ -298,15 +319,18 @@ export default function ProviderProfilePage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const refreshProfileReviews = useCallback(async () => {
-    const { data: reviewsData } = await supabase
+    const { data: reviewsData, error: reviewsError } = await supabase
       .from("reviews")
       .select("id,rating,comment,created_at,customer_id,profiles!reviews_customer_id_fkey(full_name)")
       .eq("provider_id", id)
       .order("created_at", { ascending: false });
 
+    if (reviewsError) logSupabaseError("provider reviews query failed:", reviewsError);
+
     setReviews((reviewsData as ProviderReview[]) ?? []);
 
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) logSupabaseError("provider profile viewer auth lookup failed:", userError);
     const userId = userData.user?.id ?? null;
     setCurrentUserId(userId);
 
@@ -325,12 +349,12 @@ export default function ProviderProfilePage() {
     async function load() {
       setLoading(true);
 
-      const { data: providerData } = await supabase
+      const { data: providerData, error: providerError } = await supabase
         .from("providers")
         .select(
           `id, business_name, headline, bio, years_experience, city, is_verified,
            avg_rating, review_count,
-           profiles ( full_name, email, avatar_url ),
+           profiles!providers_id_fkey ( full_name, email, avatar_url ),
            provider_categories ( service_categories ( id, name ) ),
            provider_portfolio_items ( id, image_url, caption, description, media_type, sort_order, created_at )`
         )
@@ -338,6 +362,8 @@ export default function ProviderProfilePage() {
         .eq("is_active", true)
         .order("sort_order", { foreignTable: "provider_portfolio_items", ascending: true })
         .maybeSingle();
+
+      if (providerError) logSupabaseError("public provider profile query failed:", providerError);
 
       if (!isMounted) return;
 
@@ -347,10 +373,26 @@ export default function ProviderProfilePage() {
 
       setProvider(providerData ? { ...providerData, provider_portfolio_items: orderedPortfolio } : null);
 
-      const { data: userData } = await supabase.auth.getUser();
+      if (providerData) {
+        const { data: credentialData, error: credentialError } = await supabase.rpc("get_provider_verified_credentials", {
+          p_provider_id: providerData.id,
+        });
+        if (credentialError) {
+          logSupabaseError("verified provider credentials RPC failed:", credentialError);
+          if (isMounted) setVerifiedCredentials([]);
+        } else if (isMounted) {
+          setVerifiedCredentials((credentialData ?? []) as VerifiedCredential[]);
+        }
+      } else if (isMounted) {
+        setVerifiedCredentials([]);
+      }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) logSupabaseError("provider profile viewer auth lookup failed:", userError);
       const userId = userData.user?.id ?? null;
       if (userId) {
-        const { data: providerRow } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
+        const { data: providerRow, error: providerRowError } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
+        if (providerRowError) logSupabaseError("viewer provider lookup failed:", providerRowError);
         if (isMounted) {
           setCurrentUserId(userId);
           setIsCurrentUserProvider(Boolean(providerRow));
@@ -365,11 +407,13 @@ export default function ProviderProfilePage() {
       }
 
       if (requirementId) {
-        const { data: requirementRow } = await supabase
+        const { data: requirementRow, error: requirementError } = await supabase
           .from("customer_requirements")
           .select("id, description")
           .eq("id", requirementId)
           .maybeSingle();
+
+        if (requirementError) logSupabaseError("requirement details lookup failed:", requirementError);
 
         if (isMounted) {
           setInitialRequirementMessage(requirementRow?.description ?? "");
@@ -419,7 +463,7 @@ export default function ProviderProfilePage() {
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold">{name}</h1>
-            {provider.is_verified && <Badge variant="secondary">Verified</Badge>}
+            {provider.is_verified && <Badge variant="secondary">Credential verified</Badge>}
           </div>
           <p className="text-muted-foreground">
             {provider.city} · {provider.years_experience ?? 0} yrs experience
@@ -451,6 +495,21 @@ export default function ProviderProfilePage() {
         })}
       </div>
 
+      {verifiedCredentials.length > 0 && (
+        <section className="mb-8 rounded-lg border p-4">
+          <h2 className="mb-3 font-medium">Verified credentials</h2>
+          <ul className="space-y-3">
+            {verifiedCredentials.map((credential, index) => (
+              <li key={`${credential.type_label}-${credential.verified_at}-${index}`} className="text-sm">
+                <p className="font-medium">{credential.type_label} — {credential.issuing_body}</p>
+                <p className="text-xs text-muted-foreground">Document checked by Assisto on {formatDateTime(credential.verified_at)}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-muted-foreground">Assisto checks that a document was issued to this person. It does not guarantee the quality of their work.</p>
+        </section>
+      )}
+
       {provider.bio && (
         <div className="mb-8">
           <h2 className="mb-1 font-medium">About</h2>
@@ -463,7 +522,7 @@ export default function ProviderProfilePage() {
           <h2 className="mb-2 font-medium">Work</h2>
 
           {(() => {
-            const items = (provider.provider_portfolio_items ?? []) as ProviderRecord["provider_portfolio_items"];
+            const items = (provider.provider_portfolio_items ?? []) as NonNullable<ProviderRecord["provider_portfolio_items"]>;
             const filteredSortedItems = [...items]
               .filter((item) => {
                 if (mediaFilter === "photos") return item.media_type !== "video";
@@ -763,7 +822,8 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
     let mounted = true;
     async function load() {
       const supabase = createClient();
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) logSupabaseError("provider history auth lookup failed:", userError);
       if (!userData.user) {
         setLoading(false);
         return;
@@ -777,6 +837,7 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
         .order("created_at", { ascending: false });
 
       if (!mounted) return;
+      if (error) logSupabaseError("provider enquiry history query failed:", error);
       if (!error && data) {
         const rows = data as Array<{ id: number; message: string | null; status: string; created_at: string | null; customer_id: string }>;
         if (rows.length > 0) {
@@ -806,7 +867,10 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
     try {
       const supabase = createClient();
       const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
-      if (error) throw error;
+      if (error) {
+        logSupabaseError("provider enquiry status update failed:", error);
+        throw error;
+      }
       setHistory((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
     } catch (err: unknown) {
       setCardError(id, err instanceof Error ? err.message : "Update failed");

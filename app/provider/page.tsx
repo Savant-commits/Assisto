@@ -3,15 +3,22 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function ProviderPage() {
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) {
+    console.error("provider tools auth lookup failed:", userError.message, undefined, undefined, userError.code);
+  }
 
   if (!userData.user) redirect("/login?redirect=/provider");
 
-  const { data: provider } = await supabase
+  const { data: provider, error: providerError } = await supabase
     .from("providers")
     .select("id")
     .eq("id", userData.user.id)
-    .single();
+    .maybeSingle();
+
+  if (providerError) {
+    console.error("provider tools provider lookup failed:", providerError.message, providerError.details, providerError.hint, providerError.code);
+  }
 
   if (!provider) redirect("/");
 
@@ -34,6 +41,14 @@ export default async function ProviderPage() {
           <p className="mb-4 text-sm text-blue-800">Upload photos and videos of your past projects to showcase your work.</p>
           <a href="/profile/portfolio" className="inline-block rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
             Upload portfolio
+          </a>
+        </div>
+
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <h2 className="mb-2 font-medium text-blue-900">Credentials</h2>
+          <p className="mb-4 text-sm text-blue-800">Upload a degree, certificate or licence so customers can see it has been checked.</p>
+          <a href="/provider/credentials" className="inline-block rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            Manage credentials
           </a>
         </div>
       </div>

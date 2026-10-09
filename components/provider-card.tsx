@@ -28,7 +28,7 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
             <CardTitle className="truncate">
               <div className="flex items-center gap-2">
                 <span className="truncate">{name}</span>
-                {provider.is_verified && <Badge variant="secondary">Verified</Badge>}
+                {provider.is_verified && <Badge variant="secondary">Credential verified</Badge>}
               </div>
             </CardTitle>
             <CardDescription className="text-sm truncate">{provider.headline}</CardDescription>
@@ -54,12 +54,12 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
               <div key={item.id} className="relative aspect-square rounded overflow-hidden bg-muted">
                 {item.media_type === "video" ? (
                   <video
-                    src={item.image_url}
+                    src={item.image_url ?? undefined}
                     className="w-full h-full object-cover"
                   />
                 ) : (
                   <img
-                    src={item.image_url}
+                    src={item.image_url ?? undefined}
                     alt="Work sample"
                     className="w-full h-full object-cover"
                   />
