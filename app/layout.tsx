@@ -7,6 +7,7 @@ import SessionMenu from "@/components/session-menu";
 import { EnquiriesNavBadge } from "@/components/enquiries-nav-badge";
 import NotificationBell from "@/components/notification-bell";
 import BanGate from "@/components/ban-gate";
+import { PhoneVerifyBanner } from "@/components/phone-verify-banner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,9 +27,9 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
-  let profile: { full_name?: string; avatar_url?: string | null; role?: string | null } | null = null;
+  let profile: { full_name?: string; avatar_url?: string | null; role?: string | null; phone_verified_at?: string | null } | null = null;
   if (userData.user) {
-    const { data } = await supabase.from("profiles").select("full_name, avatar_url, role").eq("id", userData.user.id).single();
+    const { data } = await supabase.from("profiles").select("full_name, avatar_url, role, phone_verified_at").eq("id", userData.user.id).single();
     profile = data || null;
   }
 
@@ -81,6 +82,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             </div>
           </div>
         </header>
+        {userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
         {children}
         {userData.user && <NotificationBell />}
         {userData.user && <BanGate />}
