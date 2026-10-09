@@ -1,33 +1,32 @@
-import * as AuthHelpers from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Edge-compatible middleware to refresh Supabase session cookies.
-// Uses `createMiddlewareClient` which is designed for Next.js Edge middleware.
 export async function proxy(request: NextRequest) {
-  const response = NextResponse.next();
+  let response = NextResponse.next({ request });
 
-  try {
-    // Some package versions expose the helper differently; guard the call.
-    const createMiddlewareClient = (AuthHelpers as any).createMiddlewareClient;
-    if (typeof createMiddlewareClient === "function") {
-      const supabase = createMiddlewareClient({ req: request, res: response });
-
-      // `getUser` / `getSession` will cause the helper to refresh tokens when required
-      // and will set cookies on the response object.
-      await supabase.auth.getUser();
-    } else {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "proxy: createMiddlewareClient not available from @supabase/auth-helpers-nextjs; skipping session refresh"
-      );
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
     }
-  } catch (err) {
-    // Don't block the request on middleware failures; log discreetly.
-    // In development this avoids hard hangs — real monitoring should capture this.
-    // eslint-disable-next-line no-console
-    console.warn("middleware: supabase session refresh failed", err);
-  }
+  );
+
+  await supabase.auth.getUser();
 
   return response;
 }
