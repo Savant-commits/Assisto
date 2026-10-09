@@ -35,6 +35,7 @@ export default function NewRequirementPage() {
   const router = useRouter();
   const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
   const [pendingValues, setPendingValues] = useState<FormValues | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { title: "", description: "", city: "Cuddalore", budget_range: "", service: "" },
@@ -43,6 +44,7 @@ export default function NewRequirementPage() {
   // no client-side category list needed — ServiceCombobox handles services
 
   async function onSubmit(values: FormValues) {
+    setSubmitError(null);
     const supabase = createClient();
     const { data: userData } = await supabase.auth.getUser();
 
@@ -100,9 +102,7 @@ export default function NewRequirementPage() {
         return;
       }
       console.error("requirements insert error", error);
-      // Show a basic client-side message if insert failed
-      // (could be improved with a UI component)
-      alert(error.message || "Failed to post requirement");
+      setSubmitError(error.message || "Failed to post requirement");
       return;
     }
 
@@ -215,6 +215,7 @@ export default function NewRequirementPage() {
             )}
           />
 
+          {submitError && <p className="text-sm text-destructive">{submitError}</p>}
           <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
             Find professionals
           </Button>

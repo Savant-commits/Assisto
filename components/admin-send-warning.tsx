@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import SendWarningDialog from "./send-warning-dialog";
@@ -18,6 +18,13 @@ export default function AdminSendWarning() {
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [showWarningDialog, setShowWarningDialog] = useState(false);
+  const [successStatus, setSuccessStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!successStatus) return;
+    const timeout = window.setTimeout(() => setSuccessStatus(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [successStatus]);
 
   useEscapeKey(searchOpen, () => {
     setSearchOpen(false);
@@ -61,24 +68,25 @@ export default function AdminSendWarning() {
   }
 
   function handleSelectUser(user: UserRecord) {
+    setSuccessStatus(null);
     setSelectedUser(user);
     setSearchOpen(false);
     setShowWarningDialog(true);
   }
 
-  if (!searchOpen && !showWarningDialog) {
-    return (
-      <button
-        className="mt-3 rounded bg-blue-600 px-4 py-2 text-sm text-white"
-        onClick={() => setSearchOpen(true)}
-      >
-        Search and send warning
-      </button>
-    );
-  }
-
   return (
     <>
+      {!searchOpen && !showWarningDialog && (
+        <div className="mt-3">
+          <button
+            className="rounded bg-blue-600 px-4 py-2 text-sm text-white"
+            onClick={() => setSearchOpen(true)}
+          >
+            Search and send warning
+          </button>
+          {successStatus && <p className="mt-2 text-sm text-green-700" role="status">{successStatus}</p>}
+        </div>
+      )}
       {searchOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
@@ -142,7 +150,7 @@ export default function AdminSendWarning() {
             setSelectedUser(null);
           }}
           onSuccess={(emailSent) => {
-            alert(
+            setSuccessStatus(
               emailSent
                 ? "Warning sent"
                 : "Warning sent (email delivery failed, notified in-app only)"

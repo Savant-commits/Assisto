@@ -1,6 +1,7 @@
 "use client";
 
 import { useEscapeKey } from "@/lib/use-escape-key";
+import type { ReactNode } from "react";
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -10,6 +11,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   destructive?: boolean;
   busy?: boolean;
+  children?: ReactNode;
+  confirmDisabled?: boolean;
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }
@@ -22,6 +25,8 @@ export default function ConfirmDialog({
   cancelLabel = "Cancel",
   destructive = false,
   busy = false,
+  children,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -39,6 +44,7 @@ export default function ConfirmDialog({
       >
         <h2 className="mb-2 text-lg font-semibold text-gray-900">{title}</h2>
         <p className="mb-5 text-sm text-muted-foreground">{message}</p>
+        {children}
 
         <div className="flex justify-end gap-2">
           <button
@@ -53,7 +59,7 @@ export default function ConfirmDialog({
             type="button"
             className={`rounded px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 ${destructive ? "bg-red-600" : "bg-gray-900"}`}
             onClick={() => void onConfirm()}
-            disabled={busy}
+            disabled={busy || confirmDisabled}
           >
             {busy ? `${confirmLabel}...` : confirmLabel}
           </button>

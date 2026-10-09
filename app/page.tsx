@@ -8,8 +8,8 @@ export default function HomePage() {
         Find the right person for the job.
       </h1>
       <p className="mb-8 max-w-xl text-muted-foreground">
-        Tell us what you need, and we'll connect you with reviewed, verified
-        professionals near you in Cuddalore and Chidambaram — you choose who to
+        Tell us what you need, and we&apos;ll connect you with approved professionals
+        near you in Cuddalore and Chidambaram — you choose who to
         work with.
       </p>
       <div className="flex gap-3">

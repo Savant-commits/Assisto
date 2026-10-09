@@ -9,8 +9,11 @@ export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   async function saveNote() {
+    setNoteError(null);
     setSaving(true);
     try {
       const supabase = createClient();
@@ -20,14 +23,18 @@ export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
       setEditing(false);
       window.location.reload();
     } catch (err) {
-      alert((err as any)?.message || "Failed to save note");
+      setNoteError((err as any)?.message || "Failed to save note");
     } finally {
       setSaving(false);
     }
   }
 
   async function forceCancel() {
-    if (!reason.trim()) return alert("Please provide a reason");
+    setCancelError(null);
+    if (!reason.trim()) {
+      setCancelError("Please provide a reason");
+      return;
+    }
     setSaving(true);
     try {
       const supabase = createClient();
@@ -35,7 +42,7 @@ export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
       if (error) throw error;
       window.location.reload();
     } catch (err) {
-      alert((err as any)?.message || "Failed to cancel enquiry");
+      setCancelError((err as any)?.message || "Failed to cancel enquiry");
     } finally {
       setSaving(false);
     }
@@ -62,7 +69,8 @@ export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
           </div>
         ) : (
           <div className="mt-2">
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} className="mt-1 w-full rounded border p-2" rows={4} />
+            <textarea value={note} onChange={(e) => { setNote(e.target.value); setNoteError(null); }} className="mt-1 w-full rounded border p-2" rows={4} />
+            {noteError && <p className="mt-1 text-sm text-destructive">{noteError}</p>}
             <div className="mt-2 flex items-center gap-2">
               <button className="rounded bg-blue-600 px-3 py-1 text-white" onClick={saveNote} disabled={saving}>
                 Save note
@@ -86,7 +94,8 @@ export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
         <label className="block text-sm font-medium">Force-cancel enquiry</label>
         {confirming ? (
           <div className="mt-2 space-y-2">
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" className="w-full rounded border p-2" />
+            <input value={reason} onChange={(e) => { setReason(e.target.value); setCancelError(null); }} placeholder="Reason" className="w-full rounded border p-2" />
+            {cancelError && <p className="text-sm text-destructive">{cancelError}</p>}
             <div className="flex gap-2">
               <button className="rounded bg-red-600 px-3 py-1 text-white" onClick={forceCancel} disabled={saving}>
                 Confirm cancel
