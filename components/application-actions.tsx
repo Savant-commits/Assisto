@@ -3,9 +3,9 @@
 import { useState } from "react";
 import ConfirmDialog from "@/components/confirm-dialog";
 
-type Props = { applicationId: string };
+type Props = { applicationId: string; callVerified: boolean };
 
-export function ApplicationActions({ applicationId }: Props) {
+export function ApplicationActions({ applicationId, callVerified }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -20,8 +20,8 @@ export function ApplicationActions({ applicationId }: Props) {
       if (!json.ok) throw new Error(json.error || "approve failed");
       // refresh the page to reflect changes; server action revalidates paths too
       window.location.reload();
-    } catch (err: any) {
-      setError(err?.message || String(err));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -35,21 +35,24 @@ export function ApplicationActions({ applicationId }: Props) {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "reject failed");
       window.location.reload();
-    } catch (err: any) {
-      setError(err?.message || String(err));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <button onClick={approve} disabled={busy} className="rounded-md bg-green-600 px-3 py-1 text-sm text-white">
-        {busy ? "Working…" : "Approve"}
-      </button>
-      <button onClick={() => { setError(null); setReason(""); setRejectDialogOpen(true); }} disabled={busy} className="rounded-md bg-red-600 px-3 py-1 text-sm text-white">
-        Reject
-      </button>
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex items-center gap-2">
+        <button onClick={approve} disabled={busy || !callVerified} className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60">
+          {busy ? "Working…" : "Approve"}
+        </button>
+        <button onClick={() => { setError(null); setReason(""); setRejectDialogOpen(true); }} disabled={busy} className="rounded-md bg-red-600 px-3 py-1 text-sm text-white">
+          Reject
+        </button>
+      </div>
+      {!callVerified && <p className="max-w-56 text-right text-xs text-muted-foreground">Call the applicant and record the result before approving.</p>}
       {error && !rejectDialogOpen && <div className="text-sm text-destructive">{error}</div>}
       <ConfirmDialog
         isOpen={rejectDialogOpen}

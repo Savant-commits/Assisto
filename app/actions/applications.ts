@@ -9,14 +9,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // be spoofed by anything the client sends.
 async function requireAdmin() {
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
   if (!userData.user) throw new Error("Not signed in");
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", userData.user.id)
     .single();
+  if (profileError) throw profileError;
 
   if (profile?.role !== "admin") throw new Error("Not authorized");
   return userData.user.id;
@@ -34,13 +36,17 @@ export async function approveApplication(applicationId: string) {
 
   if (fetchError || !application) throw new Error("Application not found");
 
-  const { data: applicantProfile } = await admin
+  const { data: applicantProfile, error: applicantProfileError } = await admin
     .from("profiles")
     .select("phone_verified_at")
     .eq("id", application.user_id)
     .single();
+  if (applicantProfileError) throw applicantProfileError;
   if (!applicantProfile?.phone_verified_at) {
     throw new Error("Applicant's phone number is not verified.");
+  }
+  if (application.call_status !== "verified") {
+    throw new Error("Call the applicant and record a verified result before approving.");
   }
 
   // Two writes, same intent as one unit: mark reviewed, create the public
@@ -55,7 +61,12 @@ export async function approveApplication(applicationId: string) {
     })
     .eq("id", applicationId);
 
-  if (appUpdateError) throw appUpdateError;
+  if (appUpdateError) {
+    if (appUpdateError.message.includes("CALL_NOT_VERIFIED")) {
+      throw new Error("Call the applicant and record a verified result before approving.");
+    }
+    throw appUpdateError;
+  }
 
   const { error: providerError } = await admin.from("providers").insert({
     id: application.user_id,
@@ -68,7 +79,12 @@ export async function approveApplication(applicationId: string) {
     is_active: true,
   });
 
-  if (providerError) throw providerError;
+  if (providerError) {
+    if (providerError.message.includes("CALL_NOT_VERIFIED")) {
+      throw new Error("Call the applicant and record a verified result before approving.");
+    }
+    throw providerError;
+  }
 
   // Parse service labels from the application and insert matching
   // provider_services / provider_categories rows using the admin client.
@@ -97,7 +113,7 @@ export async function approveApplication(applicationId: string) {
           continue;
         }
 
-        const svc = (svcMatches as any[])?.[0];
+        const svc = svcMatches?.[0];
         if (!svc) {
           console.warn(`approveApplication: no service match for application ${application.id}: "${label}"`);
           continue;
@@ -131,19 +147,20 @@ export async function approveApplication(applicationId: string) {
             insertedCategoryIds.add(catId);
           }
         }
-      } catch (innerErr: any) {
-        console.warn("approveApplication: error processing label", { applicationId, label, error: innerErr?.message || innerErr });
+      } catch (innerErr: unknown) {
+        console.warn("approveApplication: error processing label", { applicationId, label, error: innerErr instanceof Error ? innerErr.message : String(innerErr) });
         // continue to next label
       }
     }
-  } catch (err: any) {
-    console.warn("approveApplication: failed parsing/inserting service labels", { applicationId, error: err?.message || err });
+  } catch (err: unknown) {
+    console.warn("approveApplication: failed parsing/inserting service labels", { applicationId, error: err instanceof Error ? err.message : String(err) });
   }
 
-  await admin
+  const { error: roleUpdateError } = await admin
     .from("profiles")
     .update({ role: "provider" })
     .eq("id", application.user_id);
+  if (roleUpdateError) throw roleUpdateError;
 
   revalidatePath("/admin/applications");
   revalidatePath("/discover");

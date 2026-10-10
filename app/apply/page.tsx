@@ -332,6 +332,7 @@ export default function ApplyPage() {
 
             {submitError && <p className="text-sm text-destructive">{submitError}</p>}
 
+            <p className="text-sm text-muted-foreground">After you apply, someone from Assisto will call you on your verified number to confirm your details.</p>
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || isSubmitting}>
               {isSubmitting ? "Submitting…" : "Submit application"}
             </Button>
