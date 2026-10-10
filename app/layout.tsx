@@ -26,11 +26,40 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) {
+    console.error("layout auth lookup failed", {
+      message: userError.message,
+      details: "details" in userError ? userError.details : undefined,
+      hint: "hint" in userError ? userError.hint : undefined,
+      code: userError.code,
+    });
+  }
   let profile: { full_name?: string; avatar_url?: string | null; role?: string | null; phone_verified_at?: string | null } | null = null;
+  let isProvider = false;
   if (userData.user) {
-    const { data } = await supabase.from("profiles").select("full_name, avatar_url, role, phone_verified_at").eq("id", userData.user.id).single();
+    const [{ data, error: profileError }, { data: provider, error: providerError }] = await Promise.all([
+      supabase.from("profiles").select("full_name, avatar_url, role, phone_verified_at").eq("id", userData.user.id).single(),
+      supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle(),
+    ]);
+    if (profileError) {
+      console.error("layout profile lookup failed", {
+        message: profileError.message,
+        details: profileError.details,
+        hint: profileError.hint,
+        code: profileError.code,
+      });
+    }
+    if (providerError) {
+      console.error("layout provider lookup failed", {
+        message: providerError.message,
+        details: providerError.details,
+        hint: providerError.hint,
+        code: providerError.code,
+      });
+    }
     profile = data || null;
+    isProvider = !!provider;
   }
 
   return (
@@ -60,6 +89,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <a href="/apply" className="rounded-full border px-3 py-1">
                   Apply
                 </a>
+                {isProvider && (
+                  <a href="/your-work" className="rounded-full border px-3 py-1">
+                    Your work
+                  </a>
+                )}
                 {profile?.role === "admin" && (
                   <>
                     <a href="/admin/enquiries" className="rounded-full border px-3 py-1">
@@ -78,7 +112,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 )}
               </nav>
             <div>
-              <SessionMenu userId={userData.user?.id} fullName={profile?.full_name} avatarUrl={profile?.avatar_url} />
+              <SessionMenu fullName={profile?.full_name} avatarUrl={profile?.avatar_url} />
             </div>
           </div>
         </header>

@@ -91,7 +91,7 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
   }
 
   if (notification.type === "credential_reviewed") {
-    redirect("/provider/credentials");
+    redirect("/apply#credentials");
   }
 
   if (notification.type === "project_message" && notification.related_id) {

@@ -4,38 +4,45 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
-export default function SessionMenu({ userId, fullName, avatarUrl }: { userId?: string | null; fullName?: string | null; avatarUrl?: string | null }) {
+export default function SessionMenu({ fullName, avatarUrl }: { fullName?: string | null; avatarUrl?: string | null }) {
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isProvider, setIsProvider] = useState(false);
-  const [avatar, setAvatar] = useState<string | null>(avatarUrl || null);
+  const avatar = avatarUrl || null;
 
   useEffect(() => {
     let mounted = true;
     async function load() {
       const supabase = createClient();
-      const { data } = await supabase.auth.getUser();
+      const { data, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error("session menu auth lookup failed", {
+          message: userError.message,
+          details: "details" in userError ? userError.details : undefined,
+          hint: "hint" in userError ? userError.hint : undefined,
+          code: userError.code,
+        });
+      }
       if (!mounted) return;
       setEmail(data?.user?.email || null);
 
       if (data?.user?.id) {
-        const [{ data: profile }, { data: provider }] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", data.user.id)
-            .single(),
-          supabase
-            .from("providers")
-            .select("id")
-            .eq("id", data.user.id)
-            .maybeSingle(),
-        ]);
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", data.user.id)
+          .single();
+        if (profileError) {
+          console.error("session menu profile lookup failed", {
+            message: profileError.message,
+            details: profileError.details,
+            hint: profileError.hint,
+            code: profileError.code,
+          });
+        }
 
         if (mounted) {
           setIsAdmin(profile?.role === "admin");
-          setIsProvider(!!provider);
         }
       }
 
@@ -49,7 +56,15 @@ export default function SessionMenu({ userId, fullName, avatarUrl }: { userId?: 
 
   async function signOut() {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("session menu sign-out failed", {
+        message: error.message,
+        details: "details" in error ? error.details : undefined,
+        hint: "hint" in error ? error.hint : undefined,
+        code: error.code,
+      });
+    }
     // reload to clear server components relying on cookies
     window.location.href = "/";
   }
@@ -79,11 +94,6 @@ export default function SessionMenu({ userId, fullName, avatarUrl }: { userId?: 
       {isAdmin && (
         <Link href="/admin/applications" className="rounded-full border px-3 py-1 bg-amber-50 text-amber-700 border-amber-200">
           Admin
-        </Link>
-      )}
-      {isProvider && (
-        <Link href="/provider" className="rounded-full border px-3 py-1">
-          Provider
         </Link>
       )}
       <Link href="/profile" className="rounded-full border px-3 py-1">

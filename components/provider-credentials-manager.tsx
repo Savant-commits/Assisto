@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,6 +21,11 @@ export type CredentialTypeOption = {
   issuing_body: string | null;
   requires_number: boolean;
   number_label: string | null;
+  requires_details: boolean;
+  requires_issuer: boolean;
+  details_label: string | null;
+  issuer_label: string | null;
+  hint: string | null;
   sort_order: number;
   is_active: boolean;
 };
@@ -29,6 +35,7 @@ export type ProviderCredentialItem = {
   credential_type_id: string;
   details: string | null;
   credential_number: string | null;
+  issuer: string | null;
   file_path: string | null;
   status: CredentialStatus;
   review_notes: string | null;
@@ -39,8 +46,8 @@ export type ProviderCredentialItem = {
 type CredentialFormValues = {
   typeId: string;
   number: string;
+  issuer: string;
   details: string;
-  file: File | null;
 };
 
 function logSupabaseError(context: string, error: { message: string; details?: string; hint?: string; code?: string }) {
@@ -51,29 +58,25 @@ function getCredentialSchema(types: CredentialTypeOption[]) {
   return z.object({
     typeId: z.string().min(1, "Choose a credential type."),
     number: z.string(),
+    issuer: z.string().max(120, "Issuer must be 120 characters or fewer."),
     details: z.string().max(300, "Details must be 300 characters or fewer."),
-    file: z.custom<File | null>((value) => value === null || (typeof File !== "undefined" && value instanceof File)),
   }).superRefine((values, ctx) => {
     const selectedType = types.find((type) => type.id === values.typeId);
     if (selectedType?.requires_number && !values.number.trim()) {
       ctx.addIssue({ code: "custom", path: ["number"], message: "A number is required for this credential type." });
     }
-    if (!values.file) {
-      ctx.addIssue({ code: "custom", path: ["file"], message: "Choose a document to upload." });
-      return;
+    if (selectedType?.requires_issuer && !values.issuer.trim()) {
+      ctx.addIssue({ code: "custom", path: ["issuer"], message: "Please say who issued it." });
     }
-    if (values.file.size > 10 * 1024 * 1024) {
-      ctx.addIssue({ code: "custom", path: ["file"], message: "The file must be 10 MB or smaller." });
-    }
-    const extension = values.file.name.split(".").pop()?.toLowerCase();
-    const expectedMimeType = extension === "pdf" ? "application/pdf" :
-      extension === "jpg" || extension === "jpeg" ? "image/jpeg" :
-      extension === "png" ? "image/png" : null;
-    if (!expectedMimeType || (values.file.type && values.file.type !== expectedMimeType)) {
-      ctx.addIssue({ code: "custom", path: ["file"], message: "Choose a PDF, JPG, or PNG file." });
+    if (selectedType?.requires_details && !values.details.trim()) {
+      ctx.addIssue({ code: "custom", path: ["details"], message: "Please describe this credential." });
     }
   });
 }
+
+const allowedFileTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+const allowedFileExtensions = new Set(["pdf", "jpg", "jpeg", "png", "webp"]);
+const maxFileSize = 10 * 1024 * 1024;
 
 function getType(credential: ProviderCredentialItem) {
   return Array.isArray(credential.credential_types) ? credential.credential_types[0] ?? null : credential.credential_types ?? null;
@@ -96,6 +99,8 @@ function formatFileSize(size: number) {
 
 function rpcErrorMessage(message: string) {
   if (message === "CREDENTIAL_NUMBER_REQUIRED") return "This type needs a number.";
+  if (message === "DETAILS_REQUIRED") return "Please describe this credential.";
+  if (message === "ISSUER_REQUIRED") return "Please say who issued it.";
   if (message === "TOO_MANY_PENDING") return "You already have 5 credentials waiting for review.";
   if (message === "TOO_MANY_CREDENTIALS") return "You have reached the limit of 20 credentials.";
   return "Something went wrong. Please try again.";
@@ -119,19 +124,25 @@ export default function ProviderCredentialsManager({
   const [credentialToWithdraw, setCredentialToWithdraw] = useState<ProviderCredentialItem | null>(null);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const schema = useMemo(() => getCredentialSchema(credentialTypes), [credentialTypes]);
   const form = useForm<CredentialFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { typeId: "", number: "", details: "", file: null },
+    defaultValues: { typeId: "", number: "", issuer: "", details: "" },
   });
   const selectedTypeId = useWatch({ control: form.control, name: "typeId" });
+  const detailsValue = useWatch({ control: form.control, name: "details" });
   const selectedType = credentialTypes.find((type) => type.id === selectedTypeId);
+  const typeField = form.register("typeId");
   const supabase = useMemo(() => createClient(), []);
 
   async function onSubmit(values: CredentialFormValues) {
     setError(null);
     setSuccess(null);
-    if (!values.file) return;
+    if (!selectedFile || fileError) {
+      setFileError("Choose a document to upload.");
+      return;
+    }
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError) {
@@ -144,13 +155,13 @@ export default function ProviderCredentialsManager({
       return;
     }
 
-    const extension = values.file.name.split(".").pop()?.toLowerCase();
+    const extension = selectedFile.name.split(".").pop()?.toLowerCase();
     if (!extension) {
-      setError("Choose a PDF, JPG, or PNG file.");
+      setError("Choose a document to upload.");
       return;
     }
     const path = `${userId}/${crypto.randomUUID()}.${extension}`;
-    const { error: uploadError } = await supabase.storage.from("credentials").upload(path, values.file, { upsert: false });
+    const { error: uploadError } = await supabase.storage.from("credentials").upload(path, selectedFile, { upsert: false });
     if (uploadError) {
       logSupabaseError("credential document upload failed:", uploadError);
       setError("Something went wrong. Please try again.");
@@ -160,6 +171,7 @@ export default function ProviderCredentialsManager({
     const { error: submitError } = await supabase.rpc("submit_credential", {
       p_type_id: values.typeId,
       p_number: values.number.trim() || null,
+      p_issuer: values.issuer.trim() || null,
       p_details: values.details.trim() || null,
       p_file_path: path,
     });
@@ -172,11 +184,17 @@ export default function ProviderCredentialsManager({
       return;
     }
 
-    form.reset({ typeId: "", number: "", details: "", file: null });
+    form.reset({ typeId: "", number: "", issuer: "", details: "" });
     setSelectedFile(null);
+    setFileError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setSuccess("Submitted. An admin will review it.");
     router.refresh();
+  }
+
+  async function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    if (!selectedFile || fileError) setFileError("Choose a document to upload.");
+    await form.handleSubmit(onSubmit)(event);
   }
 
   async function viewDocument(credential: ProviderCredentialItem) {
@@ -238,6 +256,7 @@ export default function ProviderCredentialsManager({
                 <div>
                   <h3 className="font-medium">{type?.label ?? "Credential"}</h3>
                   {credential.credential_number && <p className="mt-1 text-sm">Number: {credential.credential_number}</p>}
+                  {credential.issuer && <p className="mt-1 text-sm">Issued by: {credential.issuer}</p>}
                   <p className="mt-1 text-xs text-muted-foreground">Submitted {formatDate(credential.created_at)}</p>
                 </div>
                 <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
@@ -264,35 +283,59 @@ export default function ProviderCredentialsManager({
         {credentialTypes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No credential types are currently available.</p>
         ) : (
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleFormSubmit} className="space-y-4">
             <div>
               <label htmlFor="credential-type" className="mb-1 block text-sm font-medium">Credential type</label>
               <select
                 id="credential-type"
-                {...form.register("typeId")}
+                {...typeField}
+                onChange={(event) => {
+                  void typeField.onChange(event);
+                  const nextType = credentialTypes.find((type) => type.id === event.target.value);
+                  if (!nextType?.number_label) form.setValue("number", "");
+                  if (!nextType?.requires_issuer) form.setValue("issuer", "");
+                  if (!nextType?.details_label && !nextType?.requires_details) form.setValue("details", "");
+                  form.clearErrors(["number", "issuer", "details"]);
+                }}
                 className="h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
                 <option value="">Choose a type</option>
                 {credentialTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
               </select>
-              {selectedType?.issuing_body && <p className="mt-1 text-xs text-muted-foreground">Issued by {selectedType.issuing_body}</p>}
+              {selectedType?.hint && <p className="mt-1 text-xs text-muted-foreground">{selectedType.hint}</p>}
               {form.formState.errors.typeId && <p className="mt-1 text-sm text-destructive">{form.formState.errors.typeId.message}</p>}
             </div>
 
-            <div>
-              <label htmlFor="credential-number" className="mb-1 block text-sm font-medium">
-                {selectedType?.number_label || "Credential number"}{selectedType?.requires_number ? " *" : " (optional)"}
-              </label>
-              <Input id="credential-number" {...form.register("number")} />
-              {form.formState.errors.number && <p className="mt-1 text-sm text-destructive">{form.formState.errors.number.message}</p>}
-            </div>
+            {selectedType?.number_label && (
+              <div>
+                <label htmlFor="credential-number" className="mb-1 block text-sm font-medium">
+                  {selectedType.number_label}{selectedType.requires_number ? " *" : " (optional)"}
+                </label>
+                <Input id="credential-number" {...form.register("number")} />
+                {form.formState.errors.number && <p className="mt-1 text-sm text-destructive">{form.formState.errors.number.message}</p>}
+              </div>
+            )}
 
-            <div>
-              <label htmlFor="credential-details" className="mb-1 block text-sm font-medium">Details (optional)</label>
-              <Textarea id="credential-details" rows={3} maxLength={300} {...form.register("details")} />
-              <p className="mt-1 text-right text-xs text-muted-foreground">{(form.watch("details") ?? "").length}/300</p>
-              {form.formState.errors.details && <p className="text-sm text-destructive">{form.formState.errors.details.message}</p>}
-            </div>
+            {selectedType && (
+              <div>
+                <label htmlFor="credential-issuer" className="mb-1 block text-sm font-medium">
+                  {selectedType.issuer_label || "Issued by"}{selectedType.requires_issuer ? " *" : ""}
+                </label>
+                <Input id="credential-issuer" maxLength={120} {...form.register("issuer")} />
+                {form.formState.errors.issuer && <p className="mt-1 text-sm text-destructive">{form.formState.errors.issuer.message}</p>}
+              </div>
+            )}
+
+            {(selectedType?.details_label || selectedType?.requires_details) && (
+              <div>
+                <label htmlFor="credential-details" className="mb-1 block text-sm font-medium">
+                  {selectedType.details_label || "Details (optional)"}{selectedType.requires_details ? " *" : ""}
+                </label>
+                <Textarea id="credential-details" rows={3} maxLength={300} {...form.register("details")} />
+                <p className="mt-1 text-right text-xs text-muted-foreground">{(detailsValue ?? "").length}/300</p>
+                {form.formState.errors.details && <p className="text-sm text-destructive">{form.formState.errors.details.message}</p>}
+              </div>
+            )}
 
             <div>
               <label htmlFor="credential-file" className="mb-1 block text-sm font-medium">Document</label>
@@ -300,16 +343,36 @@ export default function ProviderCredentialsManager({
                 ref={fileInputRef}
                 id="credential-file"
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                accept="application/pdf,image/*"
                 onChange={(event) => {
                   const file = event.target.files?.[0] ?? null;
+                  setFileError(null);
                   setSelectedFile(file);
-                  form.setValue("file", file, { shouldValidate: true });
+                  if (!file) return;
+                  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+                  if (["heic", "heif"].includes(extension)) {
+                    setFileError("HEIC photos are not supported. Please save or share the photo as JPG and try again.");
+                    event.target.value = "";
+                    setSelectedFile(null);
+                    return;
+                  }
+                  const isAllowed = file.type ? allowedFileTypes.has(file.type) : allowedFileExtensions.has(extension);
+                  if (!isAllowed) {
+                    setFileError("That file type is not supported. Use a PDF, JPG, PNG or WebP file.");
+                    event.target.value = "";
+                    setSelectedFile(null);
+                    return;
+                  }
+                  if (file.size > maxFileSize) {
+                    setFileError("The file must be 10 MB or smaller.");
+                    event.target.value = "";
+                    setSelectedFile(null);
+                  }
                 }}
               />
               {selectedFile && <p className="mt-1 text-xs text-muted-foreground">{selectedFile.name} · {formatFileSize(selectedFile.size)}</p>}
-              {form.formState.errors.file && <p className="mt-1 text-sm text-destructive">{form.formState.errors.file.message}</p>}
-              <p className="mt-1 text-xs text-muted-foreground">PDF, JPG, or PNG. Maximum 10 MB.</p>
+              {fileError && <p className="mt-1 text-sm text-destructive" role="alert">{fileError}</p>}
+              <p className="mt-1 text-xs text-muted-foreground">PDF, JPG, PNG or WebP. Maximum 10 MB.</p>
             </div>
 
             {error && <p className="text-sm text-destructive" role="alert">{error}</p>}

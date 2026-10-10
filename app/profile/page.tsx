@@ -40,6 +40,15 @@ const emptyFormValues: FormValues = {
   city: "Cuddalore",
 };
 
+function logSupabaseError(context: string, error: { message: string; details?: string; hint?: string; code?: string }) {
+  console.error(context, {
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+    code: error.code,
+  });
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -65,21 +74,25 @@ export default function ProfilePage() {
     let mounted = true;
     async function load() {
       const supabase = createClient();
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) logSupabaseError("profile auth lookup failed", userError);
       if (!userData.user) {
         router.push(`/login?redirect=/profile`);
         return;
       }
 
-      const { data: profileData } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("full_name, city, role, avatar_url, user_code, phone_verified_at")
         .eq("id", userData.user.id)
         .single();
-      const { data: phoneData } = await supabase.rpc("get_profile_phone", {
+      if (profileError) logSupabaseError("profile details lookup failed", profileError);
+      const { data: phoneData, error: phoneError } = await supabase.rpc("get_profile_phone", {
         profile_id: userData.user.id,
       });
-      const { data: providerData } = await supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle();
+      if (phoneError) logSupabaseError("profile phone lookup failed", phoneError);
+      const { data: providerData, error: providerError } = await supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle();
+      if (providerError) logSupabaseError("profile provider lookup failed", providerError);
 
       if (mounted && profileData) {
         const nextValues: FormValues = {
@@ -102,12 +115,13 @@ export default function ProfilePage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [form, router]);
 
   async function onSubmit(values: FormValues) {
     setError(null);
     const supabase = createClient();
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) logSupabaseError("profile save auth lookup failed", userError);
     if (!userData.user) {
       router.push(`/login?redirect=/profile`);
       return;
@@ -115,6 +129,7 @@ export default function ProfilePage() {
 
     const { error: updateError } = await supabase.from("profiles").upsert({ id: userData.user.id, ...values });
     if (updateError) {
+      logSupabaseError("profile save failed", updateError);
       setError(updateError.message);
     } else {
       setSavedFormValues(values);
@@ -125,13 +140,16 @@ export default function ProfilePage() {
 
   async function refreshPhoneDetails() {
     const supabase = createClient();
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) logSupabaseError("phone refresh auth lookup failed", userError);
     if (!userData.user) return;
 
-    const [{ data: phoneData }, { data: profileData }] = await Promise.all([
+    const [{ data: phoneData, error: phoneError }, { data: profileData, error: profileError }] = await Promise.all([
       supabase.rpc("get_profile_phone", { profile_id: userData.user.id }),
       supabase.from("profiles").select("phone_verified_at").eq("id", userData.user.id).single(),
     ]);
+    if (phoneError) logSupabaseError("phone refresh phone lookup failed", phoneError);
+    if (profileError) logSupabaseError("phone refresh profile lookup failed", profileError);
     setPhoneNumber(phoneData || null);
     setPhoneVerifiedAt(profileData?.phone_verified_at || null);
     router.refresh();
@@ -167,7 +185,8 @@ export default function ProfilePage() {
 
     try {
       const supabase = createClient();
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) logSupabaseError("avatar upload auth lookup failed", userError);
       if (!userData.user) {
         setAvatarError("Not signed in");
         return;
@@ -189,6 +208,7 @@ export default function ProfilePage() {
       console.log("upload result:", { uploadData, uploadError });
 
       if (uploadError) {
+        logSupabaseError("avatar upload failed", uploadError);
         setAvatarError(uploadError.message);
         return;
       }
@@ -212,8 +232,8 @@ export default function ProfilePage() {
       } else {
         setAvatarUrl(publicUrl);
       }
-    } catch (err: any) {
-      setAvatarError(err.message || "Upload failed");
+    } catch (err: unknown) {
+      setAvatarError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setIsUploading(false);
     }
@@ -354,6 +374,15 @@ export default function ProfilePage() {
         }}
         initialPhone={phoneNumber || undefined}
       />
+      {isProvider && (
+        <section className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <h2 className="mb-2 font-medium text-blue-900">Categories &amp; services</h2>
+          <p className="mb-4 text-sm text-blue-800">Manage which categories and services you offer so customers can find you for the right work.</p>
+          <a href="/profile/services" className="inline-block rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            Manage services
+          </a>
+        </section>
+      )}
     </div>
   );
 }
