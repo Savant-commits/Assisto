@@ -323,8 +323,8 @@ export default function ProjectChat(props: ProjectChatProps) {
       if (error) {
         console.error("Mark as read error:", error.message, error.details, error.hint, error.code);
       }
-    } catch (err) {
-      console.error("Mark as read exception:", err);
+    } catch {
+      console.error("Mark as read failed");
     }
   }, [projectId]);
 
@@ -356,7 +356,12 @@ export default function ProjectChat(props: ProjectChatProps) {
           .order("created_at", { ascending: true });
 
         if (error) {
-          console.error(error);
+          console.error("project_messages load failed:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          });
           return;
         }
 
@@ -375,7 +380,12 @@ export default function ProjectChat(props: ProjectChatProps) {
           .eq("project_id", projectId);
 
         if (error) {
-          console.error("project_message_attachments load failed:", error);
+          console.error("project_message_attachments load failed:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          });
           return;
         }
 
@@ -385,8 +395,8 @@ export default function ProjectChat(props: ProjectChatProps) {
           grouped[row.message_id].push(row);
         }
         setAttachmentsByMessageId(grouped);
-      } catch (err) {
-        console.error("Attachment load exception:", err);
+      } catch {
+        console.error("Attachment load failed");
       }
     };
 
@@ -436,15 +446,17 @@ export default function ProjectChat(props: ProjectChatProps) {
       const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600, params);
 
       if (error || !data?.signedUrl) {
-        console.error("Signed URL failed:", error);
+        console.error("Signed URL failed:", error ? {
+          message: error.message,
+        } : "No signed URL returned");
         return null;
       }
 
       signedUrlCacheRef.current[cacheKey] = data.signedUrl;
       setSignedUrlsByKey((prev) => ({ ...prev, [cacheKey]: data.signedUrl }));
       return data.signedUrl;
-    } catch (err) {
-      console.error("Signed URL exception:", err);
+    } catch {
+      console.error("Signed URL request failed");
       return null;
     }
   }, []);
@@ -517,8 +529,8 @@ export default function ProjectChat(props: ProjectChatProps) {
         if (Object.keys(nextMap).length > 0) {
           setSignedUrlsByKey((prev) => ({ ...prev, ...nextMap }));
         }
-      } catch (err) {
-        console.error("Preload signed URLs failed:", err);
+      } catch {
+        console.error("Preload signed URLs failed");
         for (const path of paths) {
           inFlightDisplayUrlKeysRef.current.delete(`display:${bucket}:${path}`);
         }
@@ -543,7 +555,12 @@ export default function ProjectChat(props: ProjectChatProps) {
       const { error } = await supabase.rpc("delete_project_attachment", { p_attachment_id: attachmentId });
 
       if (error) {
-        console.error("Delete attachment failed:", error);
+        console.error("Delete attachment failed:", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
         setToastMessage("Failed to delete");
         if (toastTimeoutRef.current) {
           clearTimeout(toastTimeoutRef.current);
@@ -574,8 +591,8 @@ export default function ProjectChat(props: ProjectChatProps) {
         clearTimeout(toastTimeoutRef.current);
       }
       toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 2000);
-    } catch (error) {
-      console.error("Delete attachment exception:", error);
+    } catch {
+      console.error("Delete attachment failed");
       setToastMessage("Failed to delete");
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
@@ -597,8 +614,8 @@ export default function ProjectChat(props: ProjectChatProps) {
         setCopiedMessageId(null);
         setOpenMenuFor(null);
       }, 1500);
-    } catch (error) {
-      console.error("Copy message failed:", error);
+    } catch {
+      console.error("Copy message failed");
       setOpenMenuFor(null);
     }
   };
@@ -615,7 +632,12 @@ export default function ProjectChat(props: ProjectChatProps) {
       });
 
       if (error) {
-        console.error("Delete message failed:", error);
+        console.error("Delete message failed:", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
         setToastMessage("Failed to delete message");
         if (toastTimeoutRef.current) {
           clearTimeout(toastTimeoutRef.current);
@@ -633,8 +655,8 @@ export default function ProjectChat(props: ProjectChatProps) {
         clearTimeout(toastTimeoutRef.current);
       }
       toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 2000);
-    } catch (error) {
-      console.error("Delete message exception:", error);
+    } catch {
+      console.error("Delete message failed");
       setToastMessage("Failed to delete message");
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
@@ -698,8 +720,8 @@ export default function ProjectChat(props: ProjectChatProps) {
         setToastMessage(null);
       }, 3000);
       closeReportDialog();
-    } catch (err) {
-      console.error("Report submission error:", err);
+    } catch {
+      console.error("Report submission failed");
       setReportError("Could not submit the report. Please try again.");
     } finally {
       setReportSubmitting(false);
@@ -1002,7 +1024,12 @@ export default function ProjectChat(props: ProjectChatProps) {
             .single();
 
           if (attachmentError) {
-            console.error("Attachment insert failed:", attachmentError);
+            console.error("Attachment insert failed:", {
+              message: attachmentError.message,
+              code: attachmentError.code,
+              details: attachmentError.details,
+              hint: attachmentError.hint,
+            });
             failedAttachments.push({ bucket: uploadedFile.bucket, path: uploadedFile.path });
             return;
           }
@@ -1026,8 +1053,8 @@ export default function ProjectChat(props: ProjectChatProps) {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-    } catch (err) {
-      console.error("Send exception:", err);
+    } catch {
+      console.error("Send failed");
       setError("An error occurred. Please try again.");
       await cleanupUploadedFiles(uploadedRecords);
     } finally {

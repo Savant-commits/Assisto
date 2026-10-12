@@ -123,7 +123,6 @@ export function PhoneVerification({ initialPhone, onVerified, onCancel }: Props)
       if (error) {
         setErrorMessage(sendErrorMessage(error));
         if (process.env.NODE_ENV !== "production") {
-          console.error("Phone verification code send failed:", error);
           setErrorDetails(developmentErrorDetails(error));
         }
         return;
@@ -137,7 +136,6 @@ export function PhoneVerification({ initialPhone, onVerified, onCancel }: Props)
     } catch (error) {
       setErrorMessage(sendErrorMessage(errorInfo(error)));
       if (process.env.NODE_ENV !== "production") {
-        console.error("Phone verification code send failed:", error);
         setErrorDetails(developmentErrorDetails(error));
       }
     } finally {

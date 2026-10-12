@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendEmail } from "@/lib/email";
+import { escapeHtml, sendEmail } from "@/lib/email";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -45,7 +45,10 @@ export async function sendWarning({
   const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(recipientId);
 
   if (userError || !userData?.user?.email) {
-    console.error("Could not fetch recipient email:", userError);
+    console.error("Could not fetch recipient email:", userError ? {
+      message: userError.message,
+      code: userError.code,
+    } : "Recipient email unavailable");
     return { emailSent: false };
   }
 
@@ -53,11 +56,11 @@ export async function sendWarning({
     await sendEmail({
       to: userData.user.email,
       subject: title,
-      html: `<p>${body}</p><p style="color:#888;font-size:12px">This is an official warning from the Assisto team.</p>`,
+      html: `<p>${escapeHtml(body)}</p><p style="color:#888;font-size:12px">This is an official warning from the Assisto team.</p>`,
     });
     return { emailSent: true };
-  } catch (emailError) {
-    console.error("Email send failed (in-app notification still sent):", emailError);
+  } catch {
+    console.error("Email send failed (in-app notification still sent)");
     return { emailSent: false };
   }
 }

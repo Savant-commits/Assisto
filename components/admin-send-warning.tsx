@@ -60,7 +60,13 @@ export default function AdminSendWarning() {
       if (error) throw error;
       setUsers(data || []);
     } catch (err) {
-      console.error("Search failed:", err);
+      const searchError = err as { message?: string; code?: string; details?: string; hint?: string };
+      console.error("Search failed:", {
+        message: searchError.message,
+        code: searchError.code,
+        details: searchError.details,
+        hint: searchError.hint,
+      });
       setUsers([]);
     } finally {
       setLoading(false);

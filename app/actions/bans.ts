@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendEmail } from "@/lib/email";
+import { escapeHtml, sendEmail } from "@/lib/email";
 
 const VALID_DURATIONS = new Set(["1_week", "1_year", "permanent"]);
 const BAN_DURATIONS: Record<"1_week" | "1_year" | "permanent", string> = {
@@ -80,7 +80,10 @@ export async function banUser({
   try {
     const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(userId);
     if (userError || !userData?.user?.email) {
-      console.error("Could not fetch suspended user email:", userError);
+      console.error("Could not fetch suspended user email:", userError ? {
+        message: userError.message,
+        code: userError.code,
+      } : "Recipient email unavailable");
     } else {
       const durationLabel = duration === "permanent" ? "permanently" : `for ${duration === "1_week" ? "1 week" : "1 year"}`;
       const reasonText = `The reason given was: ${cleanReason}`;
@@ -88,15 +91,15 @@ export async function banUser({
         to: userData.user.email,
         subject: "Your Assisto account has been suspended",
         html: `
-          <p>Your Assisto account has been suspended ${durationLabel}.</p>
-          <p>${reasonText}</p>
+          <p>Your Assisto account has been suspended ${escapeHtml(durationLabel)}.</p>
+          <p>${escapeHtml(reasonText)}</p>
           <p>If you think this is a mistake, please reply to this email to appeal this decision.</p>
         `,
       });
       emailSent = true;
     }
-  } catch (emailError) {
-    console.error("Email send failed after ban was recorded:", emailError);
+  } catch {
+    console.error("Email send failed after ban was recorded");
   }
 
   revalidatePath("/admin/bans");
@@ -141,8 +144,8 @@ export async function liftBan(banId: string) {
     const adminClient = createAdminClient();
     try {
       await adminClient.auth.admin.updateUserById(banRow.user_id, { ban_duration: "none" });
-    } catch (error) {
-      console.error("Could not clear auth ban on lift:", error);
+    } catch {
+      console.error("Could not clear auth ban on lift");
     }
   }
 

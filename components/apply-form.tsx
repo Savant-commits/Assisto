@@ -38,6 +38,15 @@ type FormValues = {
   service_area_notes?: string;
 };
 
+function logLookupError(label: string, error: { message: string; code?: string; details?: string; hint?: string }) {
+  console.error(label, {
+    message: error.message,
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
+  });
+}
+
 export default function ApplyForm() {
   const router = useRouter();
   const form = useForm<FormValues>({
@@ -102,17 +111,19 @@ export default function ApplyForm() {
       const userId = userData.user.id;
 
       // Check existing application
-      const { data: app } = await supabase
+      const { data: app, error: appError } = await supabase
         .from("provider_applications")
         .select("*")
         .eq("user_id", userId)
-        .single();
+        .maybeSingle();
+      if (appError) logLookupError("apply: existing application lookup failed", appError);
 
       // Check if already a provider
-      const { data: provider } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
+      const { data: provider, error: providerError } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
+      if (providerError) logLookupError("apply: existing provider lookup failed", providerError);
 
       if (!mounted) return;
-      setExistingApp(app || null);
+      setExistingApp(app);
       setIsProvider(!!provider);
       setLoading(false);
     }
@@ -148,8 +159,10 @@ export default function ApplyForm() {
       }
 
       // Prevent duplicates: check existing application or provider
-      const { data: existing } = await supabase.from("provider_applications").select("id,status").eq("user_id", userId).single();
-      const { data: provider } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
+      const { data: existing, error: existingError } = await supabase.from("provider_applications").select("id,status").eq("user_id", userId).maybeSingle();
+      if (existingError) logLookupError("apply: duplicate application lookup failed", existingError);
+      const { data: provider, error: providerError } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
+      if (providerError) logLookupError("apply: duplicate provider lookup failed", providerError);
       if (existing) {
         setSubmitError("You have already submitted an application. Check its status.");
         setExistingApp(existing);
@@ -176,7 +189,12 @@ export default function ApplyForm() {
           setIsPhoneGateOpen(true);
           return;
         }
-        console.error("apply: insert error", error);
+        console.error("apply: insert error", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
         setSubmitError(error.message || "An unexpected error occurred");
       } else {
         router.push("/apply/submitted");

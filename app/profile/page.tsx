@@ -201,11 +201,9 @@ export default function ProfilePage() {
       // will work. Example path: <user-id>/avatar.png
       const path = `${userData.user.id}/avatar.${ext}`;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(path, file, { upsert: true });
-
-      console.log("upload result:", { uploadData, uploadError });
 
       if (uploadError) {
         logSupabaseError("avatar upload failed", uploadError);
@@ -226,7 +224,6 @@ export default function ProfilePage() {
       });
 
       const payload = await res.json().catch(() => ({}));
-      console.log("/api/profile/avatar response:", { status: res.status, payload });
       if (!res.ok) {
         setAvatarError(payload?.error || "Failed to update profile avatar");
       } else {

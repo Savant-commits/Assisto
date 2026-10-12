@@ -175,8 +175,8 @@ export default function AdminTakeActionMenu({
       onToast("Warning sent.");
       setWarningOpen(false);
       setMenuOpen(false);
-    } catch (error) {
-      console.error("Failed to mark message reports actioned after warning:", error);
+    } catch {
+      console.error("Failed to mark message reports actioned after warning");
       setWarningOpen(true);
     }
   }
@@ -189,8 +189,8 @@ export default function AdminTakeActionMenu({
       onToast(`User banned (${duration === "1_week" ? "1 week" : duration === "1_year" ? "1 year" : "permanent"}).`);
       setBanState((prev) => ({ ...prev, isOpen: false }));
       setMenuOpen(false);
-    } catch (error) {
-      console.error("Failed to mark message reports actioned after ban:", error);
+    } catch {
+      console.error("Failed to mark message reports actioned after ban");
       setBanState((prev) => ({ ...prev, isOpen: true }));
     }
   }

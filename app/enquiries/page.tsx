@@ -147,7 +147,12 @@ export default function EnquiriesPage() {
         .in("enquiry_id", completedEnquiryIds);
 
       if (reviewError) {
-        console.error("reviews query failed:", reviewError);
+        console.error("reviews query failed:", {
+          message: reviewError.message,
+          code: reviewError.code,
+          details: reviewError.details,
+          hint: reviewError.hint,
+        });
       }
 
       for (const row of reviewRows || []) {
@@ -172,7 +177,12 @@ export default function EnquiriesPage() {
         .eq("provider_id", userData.user.id)
         .order("created_at", { ascending: false });
 
-      if (error) console.error("enquiries query failed:", error);
+      if (error) console.error("enquiries query failed:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
       receivedData = (data as ReceivedEnquiry[]) || [];
       receivedData = receivedData.filter((e: ReceivedEnquiry) => {
         if (e.status !== "cancelled" || !e.created_at || !e.updated_at) return true;
@@ -189,7 +199,12 @@ export default function EnquiriesPage() {
           .eq("provider_id", userData.user.id);
 
         if (receivedReviewError) {
-          console.error("provider reviews query failed:", receivedReviewError);
+          console.error("provider reviews query failed:", {
+            message: receivedReviewError.message,
+            code: receivedReviewError.code,
+            details: receivedReviewError.details,
+            hint: receivedReviewError.hint,
+          });
         }
 
         for (const row of receivedReviewRows || []) {
@@ -279,8 +294,8 @@ export default function EnquiriesPage() {
         }
 
         setUnreadByProject(filtered);
-      } catch (err) {
-        console.error("loadUnread exception:", err);
+      } catch {
+        console.error("loadUnread failed");
       }
     },
     [currentUserId, sent, received]

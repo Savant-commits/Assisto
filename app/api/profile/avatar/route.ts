@@ -12,8 +12,14 @@ export async function POST(request: Request) {
 
     const supabase = await createServerClient();
     const { data: userData, error: userError } = await supabase.auth.getUser();
-    // Log for debugging — remove in production
-    console.log("/api/profile/avatar — auth.getUser():", { userData, userError });
+    if (userError) {
+      console.error("/api/profile/avatar — auth lookup failed:", {
+        message: userError.message,
+        code: userError.code,
+        details: "details" in userError ? userError.details : undefined,
+        hint: "hint" in userError ? userError.hint : undefined,
+      });
+    }
 
     if (!userData?.user) {
       return NextResponse.json({ error: "Not authenticated", observedUser: null }, { status: 401 });
@@ -25,13 +31,18 @@ export async function POST(request: Request) {
       .eq("id", userData.user.id);
 
     if (error) {
-      console.error("/api/profile/avatar — update error:", error);
+      console.error("/api/profile/avatar — update error:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
       return NextResponse.json({ error: error.message, observedUser: userData.user.id }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, observedUser: userData.user.id, data });
   } catch (err: any) {
-    console.error("/api/profile/avatar — unexpected:", err);
+    console.error("/api/profile/avatar — unexpected error");
     return NextResponse.json({ error: err?.message || "Failed to update avatar" }, { status: 500 });
   }
 }

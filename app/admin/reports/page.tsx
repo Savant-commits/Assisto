@@ -34,7 +34,12 @@ export default async function AdminReportsPage() {
     .order("created_at", { ascending: false });
 
   if (reportsError) {
-    console.error("reports query failed:", JSON.stringify(reportsError, null, 2));
+    console.error("reports query failed:", {
+      message: reportsError.message,
+      code: reportsError.code,
+      details: reportsError.details,
+      hint: reportsError.hint,
+    });
   }
 
   const safeReports = reports || [];

@@ -129,7 +129,7 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
       setRemoveMessageId(null);
       router.refresh();
     } catch (err) {
-      console.error("Message admin action failed:", err);
+      console.error("Message admin action failed");
       setRemoveError(err instanceof Error ? err.message : "Unable to update this message.");
     } finally {
       setRemovingMessageId(null);
