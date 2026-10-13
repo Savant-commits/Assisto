@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { isOwnStorageUrl } from "@/lib/storage-url";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const avatar_url = typeof body?.avatar_url === "string" ? body.avatar_url : null;
-
-    if (!avatar_url) {
-      return NextResponse.json({ error: "Missing avatar_url" }, { status: 400 });
-    }
+    const body: unknown = await request.json().catch(() => null);
+    const avatarUrl = typeof body === "object" && body !== null && "avatar_url" in body
+      ? body.avatar_url
+      : undefined;
 
     const supabase = await createServerClient();
     const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -26,9 +25,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated", observedUser: null }, { status: 401 });
     }
 
+    if (typeof avatarUrl !== "string" || !isOwnStorageUrl(avatarUrl, "avatars", userData.user.id)) {
+      return NextResponse.json({ error: "Invalid avatar URL" }, { status: 400 });
+    }
+
     const { data, error } = await supabase
       .from("profiles")
-      .update({ avatar_url })
+      .update({ avatar_url: avatarUrl })
       .eq("id", userData.user.id);
 
     if (error) {
@@ -42,8 +45,11 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true, observedUser: userData.user.id, data });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("/api/profile/avatar — unexpected error");
-    return NextResponse.json({ error: err?.message || "Failed to update avatar" }, { status: 500 });
+    const message = typeof err === "object" && err !== null && "message" in err && typeof err.message === "string"
+      ? err.message
+      : "Failed to update avatar";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
