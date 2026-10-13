@@ -341,21 +341,6 @@ export default function PortfolioPage() {
     };
   }, [loadPortfolioItems, router]);
 
-  async function ensureStorageBucket(bucket: "avatars" | "portfolio") {
-    const response = await fetch("/api/storage/ensure", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ bucket }),
-    });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.error || `Unable to prepare the ${bucket} bucket.`);
-    }
-  }
-
   function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
@@ -398,8 +383,6 @@ export default function PortfolioPage() {
         setError("Not signed in.");
         return;
       }
-
-      await ensureStorageBucket("portfolio");
 
       const { data: maxSortData, error: maxSortError } = await supabase
         .from("provider_portfolio_items")

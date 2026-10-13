@@ -161,21 +161,6 @@ export default function ProfilePage() {
     setIsEditing(false);
   }
 
-  async function ensureStorageBucket(bucket: "avatars" | "portfolio") {
-    const response = await fetch("/api/storage/ensure", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ bucket }),
-    });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.error || `Unable to prepare the ${bucket} bucket.`);
-    }
-  }
-
   async function uploadAvatar(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -191,8 +176,6 @@ export default function ProfilePage() {
         setAvatarError("Not signed in");
         return;
       }
-
-      await ensureStorageBucket("avatars");
 
       // Upload file to Supabase Storage
       const ext = file.name.split(".").pop();
