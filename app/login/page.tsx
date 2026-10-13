@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,7 +28,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/";
+  const redirectTo = safeRedirectPath(searchParams.get("redirect"));
   const [formError, setFormError] = useState<string | null>(null);
 
   const form = useForm<FormValues>({

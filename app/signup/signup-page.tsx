@@ -4,9 +4,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -29,9 +30,8 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function SignupPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/";
+  const redirectTo = safeRedirectPath(searchParams.get("redirect"));
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -79,7 +79,7 @@ export default function SignupPage() {
     if (data.session) {
       // Email confirmation is off (or already satisfied) — session is live.
       // Use full reload so server components see the session immediately.
-      window.location.href = redirectTo;
+      window.location.assign(redirectTo);
     } else {
       // Project has "Confirm email" enabled — no session until they click
       // the email link. Show a clear next step instead of a silent stall.
