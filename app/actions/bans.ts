@@ -112,18 +112,29 @@ export async function liftBan(banId: string) {
   await requireAdmin();
 
   const supabase = await createClient();
+  const nowIso = new Date().toISOString();
   const { data: banRow, error: banRowError } = await supabase
     .from("user_bans")
     .select("user_id, banned_until, lifted_at")
     .eq("id", banId)
-    .single();
+    .is("lifted_at", null)
+    .gt("banned_until", nowIso)
+    .maybeSingle();
 
-  if (banRowError) throw new Error(banRowError.message);
+  if (banRowError) {
+    console.error("liftBan: active ban lookup failed", {
+      message: banRowError.message,
+      code: banRowError.code,
+      details: banRowError.details,
+      hint: banRowError.hint,
+    });
+    throw new Error("Could not look up active ban");
+  }
+  if (!banRow) throw new Error("No active ban found");
 
   const { error: rpcError } = await supabase.rpc("admin_lift_ban", { p_ban_id: banId });
   if (rpcError) throw new Error(rpcError.message);
 
-  const nowIso = new Date().toISOString();
   const { data: remainingActiveBans, error: remainingError } = await supabase
     .from("user_bans")
     .select("id")
@@ -138,15 +149,16 @@ export async function liftBan(banId: string) {
       hint: remainingError.hint,
       code: remainingError.code,
     });
+    throw new Error("Could not check remaining active bans");
   }
 
   if (!remainingActiveBans || remainingActiveBans.length === 0) {
     const adminClient = createAdminClient();
-    try {
-      await adminClient.auth.admin.updateUserById(banRow.user_id, { ban_duration: "none" });
-    } catch {
-      console.error("Could not clear auth ban on lift");
-    }
+    const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(
+      banRow.user_id,
+      { ban_duration: "none" }
+    );
+    if (authUpdateError) throw new Error(authUpdateError.message);
   }
 
   revalidatePath("/admin/bans");

@@ -35,6 +35,9 @@ export async function approveApplication(applicationId: string) {
     .single();
 
   if (fetchError || !application) throw new Error("Application not found");
+  if (application.status !== "pending") {
+    throw new Error("This application has already been decided");
+  }
 
   const { data: applicantProfile, error: applicantProfileError } = await admin
     .from("profiles")
@@ -52,20 +55,26 @@ export async function approveApplication(applicationId: string) {
   // Two writes, same intent as one unit: mark reviewed, create the public
   // provider row. If the second write fails the application is left
   // 'pending' with reviewed_at set — safe to retry, won't half-publish.
-  const { error: appUpdateError } = await admin
+  const { data: updatedApplication, error: appUpdateError } = await admin
     .from("provider_applications")
     .update({
       status: "approved",
       reviewed_by: adminId,
       reviewed_at: new Date().toISOString(),
     })
-    .eq("id", applicationId);
+    .eq("id", applicationId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
 
   if (appUpdateError) {
     if (appUpdateError.message.includes("CALL_NOT_VERIFIED")) {
       throw new Error("Call the applicant and record a verified result before approving.");
     }
     throw appUpdateError;
+  }
+  if (!updatedApplication) {
+    throw new Error("This application has already been decided");
   }
 
   const { error: providerError } = await admin.from("providers").insert({
@@ -170,7 +179,19 @@ export async function rejectApplication(applicationId: string, reason: string) {
   const adminId = await requireAdmin();
   const admin = createAdminClient();
 
-  const { error } = await admin
+  const { data: application, error: fetchError } = await admin
+    .from("provider_applications")
+    .select("status")
+    .eq("id", applicationId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+  if (!application) throw new Error("Application not found");
+  if (application.status !== "pending") {
+    throw new Error("This application has already been decided");
+  }
+
+  const { data: updatedApplication, error } = await admin
     .from("provider_applications")
     .update({
       status: "rejected",
@@ -178,8 +199,14 @@ export async function rejectApplication(applicationId: string, reason: string) {
       reviewed_at: new Date().toISOString(),
       rejection_reason: reason || null,
     })
-    .eq("id", applicationId);
+    .eq("id", applicationId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
 
   if (error) throw error;
+  if (!updatedApplication) {
+    throw new Error("This application has already been decided");
+  }
   revalidatePath("/admin/applications");
 }
