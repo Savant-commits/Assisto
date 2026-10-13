@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
@@ -15,7 +16,7 @@ export default function SessionMenu({ fullName, avatarUrl }: { fullName?: string
     async function load() {
       const supabase = createClient();
       const { data, error: userError } = await supabase.auth.getUser();
-      if (userError) {
+      if (userError && !isAuthSessionMissingError(userError)) {
         console.error("session menu auth lookup failed", {
           message: userError.message,
           details: "details" in userError ? userError.details : undefined,

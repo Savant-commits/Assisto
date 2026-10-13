@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -145,7 +146,7 @@ export default function ProviderCredentialsManager({
     }
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) {
+    if (userError && !isAuthSessionMissingError(userError)) {
       logSupabaseError("credential submit auth lookup failed:", userError);
       setError("Something went wrong. Please try again.");
       return;

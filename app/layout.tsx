@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) {
+  if (userError && !isAuthSessionMissingError(userError)) {
     console.error("layout auth lookup failed", {
       message: userError.message,
       details: "details" in userError ? userError.details : undefined,

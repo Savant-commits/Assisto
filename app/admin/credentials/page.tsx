@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import AdminCredentialsList, { type AdminCredentialItem } from "@/components/admin-credentials-list";
 
@@ -9,7 +10,7 @@ export default async function AdminCredentialsPage({
 }) {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) {
+  if (userError && !isAuthSessionMissingError(userError)) {
     console.error("admin credentials auth lookup failed:", userError.message, undefined, undefined, userError.code);
   }
   if (!userData.user) redirect("/login?redirect=/admin/credentials");

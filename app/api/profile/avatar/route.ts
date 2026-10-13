@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
 
     const supabase = await createServerClient();
     const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) {
+    if (userError && !isAuthSessionMissingError(userError)) {
       console.error("/api/profile/avatar — auth lookup failed:", {
         message: userError.message,
         code: userError.code,

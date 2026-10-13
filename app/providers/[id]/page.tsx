@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -119,7 +120,7 @@ function EnquiryWidget({
       data: { user },
       error: userError,
     } = await supabase.auth.getUser();
-    if (userError) logSupabaseError("provider enquiry auth lookup failed:", userError);
+    if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider enquiry auth lookup failed:", userError);
 
     if (!user) {
       router.push(buildLoginRedirect(providerId, requirementId));
@@ -153,7 +154,7 @@ function EnquiryWidget({
       data: { user },
       error: userError,
     } = await supabase.auth.getUser();
-    if (userError) logSupabaseError("provider enquiry submit auth lookup failed:", userError);
+    if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider enquiry submit auth lookup failed:", userError);
 
     if (!user) {
       router.push(buildLoginRedirect(providerId, requirementId));
@@ -330,7 +331,7 @@ export default function ProviderProfilePage() {
     setReviews((reviewsData as ProviderReview[]) ?? []);
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) logSupabaseError("provider profile viewer auth lookup failed:", userError);
+    if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider profile viewer auth lookup failed:", userError);
     const userId = userData.user?.id ?? null;
     setCurrentUserId(userId);
 
@@ -388,7 +389,7 @@ export default function ProviderProfilePage() {
       }
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) logSupabaseError("provider profile viewer auth lookup failed:", userError);
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider profile viewer auth lookup failed:", userError);
       const userId = userData.user?.id ?? null;
       if (userId) {
         const { data: providerRow, error: providerRowError } = await supabase.from("providers").select("id").eq("id", userId).maybeSingle();
@@ -823,7 +824,7 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
     async function load() {
       const supabase = createClient();
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) logSupabaseError("provider history auth lookup failed:", userError);
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider history auth lookup failed:", userError);
       if (!userData.user) {
         setLoading(false);
         return;

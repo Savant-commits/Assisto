@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { ApplicationActions } from "@/components/application-actions";
 import { ApplicationCallDialog, CallRecordingPlayer } from "@/components/application-call-dialog";
@@ -52,7 +53,7 @@ const credentialStatusStyles = {
 export default async function AdminApplicationsPage() {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) {
+  if (userError && !isAuthSessionMissingError(userError)) {
     console.error("admin applications: failed to load session", {
       message: userError.message,
       details: "details" in userError ? userError.details : undefined,

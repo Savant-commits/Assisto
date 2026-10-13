@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import Link from "next/link";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -308,7 +309,7 @@ export default function PortfolioPage() {
     async function load() {
       const supabase = createClient();
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) logSupabaseError("your work auth lookup failed", userError);
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("your work auth lookup failed", userError);
 
       if (!userData.user) {
         router.push(`/login?redirect=/your-work`);
@@ -377,8 +378,8 @@ export default function PortfolioPage() {
     try {
       const supabase = createClient();
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) logSupabaseError("your work upload auth lookup failed", userError);
-      if (userError) logSupabaseError("your work upload auth lookup failed", userError);
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("your work upload auth lookup failed", userError);
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("your work upload auth lookup failed", userError);
       if (!userData.user) {
         setError("Not signed in.");
         return;

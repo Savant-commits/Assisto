@@ -1,4 +1,5 @@
 import ApplyForm from "@/components/apply-form";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import ProviderCredentialsManager, {
   type CredentialTypeOption,
   type ProviderCredentialItem,
@@ -10,7 +11,7 @@ type CredentialTypeRow = CredentialTypeOption;
 export default async function ApplyPage() {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) {
+  if (userError && !isAuthSessionMissingError(userError)) {
     console.error("apply page auth lookup failed", {
       message: userError.message,
       details: "details" in userError ? userError.details : undefined,

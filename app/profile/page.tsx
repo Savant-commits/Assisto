@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -75,7 +76,7 @@ export default function ProfilePage() {
     async function load() {
       const supabase = createClient();
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) logSupabaseError("profile auth lookup failed", userError);
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("profile auth lookup failed", userError);
       if (!userData.user) {
         router.push(`/login?redirect=/profile`);
         return;
@@ -121,7 +122,7 @@ export default function ProfilePage() {
     setError(null);
     const supabase = createClient();
     const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) logSupabaseError("profile save auth lookup failed", userError);
+    if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("profile save auth lookup failed", userError);
     if (!userData.user) {
       router.push(`/login?redirect=/profile`);
       return;
@@ -141,7 +142,7 @@ export default function ProfilePage() {
   async function refreshPhoneDetails() {
     const supabase = createClient();
     const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) logSupabaseError("phone refresh auth lookup failed", userError);
+    if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("phone refresh auth lookup failed", userError);
     if (!userData.user) return;
 
     const [{ data: phoneData, error: phoneError }, { data: profileData, error: profileError }] = await Promise.all([
@@ -171,7 +172,7 @@ export default function ProfilePage() {
     try {
       const supabase = createClient();
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) logSupabaseError("avatar upload auth lookup failed", userError);
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("avatar upload auth lookup failed", userError);
       if (!userData.user) {
         setAvatarError("Not signed in");
         return;

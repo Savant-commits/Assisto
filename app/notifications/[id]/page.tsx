@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { notFound, redirect } from "next/navigation";
 
 function formatDateTime(dateStr: string | null | undefined): string {
@@ -62,7 +63,7 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) {
+  if (userError && !isAuthSessionMissingError(userError)) {
     console.error("notification auth lookup failed:", userError.message, undefined, undefined, userError.code);
   }
   if (!userData.user) return notFound();

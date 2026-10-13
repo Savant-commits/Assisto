@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import AdminSendWarning from "@/components/admin-send-warning";
@@ -6,7 +7,7 @@ import AdminSendWarning from "@/components/admin-send-warning";
 export default async function AdminPage() {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) {
+  if (userError && !isAuthSessionMissingError(userError)) {
     console.error("admin dashboard auth lookup failed:", userError.message, undefined, undefined, userError.code);
   }
 
