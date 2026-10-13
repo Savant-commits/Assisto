@@ -508,7 +508,7 @@ export default function EnquiriesPage() {
     ).length;
   }
 
-  const bucket = (list: { status: string }[], t: "pending" | "active" | "history") =>
+  const bucket = <T extends { status: string },>(list: T[], t: "pending" | "active" | "history") =>
     t === "pending"
       ? list.filter((e) => e.status === "sent")
       : t === "active"
