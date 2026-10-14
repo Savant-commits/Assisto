@@ -2,18 +2,44 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AdminReportsTabs from "@/components/admin-reports-tabs";
 import type { ProjectMessageAttachment } from "@/lib/types";
+import { one } from "@/lib/relations";
 
-type ProjectMessageTarget = {
+type ReportProfileRow = { full_name: string | null; user_code?: string | null };
+type ReportRowData = {
+  id: string;
+  reportable_type: string;
+  reportable_id: string;
+  reporter_id: string;
+  reason: string;
+  status: string;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  profiles?: ReportProfileRow | ReportProfileRow[] | null;
+};
+type ReviewRowData = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  provider_id: string;
+  customer_id: string;
+  profiles?: ReportProfileRow | ReportProfileRow[] | null;
+};
+type ProjectMessageRowData = {
   id: string;
   body: string;
   sender_id: string;
   project_id: string;
   created_at: string;
   deleted_at: string | null;
-  profiles?: { full_name: string | null; user_code?: string | null } | null;
-  project_code?: string | null;
-  enquiry_code?: string | null;
-  attachments?: Array<ProjectMessageAttachment & { signedUrl: string | null }> | null;
+  profiles?: ReportProfileRow | ReportProfileRow[] | null;
+  projects?: {
+    project_code?: string | null;
+    enquiries?: { enquiry_code?: string | null } | { enquiry_code?: string | null }[] | null;
+  } | {
+    project_code?: string | null;
+    enquiries?: { enquiry_code?: string | null } | { enquiry_code?: string | null }[] | null;
+  }[] | null;
 };
 
 export default async function AdminReportsPage() {
@@ -42,7 +68,10 @@ export default async function AdminReportsPage() {
     });
   }
 
-  const safeReports = reports || [];
+  const safeReports = ((reports ?? []) as ReportRowData[]).map((report) => ({
+    ...report,
+    profiles: one(report.profiles),
+  }));
 
   const providerIds = safeReports.filter(r => r.reportable_type === "provider").map(r => r.reportable_id);
   const reviewIds = safeReports.filter(r => r.reportable_type === "review").map(r => r.reportable_id);
@@ -58,14 +87,7 @@ export default async function AdminReportsPage() {
           .select("id,rating,comment,provider_id,customer_id,profiles!reviews_customer_id_fkey(full_name,user_code)")
           .in("id", reviewIds)
       : Promise.resolve({
-          data: [] as {
-            id: string;
-            rating: number;
-            comment: string | null;
-            provider_id: string;
-            customer_id: string;
-            profiles?: { full_name: string | null; user_code?: string | null }[] | null;
-          }[],
+          data: [] as ReviewRowData[],
         }),
     projectMessageIds.length
       ? supabase
@@ -75,19 +97,7 @@ export default async function AdminReportsPage() {
           )
           .in("id", projectMessageIds)
       : Promise.resolve({
-          data: [] as {
-            id: string;
-            body: string;
-            sender_id: string;
-            project_id: string;
-            created_at: string;
-            deleted_at: string | null;
-            profiles?: { full_name: string | null; user_code?: string | null }[] | null;
-            projects?: Array<{
-              project_code?: string | null;
-              enquiries?: Array<{ enquiry_code?: string | null }> | null;
-            }> | null;
-          }[],
+          data: [] as ProjectMessageRowData[],
         }),
     projectMessageIds.length
       ? supabase
@@ -151,35 +161,19 @@ export default async function AdminReportsPage() {
   }
 
   const providerMap = new Map((providers || []).map(p => [p.id, p]));
-  const reviewMap = new Map((reviews || []).map(r => [r.id, r]));
+  const reviewMap = new Map(
+    ((reviews ?? []) as ReviewRowData[]).map((review) => [review.id, { ...review, profiles: one(review.profiles) }])
+  );
   const projectMessageMap = new Map(
-    (projectMessages || []).map((message: ProjectMessageTarget & {
-      projects?:
-        | {
-            project_code?: string | null;
-            enquiries?:
-              | { enquiry_code?: string | null }[]
-              | { enquiry_code?: string | null }
-              | null;
-          }[]
-        | {
-            project_code?: string | null;
-            enquiries?:
-              | { enquiry_code?: string | null }[]
-              | { enquiry_code?: string | null }
-              | null;
-          }
-        | null;
-      profiles?: { full_name: string | null; user_code?: string | null }[] | { full_name: string | null; user_code?: string | null } | null;
-    }) => {
-      const project = Array.isArray(message.projects) ? message.projects[0] : message.projects ?? null;
-      const enquiry = Array.isArray(project?.enquiries) ? project.enquiries[0] : project?.enquiries ?? null;
+    ((projectMessages ?? []) as ProjectMessageRowData[]).map((message) => {
+      const project = one(message.projects);
+      const enquiry = one(project?.enquiries);
 
       return [
         message.id,
         {
           ...message,
-          profiles: Array.isArray(message.profiles) ? message.profiles[0] ?? null : message.profiles ?? null,
+          profiles: one(message.profiles),
           project_code: project?.project_code ?? null,
           enquiry_code: enquiry?.enquiry_code ?? null,
           attachments: attachmentMapByMessageId.get(message.id) ?? [],

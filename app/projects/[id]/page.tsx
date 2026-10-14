@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ContactUnlock } from "@/components/contact-unlock";
+import { one } from "@/lib/relations";
 
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -20,29 +21,29 @@ function statusBadge(status: string) {
   return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${cls}`}>{status}</span>;
 }
 
+type Relation<T> = T | T[] | null;
+type ProjectProfile = { full_name: string | null };
+type ProjectProvider = { id: string; business_name: string | null };
+type ProjectEnquiry = {
+  id: string;
+  enquiry_code: string;
+  status: string;
+  scheduled_start_at: string | null;
+  is_asap: boolean | null;
+  contact_unlocked_at: string | null;
+  customer_id: string;
+  provider_id: string;
+  customer_completed_at: string | null;
+  provider_completed_at: string | null;
+  profiles: Relation<ProjectProfile>;
+  providers: Relation<ProjectProvider>;
+};
+
 type ProjectDetail = {
   id: string;
   project_code: string;
   enquiry_id: string;
-  enquiries: {
-    id: string;
-    enquiry_code: string;
-    status: string;
-    scheduled_start_at: string | null;
-    is_asap: boolean | null;
-    contact_unlocked_at: string | null;
-    customer_id: string;
-    provider_id: string;
-    customer_completed_at: string | null;
-    provider_completed_at: string | null;
-    profiles: {
-      full_name: string | null;
-    } | null;
-    providers: {
-      id: string;
-      business_name: string | null;
-    } | null;
-  } | null;
+  enquiries: Relation<ProjectEnquiry>;
 };
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -61,16 +62,18 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       `id,project_code,enquiry_id,enquiries(id,enquiry_code,status,scheduled_start_at,is_asap,contact_unlocked_at,customer_id,provider_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),providers(id,business_name))`
     )
     .eq("id", id)
-    .single();
+    .single<ProjectDetail>();
 
   if (projectError || !project) {
     redirect("/");
   }
 
-  const enquiry = project.enquiries;
+  const enquiry = one(project.enquiries);
   if (!enquiry) {
     redirect("/");
   }
+  const customerProfile = one(enquiry.profiles);
+  const provider = one(enquiry.providers);
 
   // Check admin status
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", userData.user.id).single();
@@ -110,13 +113,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <div className="mt-6 space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-muted-foreground">Customer</h2>
-            <p className="mt-1">{enquiry.profiles?.full_name || "Unknown"}</p>
+            <p className="mt-1">{customerProfile?.full_name || "Unknown"}</p>
           </div>
 
           <div>
             <h2 className="text-sm font-semibold text-muted-foreground">Provider</h2>
-            <Link href={`/providers/${enquiry.providers?.id ?? ""}`} className="mt-1 text-blue-600 underline">
-              {enquiry.providers?.business_name || "Unknown"}
+            <Link href={`/providers/${provider?.id ?? ""}`} className="mt-1 text-blue-600 underline">
+              {provider?.business_name || "Unknown"}
             </Link>
           </div>
 

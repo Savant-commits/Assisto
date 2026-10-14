@@ -2,6 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AdminChatViewer from "@/components/admin-chat-viewer";
 import { humanDuration } from "@/lib/chat-duration";
+import { one } from "@/lib/relations";
+
+type Relation<T> = T | T[] | null;
 
 type ProjectMessageRecord = {
   id: string;
@@ -28,9 +31,9 @@ type ReportRecord = {
 };
 
 type ProjectProvider = {
-  id?: string | null;
+  id?: string;
   business_name?: string | null;
-  profiles?: { user_code?: string | null } | null;
+  profiles?: Relation<{ user_code?: string | null }>;
 };
 
 type ProjectEnquiry = {
@@ -42,15 +45,15 @@ type ProjectEnquiry = {
   updated_at?: string | null;
   customer_id?: string | null;
   provider_id?: string | null;
-  profiles?: { full_name?: string | null; user_code?: string | null } | null;
-  providers?: ProjectProvider | ProjectProvider[] | null;
+  profiles?: Relation<{ full_name?: string | null; user_code?: string | null }>;
+  providers?: Relation<ProjectProvider>;
 };
 
 type ProjectRecord = {
   id: string;
   project_code: string | null;
   created_at: string;
-  enquiries?: ProjectEnquiry | ProjectEnquiry[] | null;
+  enquiries?: Relation<ProjectEnquiry>;
 };
 
 export default async function AdminReportChatPage({ params, searchParams }: { params: Promise<{ projectId: string }>; searchParams: Promise<{ message?: string }> }) {
@@ -217,7 +220,10 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
     reports: reportRows.filter((r) => r.reportable_id === m.id),
   }));
 
-  const enquiry = Array.isArray(project.enquiries) ? project.enquiries[0] : project.enquiries;
+  const enquiry = one(project.enquiries);
+  const customer = one(enquiry?.profiles);
+  const selectedProvider = one(enquiry?.providers);
+  const provider = selectedProvider ? { ...selectedProvider, profiles: one(selectedProvider.profiles) } : null;
   const closedAt = enquiry?.status !== "confirmed" ? enquiry?.completed_at ?? enquiry?.admin_cancelled_at ?? enquiry?.updated_at ?? null : null;
   const durationLabel = enquiry?.status === "confirmed" ? `Open for ${humanDuration(project.created_at, null)}` : `Was open for ${humanDuration(project.created_at, closedAt)}`;
 
@@ -226,8 +232,8 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
       <AdminChatViewer
         project={{ id: project.id, project_code: project.project_code, openedAt: project.created_at }}
         enquiry={enquiry}
-        customer={Array.isArray(project.enquiries) ? (project.enquiries[0]?.profiles ?? null) : (project.enquiries?.profiles ?? null)}
-        provider={Array.isArray(project.enquiries) ? (Array.isArray(project.enquiries[0]?.providers) ? project.enquiries[0]?.providers[0] ?? null : project.enquiries[0]?.providers ?? null) : (project.enquiries?.providers ?? null)}
+        customer={customer}
+        provider={provider}
         messages={enrichedMessages}
         reports={reportRows}
         targetMessageId={targetMessageId}

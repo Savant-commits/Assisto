@@ -1,7 +1,68 @@
 import { createClient } from "@/lib/supabase/server";
 import { ProviderCard } from "@/components/provider-card";
 import ServicePicker from "@/components/service-picker";
-import type { ProviderListItem, ServiceCategory } from "@/lib/types";
+import type { ProviderListItem, ProviderPortfolioItem, ProviderProfile, ServiceCategory } from "@/lib/types";
+import { one } from "@/lib/relations";
+
+type ProviderListRow = Omit<ProviderListItem, "profiles"> & {
+  profiles?: ProviderProfile | ProviderProfile[] | null;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isNullableString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+function isNullableNumber(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "number";
+}
+
+function isNullableBoolean(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "boolean";
+}
+
+function isProviderProfile(value: unknown): value is ProviderProfile {
+  return isRecord(value) &&
+    (value.full_name === undefined || value.full_name === null || typeof value.full_name === "string") &&
+    (value.avatar_url === undefined || value.avatar_url === null || typeof value.avatar_url === "string");
+}
+
+function isProviderPortfolioItem(value: unknown): value is ProviderPortfolioItem {
+  return isRecord(value) &&
+    typeof value.id === "string" &&
+    isNullableString(value.image_url) &&
+    isNullableString(value.caption) &&
+    isNullableString(value.description) &&
+    isNullableString(value.media_type) &&
+    isNullableNumber(value.sort_order) &&
+    isNullableString(value.created_at);
+}
+
+function isProviderListRow(value: unknown): value is ProviderListRow {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !isNullableString(value.business_name) ||
+    !isNullableString(value.headline) ||
+    !isNullableString(value.city) ||
+    !isNullableNumber(value.avg_rating) ||
+    !isNullableNumber(value.review_count) ||
+    !isNullableBoolean(value.is_verified)
+  ) return false;
+
+  const profiles = value.profiles;
+  if (profiles != null && !(Array.isArray(profiles) ? profiles.every(isProviderProfile) : isProviderProfile(profiles))) return false;
+
+  const portfolioItems = value.provider_portfolio_items;
+  return portfolioItems == null || (Array.isArray(portfolioItems) && portfolioItems.every(isProviderPortfolioItem));
+}
+
+function isProviderListRows(value: unknown): value is ProviderListRow[] {
+  return Array.isArray(value) && value.every(isProviderListRow);
+}
 
 const CITIES = ["Cuddalore", "Chidambaram"];
 
@@ -105,7 +166,12 @@ export default async function DiscoverPage({
   }
 
   const { data: providers } = await query;
-  const sortedProviders = [...((providers as ProviderListItem[]) || [])].sort((a, b) => {
+  const providerResult: unknown = providers;
+  const providerRows = isProviderListRows(providerResult) ? providerResult : [];
+  const sortedProviders: ProviderListItem[] = providerRows.map((row) => ({
+    ...row,
+    profiles: one(row.profiles),
+  })).sort((a, b) => {
     if (selectedSort !== "top-rated") return 0;
 
     const aCount = Number(a.review_count ?? 0);
@@ -185,7 +251,7 @@ export default async function DiscoverPage({
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(sortedProviders as unknown as ProviderListItem[]).map((p) => (
+          {sortedProviders.map((p) => (
             <ProviderCard key={p.id} provider={p} requirement={requirement} />
           ))}
         </div>

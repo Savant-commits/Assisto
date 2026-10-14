@@ -12,6 +12,7 @@ import { ReviewModal } from "@/components/review-modal";
 import ProjectChat from "@/components/project-chat";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 import { useEscapeKey } from "@/lib/use-escape-key";
+import { one } from "@/lib/relations";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -32,6 +33,12 @@ type SentEnquiry = {
   projects?: { id: string; project_code: string } | null;
 };
 
+type SentEnquiryRow = Omit<SentEnquiry, "providers" | "customer_requirements" | "projects"> & {
+  providers?: { id: string; business_name?: string | null } | { id: string; business_name?: string | null }[] | null;
+  customer_requirements?: { description: string | null } | { description: string | null }[] | null;
+  projects?: { id: string; project_code: string } | { id: string; project_code: string }[] | null;
+};
+
 type ReceivedEnquiry = {
   id: number;
   message: string | null;
@@ -47,6 +54,12 @@ type ReceivedEnquiry = {
   profiles?: { full_name: string | null } | null;
   customer_requirements?: { description: string | null } | null;
   projects?: { id: string; project_code: string } | null;
+};
+
+type ReceivedEnquiryRow = Omit<ReceivedEnquiry, "profiles" | "customer_requirements" | "projects"> & {
+  profiles?: { full_name: string | null } | { full_name: string | null }[] | null;
+  customer_requirements?: { description: string | null } | { description: string | null }[] | null;
+  projects?: { id: string; project_code: string } | { id: string; project_code: string }[] | null;
 };
 
 type ReviewRecord = {
@@ -133,7 +146,12 @@ export default function EnquiriesPage() {
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
 
-    const sentList = (sentData as SentEnquiry[]) || [];
+    const sentList: SentEnquiry[] = ((sentData ?? []) as SentEnquiryRow[]).map((row) => ({
+      ...row,
+      providers: one(row.providers),
+      customer_requirements: one(row.customer_requirements),
+      projects: one(row.projects),
+    }));
     const eligibleReviewEnquiries = await getEligibleEnquiriesForReview(supabase, userData.user.id);
     const eligibleReviewIds = new Set(eligibleReviewEnquiries.map((enquiry) => String(enquiry.id)));
     const completedEnquiryIds = sentList.filter((enquiry) => enquiry.status === "completed").map((enquiry) => String(enquiry.id));
@@ -183,7 +201,12 @@ export default function EnquiriesPage() {
         details: error.details,
         hint: error.hint,
       });
-      receivedData = (data as ReceivedEnquiry[]) || [];
+      receivedData = ((data ?? []) as ReceivedEnquiryRow[]).map((row) => ({
+        ...row,
+        profiles: one(row.profiles),
+        customer_requirements: one(row.customer_requirements),
+        projects: one(row.projects),
+      }));
       receivedData = receivedData.filter((e: ReceivedEnquiry) => {
         if (e.status !== "cancelled" || !e.created_at || !e.updated_at) return true;
         const heldForMs = new Date(e.updated_at).getTime() - new Date(e.created_at).getTime();
