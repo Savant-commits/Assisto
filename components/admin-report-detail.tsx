@@ -5,24 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import BanUserDialog, { type BanDuration } from "./ban-user-dialog";
 import SendWarningDialog from "./send-warning-dialog";
-
-type ReportTarget = {
-  customer_id?: string | null;
-  sender_id?: string | null;
-  admin_removed_at?: string | null;
-  full_name?: string | null;
-  user_code?: string | null;
-  role?: string | null;
-};
-
-type ReportLike = {
-  id: string;
-  reportable_type?: string | null;
-  reportable_id?: string | null;
-  status?: string | null;
-  admin_notes?: string | null;
-  target?: ReportTarget | null;
-};
+import type { AdminReportRow } from "@/lib/admin-reports";
 
 const statusClasses: Record<string, string> = {
   open: "bg-red-100 text-red-700",
@@ -31,7 +14,7 @@ const statusClasses: Record<string, string> = {
   dismissed: "bg-gray-200 text-gray-700",
 };
 
-export default function AdminReportDetail({ report }: { report: ReportLike }) {
+export default function AdminReportDetail({ report }: { report: AdminReportRow }) {
   const router = useRouter();
   const [status, setStatus] = useState(report?.status ?? "open");
   const [notes, setNotes] = useState(report?.admin_notes ?? "");

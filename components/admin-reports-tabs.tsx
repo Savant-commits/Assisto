@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { AdminReportRow } from "@/lib/admin-reports";
 import AdminReportDetail from "./admin-report-detail";
 
 function formatDateTime(dateStr: string | null | undefined): string {
@@ -21,53 +22,7 @@ function formatFileSize(sizeBytes: number | null | undefined): string {
   return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
 }
 
-type ReportProfile = {
-  full_name?: string | null;
-  user_code?: string | null;
-};
-
-type ReportAttachment = {
-  id: string;
-  message_id: string;
-  project_id: string;
-  uploader_id: string;
-  kind: "photo" | "video" | "file";
-  bucket: string;
-  storage_path: string;
-  file_name: string;
-  mime_type: string;
-  size_bytes: number;
-  created_at: string;
-  deleted_at: string | null;
-  signedUrl?: string | null;
-};
-
-type ReportTarget = {
-  id?: string;
-  rating?: number;
-  comment?: string | null;
-  business_name?: string | null;
-  body?: string | null;
-  project_id?: string;
-  project_code?: string | null;
-  enquiry_code?: string | null;
-  deleted_at?: string | null;
-  attachments?: ReportAttachment[] | null;
-  profiles?: ReportProfile | null;
-};
-
-type ReportRow = {
-  id: string;
-  reportable_type: string;
-  reportable_id: string;
-  profiles?: ReportProfile | null;
-  target?: ReportTarget | null;
-  created_at?: string | null;
-  reason?: string | null;
-  status?: string;
-};
-
-export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) {
+export default function AdminReportsTabs({ reports }: { reports: AdminReportRow[] }) {
   const tabs = [
     { key: "open", label: "Open", statuses: ["open"] },
     { key: "reviewed", label: "Reviewed", statuses: ["reviewed"] },
@@ -81,7 +36,7 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
   const [to, setTo] = useState("");
 
   const filteredReports = useMemo(() => {
-    return (reports || []).filter((report: ReportRow) => {
+    return (reports || []).filter((report) => {
       if (from) {
         const fromTime = new Date(from).getTime();
         if (!report.created_at || new Date(report.created_at).getTime() < fromTime) return false;
@@ -138,7 +93,7 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
 
         <TabsList>
           {tabs.map((t) => {
-            const count = filteredReports.filter((r: ReportRow) => t.statuses.includes(r.status)).length;
+            const count = filteredReports.filter((r) => t.statuses.includes(r.status)).length;
             return (
               <TabsTrigger key={t.key} value={t.key} className="flex items-center gap-2">
                 {t.label}
@@ -150,7 +105,7 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
       </div>
 
       {tabs.map((t) => {
-        const rows = filteredReports.filter((r: ReportRow) => t.statuses.includes(r.status));
+        const rows = filteredReports.filter((r) => t.statuses.includes(r.status));
 
         return (
           <TabsContent key={t.key} value={t.key}>
@@ -158,7 +113,7 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
               <div className="rounded-lg border p-4 text-muted-foreground">No items</div>
             ) : (
               <div className="space-y-4">
-                {rows.map((report: ReportRow) => (
+                {rows.map((report) => (
                   <div key={report.id} className="rounded-lg border p-4">
                     <div className="mb-2 flex items-start justify-between gap-4">
                       <div className="flex-1">
@@ -183,7 +138,7 @@ export default function AdminReportsTabs({ reports }: { reports: ReportRow[] }) 
                           <div className="mt-2 rounded-md border p-3">
                             <div className="flex items-center gap-1">
                               {Array.from({ length: 5 }).map((_, i) => (
-                                <span key={i} className={i < report.target.rating ? "text-yellow-500" : "text-gray-300"}>
+                                <span key={i} className={i < (report.target?.rating ?? 0) ? "text-yellow-500" : "text-gray-300"}>
                                   ★
                                 </span>
                               ))}

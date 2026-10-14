@@ -3,9 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import AdminReportsTabs from "@/components/admin-reports-tabs";
 import type { ProjectMessageAttachment } from "@/lib/types";
 import { one } from "@/lib/relations";
+import type { AdminReportProfile, AdminReportRow, AdminReportTarget } from "@/lib/admin-reports";
 
-type ReportProfileRow = { full_name: string | null; user_code?: string | null };
-type ReportRowData = {
+type Relation<T> = T | T[] | null;
+type ReportQueryRow = {
   id: string;
   reportable_type: string;
   reportable_id: string;
@@ -15,31 +16,28 @@ type ReportRowData = {
   admin_notes: string | null;
   created_at: string;
   updated_at: string;
-  profiles?: ReportProfileRow | ReportProfileRow[] | null;
+  profiles?: Relation<AdminReportProfile>;
 };
-type ReviewRowData = {
+type ReviewQueryRow = {
   id: string;
   rating: number;
   comment: string | null;
   provider_id: string;
   customer_id: string;
-  profiles?: ReportProfileRow | ReportProfileRow[] | null;
+  profiles?: Relation<AdminReportProfile>;
 };
-type ProjectMessageRowData = {
+type ProjectMessageQueryRow = {
   id: string;
   body: string;
   sender_id: string;
   project_id: string;
   created_at: string;
   deleted_at: string | null;
-  profiles?: ReportProfileRow | ReportProfileRow[] | null;
-  projects?: {
+  profiles?: Relation<AdminReportProfile>;
+  projects?: Relation<{
     project_code?: string | null;
-    enquiries?: { enquiry_code?: string | null } | { enquiry_code?: string | null }[] | null;
-  } | {
-    project_code?: string | null;
-    enquiries?: { enquiry_code?: string | null } | { enquiry_code?: string | null }[] | null;
-  }[] | null;
+    enquiries?: Relation<{ enquiry_code?: string | null }>;
+  }>;
 };
 
 export default async function AdminReportsPage() {
@@ -68,7 +66,7 @@ export default async function AdminReportsPage() {
     });
   }
 
-  const safeReports = ((reports ?? []) as ReportRowData[]).map((report) => ({
+  const safeReports: Omit<AdminReportRow, "target">[] = ((reports ?? []) as ReportQueryRow[]).map((report) => ({
     ...report,
     profiles: one(report.profiles),
   }));
@@ -87,7 +85,7 @@ export default async function AdminReportsPage() {
           .select("id,rating,comment,provider_id,customer_id,profiles!reviews_customer_id_fkey(full_name,user_code)")
           .in("id", reviewIds)
       : Promise.resolve({
-          data: [] as ReviewRowData[],
+                  data: [] as ReviewQueryRow[],
         }),
     projectMessageIds.length
       ? supabase
@@ -97,7 +95,7 @@ export default async function AdminReportsPage() {
           )
           .in("id", projectMessageIds)
       : Promise.resolve({
-          data: [] as ProjectMessageRowData[],
+                  data: [] as ProjectMessageQueryRow[],
         }),
     projectMessageIds.length
       ? supabase
@@ -160,12 +158,17 @@ export default async function AdminReportsPage() {
     );
   }
 
-  const providerMap = new Map((providers || []).map(p => [p.id, p]));
-  const reviewMap = new Map(
-    ((reviews ?? []) as ReviewRowData[]).map((review) => [review.id, { ...review, profiles: one(review.profiles) }])
+  const providerMap = new Map<string, AdminReportTarget>(
+    (providers ?? []).map((provider): [string, AdminReportTarget] => [provider.id, { ...provider }])
   );
-  const projectMessageMap = new Map(
-    ((projectMessages ?? []) as ProjectMessageRowData[]).map((message) => {
+  const reviewMap = new Map<string, AdminReportTarget>(
+    ((reviews ?? []) as ReviewQueryRow[]).map((review): [string, AdminReportTarget] => [review.id, {
+      ...review,
+      profiles: one(review.profiles),
+    }])
+  );
+  const projectMessageMap = new Map<string, AdminReportTarget>(
+    ((projectMessages ?? []) as ProjectMessageQueryRow[]).map((message): [string, AdminReportTarget] => {
       const project = one(message.projects);
       const enquiry = one(project?.enquiries);
 
@@ -182,7 +185,7 @@ export default async function AdminReportsPage() {
     })
   );
 
-  const enrichedReports = safeReports.map(r => ({
+  const enrichedReports: AdminReportRow[] = safeReports.map((r) => ({
     ...r,
     target:
       r.reportable_type === "provider"
