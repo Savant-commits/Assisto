@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import SessionMenu from "@/components/session-menu";
@@ -9,16 +9,6 @@ import { EnquiriesNavBadge } from "@/components/enquiries-nav-badge";
 import NotificationBell from "@/components/notification-bell";
 import BanGate from "@/components/ban-gate";
 import { PhoneVerifyBanner } from "@/components/phone-verify-banner";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Assisto — Find the right person for the job",
@@ -66,7 +56,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <header className="border-b bg-background/50">
