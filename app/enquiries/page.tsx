@@ -547,7 +547,8 @@ export default function EnquiriesPage() {
   const historyUnseen = view === "sent" ? sentHistoryUnseen : receivedHistoryUnseen;
 
   const activeTab = view === "sent" ? sentTab : receivedTab;
-  const setActiveTab = view === "sent" ? setSentTab : setReceivedTab;
+  const handleSentTabChange = (tab: SentTab) => setSentTab(tab);
+  const handleReceivedTabChange = (tab: ReceivedTab) => setReceivedTab(tab);
   const pendingCount = view === "sent" ? sentPendingCount : receivedPendingCount;
   const activeCount = view === "sent" ? sentActiveCount : receivedActiveCount;
   const pendingLabel = view === "sent" ? "Sent" : "New";
@@ -604,19 +605,28 @@ export default function EnquiriesPage() {
 
       <div className="mb-6 flex items-center gap-4">
         <button
-          onClick={() => setActiveTab("pending")}
+          onClick={() => {
+            if (view === "sent") handleSentTabChange("pending");
+            else handleReceivedTabChange("pending");
+          }}
           className={`rounded-md px-3 py-1 text-sm font-medium ${activeTab === "pending" ? "bg-blue-600 text-white" : "bg-muted"}`}
         >
           {pendingLabel} <span className="ml-2">{"(" + pendingCount + ")"}</span>
         </button>
         <button
-          onClick={() => setActiveTab("active")}
+          onClick={() => {
+            if (view === "sent") handleSentTabChange("active");
+            else handleReceivedTabChange("active");
+          }}
           className={`rounded-md px-3 py-1 text-sm font-medium ${activeTab === "active" ? "bg-blue-600 text-white" : "bg-muted"}`}
         >
           Active <span className="ml-2">{"(" + activeCount + ")"}</span>
         </button>
         <button
-          onClick={() => setActiveTab("history")}
+          onClick={() => {
+            if (view === "sent") handleSentTabChange("history");
+            else handleReceivedTabChange("history");
+          }}
           className={`relative rounded-md px-3 py-1 text-sm font-medium ${activeTab === "history" ? "bg-blue-600 text-white" : "bg-muted"}`}
         >
           History
@@ -628,7 +638,7 @@ export default function EnquiriesPage() {
         </button>
         {view === "sent" && (
           <button
-            onClick={() => setActiveTab("reviews")}
+            onClick={() => handleSentTabChange("reviews")}
             className={`rounded-md px-3 py-1 text-sm font-medium ${activeTab === "reviews" ? "bg-blue-600 text-white" : "bg-muted"}`}
           >
             Your Reviews
