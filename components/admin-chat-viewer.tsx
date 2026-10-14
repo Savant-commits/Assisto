@@ -167,8 +167,8 @@ export default function AdminChatViewer({ project, enquiry, customer, provider, 
       <p className="mb-4 text-sm text-muted-foreground">Chat opened: {formatDateTime(openedAt)} · {durationLabel}</p>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => setWarnCustomer(true)}>Warn customer</button>
-        <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => setWarnProvider(true)}>Warn provider</button>
+        <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => setWarnCustomer(true)} disabled={!enquiry?.customer_id} title={!enquiry?.customer_id ? "Recipient not available" : undefined}>Warn customer</button>
+        <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => setWarnProvider(true)} disabled={!enquiry?.provider_id} title={!enquiry?.provider_id ? "Recipient not available" : undefined}>Warn provider</button>
         <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => { if (enquiry?.customer_id) setBanDialog({ isOpen: true, userId: enquiry.customer_id, userLabel: `${customer?.full_name ?? "Customer"}${customer?.user_code ? ` (#${customer.user_code})` : ""}`, duration: "1_week" }); }}>Ban customer</button>
         <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => { if (enquiry?.provider_id) setBanDialog({ isOpen: true, userId: enquiry.provider_id, userLabel: `${provider?.business_name ?? provider?.full_name ?? "Provider"}${provider?.profiles?.user_code ? ` (#${provider.profiles.user_code})` : ""}`, duration: "1_week" }); }}>Ban provider</button>
         <a href={`/admin/enquiries?q=${encodeURIComponent(enquiry?.enquiry_code ?? "")}`} className="rounded border px-3 py-1.5 text-sm text-blue-600 underline">Open enquiry in admin</a>

@@ -37,7 +37,9 @@ export default function BanGate() {
 
     async function checkBan() {
       try {
-        const { data, error } = await supabase.rpc("my_active_ban");
+        const client = supabaseRef.current;
+        if (!client) return;
+        const { data, error } = await client.rpc("my_active_ban");
         if (error) return;
         setActiveBan((data as ActiveBan | null) ?? null);
       } catch {

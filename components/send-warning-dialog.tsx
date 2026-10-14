@@ -31,6 +31,8 @@ export default function SendWarningDialog({
   useEscapeKey(isOpen, onClose);
 
   async function handleSend() {
+    if (!recipientId) return;
+
     if (!body.trim()) {
       setError("Please enter a message");
       return;
