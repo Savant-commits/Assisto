@@ -3,8 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import AdminChatViewer from "@/components/admin-chat-viewer";
 import { humanDuration } from "@/lib/chat-duration";
 import { one } from "@/lib/relations";
+import type { ProjectMessageAttachment } from "@/lib/types";
 
 type Relation<T> = T | T[] | null;
+type ProjectAttachment = ProjectMessageAttachment & { signedUrl: string | null };
 
 type ProjectMessageRecord = {
   id: string;
@@ -122,7 +124,7 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
     .in("message_id", messageIds)
     .order("created_at", { ascending: true });
 
-  const typedAttachments = (attachments ?? []) as ProjectAttachmentRecord[];
+  const typedAttachments = (attachments ?? []) as ProjectAttachment[];
 
   if (attachmentsError) {
     console.error("attachments query failed:", {
@@ -159,7 +161,7 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
     })
   );
 
-  const attachmentsByMessage = new Map<string, ProjectAttachmentRecord[]>();
+  const attachmentsByMessage = new Map<string, ProjectAttachment[]>();
   for (const att of typedAttachments) {
     const signed = signedUrlByBucketAndPath.get(`${att.bucket}:${att.storage_path}`) ?? null;
     const row = { ...att, signedUrl: signed };
