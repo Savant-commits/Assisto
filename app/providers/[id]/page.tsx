@@ -35,8 +35,8 @@ type ProviderRecord = {
   avg_rating: number | null;
   review_count: number | null;
   profiles?:
-    | Array<{ full_name?: string | null; avatar_url?: string | null; email?: string | null }>
-    | { full_name?: string | null; avatar_url?: string | null; email?: string | null }
+    | Array<{ full_name?: string | null; avatar_url?: string | null }>
+    | { full_name?: string | null; avatar_url?: string | null }
     | null;
   provider_categories?: Array<{
     service_categories?:
@@ -355,7 +355,7 @@ export default function ProviderProfilePage() {
         .select(
           `id, business_name, headline, bio, years_experience, city, is_verified,
            avg_rating, review_count,
-           profiles!providers_id_fkey ( full_name, email, avatar_url ),
+           profiles!providers_id_fkey ( full_name, avatar_url ),
            provider_categories ( service_categories ( id, name ) ),
            provider_portfolio_items ( id, image_url, caption, description, media_type, sort_order, created_at )`
         )

@@ -110,7 +110,7 @@ export default async function DiscoverPage({
 
   const querySelect =
     `id, business_name, headline, city, avg_rating, review_count, is_verified,
-         profiles ( full_name, avatar_url, email ),
+         profiles ( full_name, avatar_url ),
          ${providerCategoriesSelect},
          provider_portfolio_items ( id, image_url, description, media_type, created_at )`;
 
