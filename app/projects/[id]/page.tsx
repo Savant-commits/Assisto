@@ -139,7 +139,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
           {enquiry.status === "confirmed" && isProvider && (
             <div className="mt-6 space-y-4 border-t pt-6">
-              <ContactUnlock profileId={enquiry.customer_id} />
+              <ContactUnlock profileId={enquiry.customer_id} showUnavailable />
               <div>
                 <p className="text-sm text-muted-foreground">Mark work complete from your <Link href="/enquiries" className="text-blue-600 underline">Enquiries page</Link>.</p>
               </div>

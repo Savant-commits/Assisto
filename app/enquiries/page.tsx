@@ -955,7 +955,7 @@ export default function EnquiriesPage() {
 
                   {sentTab === "active" && enq.status === "confirmed" && (
                     <>
-                      <ContactUnlock profileId={enq.providers?.id ?? ""} />
+                      <ContactUnlock profileId={enq.providers?.id ?? ""} showUnavailable />
                       <CompletionActions
                         enquiryId={enq.id}
                         role="customer"
@@ -1128,7 +1128,7 @@ export default function EnquiriesPage() {
 
                 {receivedTab === "active" && enq.status === "confirmed" && (
                   <>
-                    <ContactUnlock profileId={enq.customer_id} />
+                    <ContactUnlock profileId={enq.customer_id} showUnavailable />
                     <CompletionActions
                       enquiryId={enq.id}
                       role="provider"

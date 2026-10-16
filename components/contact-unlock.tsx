@@ -8,18 +8,34 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-export function ContactUnlock({ profileId }: { profileId: string }) {
+export function ContactUnlock({
+  profileId,
+  showUnavailable = false,
+}: {
+  profileId: string;
+  showUnavailable?: boolean;
+}) {
   const [phone, setPhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     async function load() {
-      const supabase = createClient();
-      const { data } = await supabase.rpc("get_profile_phone", { profile_id: profileId });
-      if (mounted) {
-        setPhone(data || null);
-        setLoading(false);
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase.rpc("get_profile_phone", { profile_id: profileId });
+        if (mounted) {
+          if (error) {
+            setLoadError(true);
+          } else {
+            setPhone(data || null);
+          }
+        }
+      } catch {
+        if (mounted) setLoadError(true);
+      } finally {
+        if (mounted) setLoading(false);
       }
     }
     load();
@@ -27,6 +43,10 @@ export function ContactUnlock({ profileId }: { profileId: string }) {
   }, [profileId]);
 
   if (loading) return <div className="text-sm text-muted-foreground">Loading contact…</div>;
+  if (loadError) return <div className="text-sm text-muted-foreground">Couldn&apos;t load contact details. Please refresh.</div>;
+  if (!phone && showUnavailable) {
+    return <div className="text-sm text-muted-foreground">Phone number isn&apos;t available yet. They haven&apos;t verified their number.</div>;
+  }
   if (!phone) return null;
 
   const digits = normalizePhone(phone);
