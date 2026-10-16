@@ -60,9 +60,8 @@ export default function SignupPage() {
       return;
     }
 
-    // Create the profile row. Safe even if a trigger already created one
-    // elsewhere later — upsert avoids a duplicate-key error either way.
-    const { error: profileError } = await supabase.from("profiles").upsert({
+    // Create the profile row, updating it only if a trigger already created it.
+    const { error: insertError } = await supabase.from("profiles").insert({
       id: data.user.id,
       full_name: values.full_name,
       role: "customer",
@@ -70,6 +69,20 @@ export default function SignupPage() {
       city: values.city,
       email: values.email,
     });
+
+    let profileError = insertError;
+    if (insertError?.code === "23505") {
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          full_name: values.full_name,
+          phone: values.phone,
+          city: values.city,
+          email: values.email,
+        })
+        .eq("id", data.user.id);
+      profileError = updateError;
+    }
 
     if (profileError) {
       setFormError(profileError.message);
