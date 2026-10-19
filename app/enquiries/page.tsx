@@ -12,6 +12,7 @@ import { ReviewModal } from "@/components/review-modal";
 import ProjectChat from "@/components/project-chat";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 import { friendlyDbError } from "@/lib/db-errors";
+import { isAllowedMapsUrl } from "@/lib/maps";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { one } from "@/lib/relations";
 
@@ -113,6 +114,8 @@ export default function EnquiriesPage() {
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Record<number, boolean>>({});
   const [confirmingDecline, setConfirmingDecline] = useState<Record<number, { open: boolean; reason: string }>>({});
   const [confirmingSchedule, setConfirmingSchedule] = useState<Record<number, { mode: "now" | "specific" | null; scheduledStartAt: string }>>({});
+  const [confirmingLocation, setConfirmingLocation] = useState<Record<number, { addressText: string; mapsUrl: string }>>({});
+  const [locationErrors, setLocationErrors] = useState<Record<number, string | null>>({});
   const [reviewsByEnquiry, setReviewsByEnquiry] = useState<Record<string, ReviewRecord>>({});
   const [receivedReviewsByEnquiry, setReceivedReviewsByEnquiry] = useState<Record<string, ReviewRecord>>({});
   const [reviewPromptQueue, setReviewPromptQueue] = useState<ReviewPrompt[]>([]);
@@ -479,12 +482,55 @@ export default function EnquiriesPage() {
     }
   }
 
-  async function confirmAcceptedEnquiry(id: number, schedule: { isAsap: boolean; scheduledStartAt: string | null }) {
+  async function confirmAcceptedEnquiry(
+    id: number,
+    schedule: { isAsap: boolean; scheduledStartAt: string | null },
+    location: { addressText: string; mapsUrl: string }
+  ) {
     const key = `sent-${id}`;
     setPending(key, true);
     setCardError(key, null);
+    setLocationErrors((current) => ({ ...current, [id]: null }));
+    let locationWriteFailed = false;
     try {
       const supabase = createClient();
+      const addressText = location.addressText.trim();
+      const mapsUrl = location.mapsUrl.trim();
+      if (!addressText) {
+        setLocationErrors((current) => ({ ...current, [id]: "Please enter the job site address." }));
+        return;
+      }
+      if (mapsUrl && !isAllowedMapsUrl(mapsUrl)) {
+        setLocationErrors((current) => ({ ...current, [id]: "Please paste a link from Google Maps." }));
+        return;
+      }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!userData.user) throw new Error("Please sign in again to confirm this enquiry.");
+
+      const locationPayload = {
+        enquiry_id: id,
+        customer_id: userData.user.id,
+        address_text: addressText,
+        maps_url: mapsUrl || null,
+      };
+      const { error: locationInsertError } = await supabase.from("enquiry_locations").insert(locationPayload);
+      if (locationInsertError?.code === "23505") {
+        const { error: locationUpdateError } = await supabase
+          .from("enquiry_locations")
+          .update({ address_text: locationPayload.address_text, maps_url: locationPayload.maps_url })
+          .eq("enquiry_id", id);
+        if (locationUpdateError) {
+          locationWriteFailed = true;
+          throw locationUpdateError;
+        }
+      } else if (locationInsertError) {
+        locationWriteFailed = true;
+        throw locationInsertError;
+      }
+
+      locationWriteFailed = false;
       const payload = {
         status: "confirmed",
         is_asap: schedule.isAsap,
@@ -506,7 +552,17 @@ export default function EnquiriesPage() {
       );
       setConfirmingSchedule((s) => ({ ...s, [id]: { mode: null, scheduledStartAt: "" } }));
     } catch (err: unknown) {
-      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
+      if (locationWriteFailed) {
+        setLocationErrors((current) => ({
+          ...current,
+          [id]: friendlyDbError(
+            err && typeof err === "object" ? err as { message?: string; code?: string } : null,
+            "Unable to save the job site location."
+          ),
+        }));
+      } else {
+        setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
+      }
     } finally {
       setPending(key, false);
     }
@@ -901,22 +957,95 @@ export default function EnquiriesPage() {
                             />
                           )}
 
+                          <div className="space-y-2">
+                            <label htmlFor={`job-site-address-${enq.id}`} className="block text-sm font-medium">
+                              Job site location
+                            </label>
+                            <textarea
+                              id={`job-site-address-${enq.id}`}
+                              required
+                              maxLength={300}
+                              value={confirmingLocation[enq.id]?.addressText ?? ""}
+                              onChange={(event) => {
+                                setConfirmingLocation((current) => ({
+                                  ...current,
+                                  [enq.id]: {
+                                    addressText: event.target.value,
+                                    mapsUrl: current[enq.id]?.mapsUrl ?? "",
+                                  },
+                                }));
+                                setLocationErrors((current) => ({ ...current, [enq.id]: null }));
+                              }}
+                              rows={3}
+                              placeholder="House/street, landmark, area"
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
+                            {(confirmingLocation[enq.id]?.addressText?.length ?? 0) > 240 && (
+                              <p className="text-right text-xs text-muted-foreground">
+                                {confirmingLocation[enq.id].addressText.length}/300
+                              </p>
+                            )}
+                            <label htmlFor={`job-site-maps-${enq.id}`} className="block text-sm font-medium">
+                              Google Maps pin link <span className="text-muted-foreground">(optional)</span>
+                            </label>
+                            <input
+                              id={`job-site-maps-${enq.id}`}
+                              type="text"
+                              maxLength={300}
+                              value={confirmingLocation[enq.id]?.mapsUrl ?? ""}
+                              onChange={(event) => {
+                                const mapsUrl = event.target.value;
+                                setConfirmingLocation((current) => ({
+                                  ...current,
+                                  [enq.id]: {
+                                    addressText: current[enq.id]?.addressText ?? "",
+                                    mapsUrl,
+                                  },
+                                }));
+                                setLocationErrors((current) => ({
+                                  ...current,
+                                  [enq.id]: mapsUrl.trim() && !isAllowedMapsUrl(mapsUrl.trim())
+                                    ? "Please paste a link from Google Maps."
+                                    : null,
+                                }));
+                              }}
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
+                            {locationErrors[enq.id] && (
+                              <p className="text-sm text-destructive" role="alert">{locationErrors[enq.id]}</p>
+                            )}
+                          </div>
+
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => {
                                 const chosen = confirmingSchedule[enq.id];
+                                const location = confirmingLocation[enq.id] ?? { addressText: "", mapsUrl: "" };
                                 if (!chosen || (!chosen.scheduledStartAt && chosen.mode !== "now")) return;
+                                if (!location.addressText.trim()) {
+                                  setLocationErrors((current) => ({ ...current, [enq.id]: "Please enter the job site address." }));
+                                  return;
+                                }
+                                if (location.mapsUrl.trim() && !isAllowedMapsUrl(location.mapsUrl.trim())) {
+                                  setLocationErrors((current) => ({ ...current, [enq.id]: "Please paste a link from Google Maps." }));
+                                  return;
+                                }
                                 if (chosen.mode === "now") {
-                                  confirmAcceptedEnquiry(enq.id, { isAsap: true, scheduledStartAt: null });
+                                  confirmAcceptedEnquiry(enq.id, { isAsap: true, scheduledStartAt: null }, location);
                                 } else if (chosen.mode === "specific" && chosen.scheduledStartAt) {
-                                  confirmAcceptedEnquiry(enq.id, { isAsap: false, scheduledStartAt: new Date(chosen.scheduledStartAt).toISOString() });
+                                  confirmAcceptedEnquiry(
+                                    enq.id,
+                                    { isAsap: false, scheduledStartAt: new Date(chosen.scheduledStartAt).toISOString() },
+                                    location
+                                  );
                                 }
                               }}
                               disabled={
                                 !!pendingMap[key] ||
                                 !confirmingSchedule[enq.id]?.mode ||
-                                (confirmingSchedule[enq.id]?.mode === "specific" && !confirmingSchedule[enq.id]?.scheduledStartAt)
+                                (confirmingSchedule[enq.id]?.mode === "specific" && !confirmingSchedule[enq.id]?.scheduledStartAt) ||
+                                Boolean(confirmingLocation[enq.id]?.mapsUrl?.trim() && !isAllowedMapsUrl(confirmingLocation[enq.id].mapsUrl.trim()))
                               }
                               className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
                             >
