@@ -151,8 +151,11 @@ export default function NewRequirementPage() {
               <FormItem>
                 <FormLabel>What do you need?</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. Interior work for a 2BHK flat" {...field} />
+                  <Input maxLength={150} placeholder="e.g. Interior work for a 2BHK flat" {...field} />
                 </FormControl>
+                {(field.value?.length ?? 0) > 120 && (
+                  <p className="text-right text-xs text-muted-foreground">{field.value.length}/150</p>
+                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -165,8 +168,11 @@ export default function NewRequirementPage() {
               <FormItem>
                 <FormLabel>Tell us more</FormLabel>
                 <FormControl>
-                  <Textarea rows={5} placeholder="Rooms, timeline, style, anything relevant" {...field} />
+                  <Textarea maxLength={2000} rows={5} placeholder="Rooms, timeline, style, anything relevant" {...field} />
                 </FormControl>
+                {(field.value?.length ?? 0) > 1600 && (
+                  <p className="text-right text-xs text-muted-foreground">{field.value.length}/2000</p>
+                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -214,8 +220,11 @@ export default function NewRequirementPage() {
               <FormItem>
                 <FormLabel>Budget range (optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. ₹1L - ₹2L" {...field} />
+                  <Input maxLength={100} placeholder="e.g. ₹1L - ₹2L" {...field} />
                 </FormControl>
+                {(field.value?.length ?? 0) > 80 && (
+                  <p className="text-right text-xs text-muted-foreground">{field.value?.length ?? 0}/100</p>
+                )}
                 <FormMessage />
               </FormItem>
             )}

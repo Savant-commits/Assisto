@@ -103,10 +103,14 @@ export function ReportDialog({
                     <FormControl>
                       <Textarea
                         rows={4}
+                        maxLength={1000}
                         placeholder="Please explain why you're reporting this..."
                         {...field}
                       />
                     </FormControl>
+                    {(field.value?.length ?? 0) > 800 && (
+                      <p className="text-right text-xs text-muted-foreground">{field.value.length}/1000</p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

@@ -1548,10 +1548,14 @@ export default function ProjectChat(props: ProjectChatProps) {
             <textarea
               value={reportReason}
               onChange={(e) => setReportReason(e.target.value)}
+              maxLength={1000}
               rows={4}
               placeholder="Why are you reporting this message?"
               className="w-full rounded border border-gray-300 p-2 text-sm outline-none focus:border-blue-500"
             />
+            {reportReason.length > 800 && (
+              <p className="mt-1 text-right text-xs text-gray-500">{reportReason.length}/1000</p>
+            )}
             {reportError && <p className="mt-2 text-sm text-red-600">{reportError}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <button

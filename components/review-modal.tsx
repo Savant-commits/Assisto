@@ -118,9 +118,13 @@ export function ReviewModal({ enquiryId, providerName, existingReview, onClose, 
               id="review-comment"
               value={comment}
               onChange={(event) => setComment(event.target.value)}
+              maxLength={1500}
               rows={5}
               placeholder="Share a few details about your experience"
             />
+            {comment.length > 1200 && (
+              <p className="mt-1 text-right text-xs text-muted-foreground">{comment.length}/1500</p>
+            )}
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}

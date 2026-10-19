@@ -267,10 +267,14 @@ function EnquiryWidget({
               <FormControl>
                 <Textarea
                   rows={6}
+                  maxLength={2000}
                   placeholder="Tell the provider what you need and what you&apos;re looking for."
                   {...field}
                 />
               </FormControl>
+              {(field.value?.length ?? 0) > 1600 && (
+                <p className="text-right text-xs text-muted-foreground">{field.value.length}/2000</p>
+              )}
               <FormMessage />
             </FormItem>
           )}

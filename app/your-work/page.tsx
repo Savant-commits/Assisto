@@ -27,6 +27,7 @@ const SORT_OPTIONS = [
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_PORTFOLIO_ITEMS = 30;
 
 type MediaFilter = (typeof FILTERS)[number]["value"];
 type SortDirection = (typeof SORT_OPTIONS)[number]["value"];
@@ -70,11 +71,11 @@ function formatFileSize(bytes: number) {
 }
 
 function validateStagedFile(file: File) {
-  const isVideo = file.type.startsWith("video/");
-  const isImage = file.type.startsWith("image/");
+  const isVideo = ["video/mp4", "video/quicktime", "video/webm"].includes(file.type);
+  const isImage = ["image/jpeg", "image/png", "image/webp"].includes(file.type);
 
   if (!isImage && !isVideo) {
-    return { media_type: "image" as const, error: "Only images and videos are allowed." };
+    return { media_type: "image" as const, error: "Choose a JPEG, PNG, or WebP image, or an MP4, QuickTime, or WebM video." };
   }
 
   const limit = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
@@ -205,10 +206,14 @@ function SortablePortfolioCard({
           <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">Caption</label>
           <input
             value={draftCaption}
+            maxLength={200}
             onChange={(event) => setDraftCaption(event.target.value)}
             placeholder="Add a note for this project"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0"
           />
+          {draftCaption.length > 160 && (
+            <p className="text-right text-xs text-muted-foreground">{draftCaption.length}/200</p>
+          )}
           <div className="flex gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setIsEditing(false)}>
               Cancel
@@ -347,7 +352,16 @@ export default function PortfolioPage() {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
 
-    const newEntries: StagedPortfolioFile[] = files.map((file) => {
+    let availableSlots = MAX_PORTFOLIO_ITEMS - items.length - stagedUploads.filter(
+      (item) => !item.error && item.status !== "success"
+    ).length;
+    if (availableSlots <= 0) {
+      setError("You've reached the limit of 30 portfolio items.");
+      event.target.value = "";
+      return;
+    }
+
+    const selectedEntries: StagedPortfolioFile[] = files.map((file) => {
       const validation = validateStagedFile(file);
       return {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${file.name}`,
@@ -360,12 +374,25 @@ export default function PortfolioPage() {
         progress: 0,
       };
     });
+    const newEntries = selectedEntries.filter((entry) => {
+      if (entry.error) return true;
+      if (availableSlots <= 0) return false;
+      availableSlots -= 1;
+      return true;
+    });
 
     setStagedUploads((current) => [...current, ...newEntries]);
+    setError(newEntries.length < selectedEntries.length ? "You've reached the limit of 30 portfolio items." : null);
     event.target.value = "";
   }
 
   async function handleUploadStagedFiles() {
+    const stagedItemCount = stagedUploads.filter((item) => !item.error && item.status !== "success").length;
+    if (items.length >= MAX_PORTFOLIO_ITEMS || items.length + stagedItemCount > MAX_PORTFOLIO_ITEMS) {
+      setError("You've reached the limit of 30 portfolio items.");
+      return;
+    }
+
     const validFiles = stagedUploads.filter((item) => !item.error && item.status !== "success");
     if (validFiles.length === 0) {
       setError("Add at least one valid file before uploading.");
@@ -599,7 +626,7 @@ export default function PortfolioPage() {
             <label className="block text-sm font-medium mb-2">Image or video</label>
             <input
               type="file"
-              accept="image/*,video/*"
+              accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
               multiple
               onChange={handleFileSelection}
               disabled={uploadingBatch}
@@ -631,6 +658,7 @@ export default function PortfolioPage() {
 
                       <input
                         value={item.caption}
+                        maxLength={200}
                         onChange={(event) => {
                           const nextValue = event.target.value;
                           setStagedUploads((current) =>
@@ -642,6 +670,9 @@ export default function PortfolioPage() {
                         placeholder="Caption this file"
                         className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0"
                       />
+                      {item.caption.length > 160 && (
+                        <p className="mt-1 text-right text-xs text-muted-foreground">{item.caption.length}/200</p>
+                      )}
 
                       {item.error && <p className="mt-2 text-xs text-destructive">{item.error}</p>}
 

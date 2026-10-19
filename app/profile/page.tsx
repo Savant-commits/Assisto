@@ -41,6 +41,9 @@ const emptyFormValues: FormValues = {
   city: "Cuddalore",
 };
 
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const AVATAR_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
 function logSupabaseError(context: string, error: { message: string; details?: string; hint?: string; code?: string }) {
   console.error(context, {
     message: error.message,
@@ -48,6 +51,35 @@ function logSupabaseError(context: string, error: { message: string; details?: s
     hint: error.hint,
     code: error.code,
   });
+}
+
+async function resizeAvatar(file: File): Promise<Blob> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("The selected image could not be read."));
+      image.src = objectUrl;
+    });
+
+    const scale = Math.min(1, 512 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not process the selected image.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const webpBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.85));
+    if (webpBlob?.type === "image/webp") return webpBlob;
+
+    const jpegBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    if (!jpegBlob) throw new Error("Could not process the selected image.");
+    return jpegBlob;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export default function ProfilePage() {
@@ -166,6 +198,16 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    e.target.value = "";
+    if (!AVATAR_MIME_TYPES.includes(file.type)) {
+      setAvatarError("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarError("Profile pictures must be 5 MB or smaller.");
+      return;
+    }
+
     setAvatarError(null);
     setIsUploading(true);
 
@@ -178,8 +220,8 @@ export default function ProfilePage() {
         return;
       }
 
-      // Upload file to Supabase Storage
-      const ext = file.name.split(".").pop();
+      const resizedAvatar = await resizeAvatar(file);
+      const ext = resizedAvatar.type === "image/webp" ? "webp" : "jpg";
       // Upload into a folder named with the user's id so RLS/storage policies
       // that restrict by folder (storage.foldername(name))[1] = auth.uid()
       // will work. Example path: <user-id>/avatar.png
@@ -187,7 +229,7 @@ export default function ProfilePage() {
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(path, file, { upsert: true });
+        .upload(path, resizedAvatar, { upsert: true, contentType: resizedAvatar.type });
 
       if (uploadError) {
         logSupabaseError("avatar upload failed", uploadError);
@@ -243,7 +285,7 @@ export default function ProfilePage() {
           <div className="flex-1">
             <input
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               onChange={uploadAvatar}
               disabled={isUploading}
               className="text-sm"
