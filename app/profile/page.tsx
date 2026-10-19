@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Form,
@@ -19,6 +20,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { friendlyDbError } from "@/lib/db-errors";
+import { isAllowedMapsUrl } from "@/lib/maps";
 
 const schema = z.object({
   full_name: z.string().min(2),
@@ -34,6 +37,20 @@ type Profile = {
   avatar_url: string | null;
   user_code: string | null;
   phone_verified_at: string | null;
+};
+
+type ProviderListing = {
+  headline: string;
+  bio: string;
+  locality: string;
+  maps_url: string;
+};
+
+const emptyProviderListing: ProviderListing = {
+  headline: "",
+  bio: "",
+  locality: "",
+  maps_url: "",
 };
 
 const emptyFormValues: FormValues = {
@@ -91,6 +108,10 @@ export default function ProfilePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isProvider, setIsProvider] = useState(false);
+  const [providerListing, setProviderListing] = useState<ProviderListing>(emptyProviderListing);
+  const [isSavingListing, setIsSavingListing] = useState(false);
+  const [listingError, setListingError] = useState<string | null>(null);
+  const [listingSuccess, setListingSuccess] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [phoneVerifiedAt, setPhoneVerifiedAt] = useState<string | null>(null);
@@ -124,7 +145,11 @@ export default function ProfilePage() {
         profile_id: userData.user.id,
       });
       if (phoneError) logSupabaseError("profile phone lookup failed", phoneError);
-      const { data: providerData, error: providerError } = await supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle();
+      const { data: providerData, error: providerError } = await supabase
+        .from("providers")
+        .select("id, headline, bio, locality, maps_url")
+        .eq("id", userData.user.id)
+        .maybeSingle();
       if (providerError) logSupabaseError("profile provider lookup failed", providerError);
 
       if (mounted && profileData) {
@@ -141,6 +166,14 @@ export default function ProfilePage() {
         setAvatarUrl(profileData.avatar_url);
         setIsAdmin(profileData.role === "admin");
         setIsProvider(!!providerData);
+        if (providerData) {
+          setProviderListing({
+            headline: providerData.headline ?? "",
+            bio: providerData.bio ?? "",
+            locality: providerData.locality ?? "",
+            maps_url: providerData.maps_url ?? "",
+          });
+        }
       }
       setLoading(false);
     }
@@ -168,6 +201,60 @@ export default function ProfilePage() {
       setSavedFormValues(values);
       setIsEditing(false);
       router.refresh();
+    }
+  }
+
+  async function saveProviderListing(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setListingError(null);
+    setListingSuccess(null);
+
+    const headline = providerListing.headline.trim();
+    const bio = providerListing.bio.trim();
+    const locality = providerListing.locality.trim();
+    const mapsUrl = providerListing.maps_url.trim();
+    if (mapsUrl && !isAllowedMapsUrl(mapsUrl)) {
+      setListingError("Please paste a link from Google Maps (google.com/maps or maps.app.goo.gl).");
+      return;
+    }
+
+    setIsSavingListing(true);
+    try {
+      const supabase = createClient();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider listing auth lookup failed", userError);
+      if (!userData.user) {
+        setListingError("Please sign in again to save your business listing.");
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from("providers")
+        .update({
+          headline: headline || null,
+          bio: bio || null,
+          locality: locality || null,
+          maps_url: mapsUrl || null,
+        })
+        .eq("id", userData.user.id);
+
+      if (updateError) {
+        logSupabaseError("provider listing save failed", updateError);
+        setListingError(friendlyDbError(updateError, "Unable to save your business listing."));
+        return;
+      }
+
+      setProviderListing({ headline, bio, locality, maps_url: mapsUrl });
+      setListingSuccess("Business listing saved.");
+    } catch (saveError: unknown) {
+      setListingError(
+        friendlyDbError(
+          saveError && typeof saveError === "object" ? saveError as { message?: string; code?: string } : null,
+          "Unable to save your business listing."
+        )
+      );
+    } finally {
+      setIsSavingListing(false);
     }
   }
 
@@ -404,6 +491,80 @@ export default function ProfilePage() {
           <a href="/profile/services" className="inline-block rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
             Manage services
           </a>
+        </section>
+      )}
+      {isProvider && (
+        <section className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <h2 className="mb-2 font-medium text-blue-900">Your business listing</h2>
+          <form onSubmit={saveProviderListing} className="space-y-4">
+            <div>
+              <label htmlFor="provider-headline" className="mb-1 block text-sm font-medium text-blue-900">Headline</label>
+              <Input
+                id="provider-headline"
+                value={providerListing.headline}
+                maxLength={150}
+                onChange={(event) => {
+                  setProviderListing((current) => ({ ...current, headline: event.target.value }));
+                  setListingSuccess(null);
+                }}
+              />
+              {providerListing.headline.length > 120 && (
+                <p className="mt-1 text-right text-xs text-blue-800">{providerListing.headline.length}/150</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="provider-bio" className="mb-1 block text-sm font-medium text-blue-900">Bio</label>
+              <Textarea
+                id="provider-bio"
+                value={providerListing.bio}
+                maxLength={2000}
+                rows={5}
+                onChange={(event) => {
+                  setProviderListing((current) => ({ ...current, bio: event.target.value }));
+                  setListingSuccess(null);
+                }}
+              />
+              {providerListing.bio.length > 1600 && (
+                <p className="mt-1 text-right text-xs text-blue-800">{providerListing.bio.length}/2000</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="provider-locality" className="mb-1 block text-sm font-medium text-blue-900">Based at (area or landmark)</label>
+              <Input
+                id="provider-locality"
+                value={providerListing.locality}
+                maxLength={150}
+                placeholder="Beach Road, Cuddalore"
+                onChange={(event) => {
+                  setProviderListing((current) => ({ ...current, locality: event.target.value }));
+                  setListingSuccess(null);
+                }}
+              />
+              {providerListing.locality.length > 120 && (
+                <p className="mt-1 text-right text-xs text-blue-800">{providerListing.locality.length}/150</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="provider-maps-url" className="mb-1 block text-sm font-medium text-blue-900">Google Maps link (optional)</label>
+              <Input
+                id="provider-maps-url"
+                value={providerListing.maps_url}
+                maxLength={300}
+                onChange={(event) => {
+                  setProviderListing((current) => ({ ...current, maps_url: event.target.value }));
+                  setListingSuccess(null);
+                }}
+              />
+              {providerListing.maps_url.length > 240 && (
+                <p className="mt-1 text-right text-xs text-blue-800">{providerListing.maps_url.length}/300</p>
+              )}
+            </div>
+            {listingError && <p className="text-sm text-destructive" role="alert">{listingError}</p>}
+            {listingSuccess && <p className="text-sm text-green-800" role="status">{listingSuccess}</p>}
+            <Button type="submit" disabled={isSavingListing}>
+              {isSavingListing ? "Saving…" : "Save business listing"}
+            </Button>
+          </form>
         </section>
       )}
     </div>
