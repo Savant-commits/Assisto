@@ -17,6 +17,7 @@ import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { ReportDialog } from "@/components/report-dialog";
 import { ReviewModal } from "@/components/review-modal";
 import { friendlyDbError } from "@/lib/db-errors";
+import { EXTERNAL_LINK_PROPS, viewOnMapUrl } from "@/lib/maps";
 import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib/reviews";
 
 const enquirySchema = z.object({
@@ -32,6 +33,8 @@ type ProviderRecord = {
   bio: string | null;
   years_experience: number | null;
   city: string | null;
+  locality: string | null;
+  maps_url: string | null;
   is_verified: boolean | null;
   avg_rating: number | null;
   review_count: number | null;
@@ -358,7 +361,7 @@ export default function ProviderProfilePage() {
       const { data: providerData, error: providerError } = await supabase
         .from("providers")
         .select(
-          `id, business_name, headline, bio, years_experience, city, is_verified,
+          `id, business_name, headline, bio, years_experience, city, locality, maps_url, is_verified,
            avg_rating, review_count,
            profiles!providers_id_fkey ( full_name, avatar_url ),
            provider_categories ( service_categories ( id, name ) ),
@@ -457,6 +460,7 @@ export default function ProviderProfilePage() {
 
   const profile = Array.isArray(provider.profiles) ? provider.profiles[0] : provider.profiles;
   const name = provider.business_name || profile?.full_name || "Provider";
+  const providerMapUrl = viewOnMapUrl({ mapsUrl: provider.maps_url, locality: provider.locality, city: provider.city });
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -521,6 +525,25 @@ export default function ProviderProfilePage() {
           <h2 className="mb-1 font-medium">About</h2>
           <p className="whitespace-pre-line text-muted-foreground">{provider.bio}</p>
         </div>
+      )}
+
+      {(provider.city || provider.locality) && (
+        <section className="mb-8 rounded-lg border p-4">
+          <h2 className="mb-2 font-medium">Where they work</h2>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            {provider.city && <p>City: {provider.city}</p>}
+            {provider.locality && <p>Based at {provider.locality}</p>}
+          </div>
+          {providerMapUrl && (
+            <a
+              href={providerMapUrl}
+              {...EXTERNAL_LINK_PROPS}
+              className="mt-3 inline-block text-sm font-medium text-blue-600 underline"
+            >
+              View on map
+            </a>
+          )}
+        </section>
       )}
 
       {(provider.provider_portfolio_items ?? []).length > 0 && (
