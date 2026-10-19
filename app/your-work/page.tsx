@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import LoadingSpinner from "@/components/loading-spinner";
 import { useEscapeKey } from "@/lib/use-escape-key";
+import { friendlyDbError } from "@/lib/db-errors";
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -461,7 +462,7 @@ export default function PortfolioPage() {
 
           if (insertError) {
             logSupabaseError("your work item save failed", insertError);
-            throw new Error(insertError.message);
+            throw insertError;
           }
 
           nextSortOrder += 1;
@@ -471,7 +472,7 @@ export default function PortfolioPage() {
             )
           );
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : "Upload failed.";
+          const message = friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Upload failed.");
           setStagedUploads((current) =>
             current.map((item) =>
               item.id === stagedFile.id
@@ -518,7 +519,7 @@ export default function PortfolioPage() {
 
     if (error) {
       logSupabaseError("your work caption save failed", error);
-      setError(error.message);
+      setError(friendlyDbError(error, "Unable to save this caption."));
       return;
     }
 
@@ -552,7 +553,7 @@ export default function PortfolioPage() {
 
     if (error) {
       logSupabaseError("your work reorder failed", error);
-      setError(error.message);
+      setError(friendlyDbError(error, "Unable to update your portfolio order."));
       setItems(reorderSnapshot);
       setReorderMode(false);
       setMediaFilter("all");

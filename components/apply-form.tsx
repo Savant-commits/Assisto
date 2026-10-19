@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { friendlyDbError } from "@/lib/db-errors";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -195,7 +196,7 @@ export default function ApplyForm() {
           details: error.details,
           hint: error.hint,
         });
-        setSubmitError(error.message || "An unexpected error occurred");
+        setSubmitError(friendlyDbError(error, "An unexpected error occurred"));
       } else {
         router.push("/apply/submitted");
       }

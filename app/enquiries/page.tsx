@@ -11,6 +11,7 @@ import { CompletionActions } from "@/components/completion-actions";
 import { ReviewModal } from "@/components/review-modal";
 import ProjectChat from "@/components/project-chat";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
+import { friendlyDbError } from "@/lib/db-errors";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { one } from "@/lib/relations";
 
@@ -455,7 +456,7 @@ export default function EnquiriesPage() {
       if (error) throw error;
       setSent((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
     } catch (err: unknown) {
-      setCardError(key, err instanceof Error ? err.message : "Update failed");
+      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
     } finally {
       setPending(key, false);
     }
@@ -472,7 +473,7 @@ export default function EnquiriesPage() {
       if (error) throw error;
       setReceived((prev) => prev.map((p) => (p.id === id ? { ...p, status, decline_reason: status === "declined" ? nextReason : p.decline_reason } : p)));
     } catch (err: unknown) {
-      setCardError(key, err instanceof Error ? err.message : "Update failed");
+      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
     } finally {
       setPending(key, false);
     }
@@ -505,7 +506,7 @@ export default function EnquiriesPage() {
       );
       setConfirmingSchedule((s) => ({ ...s, [id]: { mode: null, scheduledStartAt: "" } }));
     } catch (err: unknown) {
-      setCardError(key, err instanceof Error ? err.message : "Update failed");
+      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
     } finally {
       setPending(key, false);
     }

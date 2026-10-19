@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { friendlyDbError } from "@/lib/db-errors";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { ProjectMessageAttachment, ProjectMessage } from "@/lib/types";
 
@@ -707,7 +708,7 @@ export default function ProjectChat(props: ProjectChatProps) {
           return;
         }
 
-        setReportError("Could not submit the report. Please try again.");
+        setReportError(friendlyDbError(insertError, "Could not submit the report. Please try again."));
         return;
       }
 
@@ -995,7 +996,7 @@ export default function ProjectChat(props: ProjectChatProps) {
           insertError.code
         );
         await cleanupUploadedFiles(uploadedRecords);
-        setError("Failed to send message. Please try again.");
+        setError(friendlyDbError(insertError, "Failed to send message. Please try again."));
         return;
       }
 
@@ -1004,6 +1005,7 @@ export default function ProjectChat(props: ProjectChatProps) {
 
       const successfulAttachments: ProjectMessageAttachment[] = [];
       const failedAttachments: Array<{ bucket: string; path: string }> = [];
+      const failedAttachmentErrors: Array<{ message?: string; code?: string }> = [];
 
       await Promise.all(
         uploadedFiles.map(async (uploadedFile) => {
@@ -1031,6 +1033,7 @@ export default function ProjectChat(props: ProjectChatProps) {
               hint: attachmentError.hint,
             });
             failedAttachments.push({ bucket: uploadedFile.bucket, path: uploadedFile.path });
+            failedAttachmentErrors.push(attachmentError);
             return;
           }
 
@@ -1039,7 +1042,11 @@ export default function ProjectChat(props: ProjectChatProps) {
       );
 
       if (failedAttachments.length > 0) {
-        setError("Some attachments could not be saved. Please try again.");
+        const fallback = "Some attachments could not be saved. Please try again.";
+        const friendlyError = failedAttachmentErrors
+          .map((attachmentError) => friendlyDbError(attachmentError, fallback))
+          .find((message) => message !== fallback);
+        setError(friendlyError ?? fallback);
         await cleanupUploadedFiles(failedAttachments);
       }
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { friendlyDbError } from "@/lib/db-errors";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,7 +57,7 @@ export function ReportDialog({
           // Unique constraint violation
           setError("You've already reported this. Thank you for helping keep our community safe.");
         } else {
-          setError(rpcError.message || "Failed to submit report");
+          setError(friendlyDbError(rpcError, "Failed to submit report"));
         }
         return;
       }
@@ -65,7 +66,7 @@ export function ReportDialog({
       form.reset();
       onSuccess?.();
     } catch (err) {
-      setError((err as any)?.message || "Failed to submit report");
+      setError(friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Failed to submit report"));
     } finally {
       setIsSubmitting(false);
     }

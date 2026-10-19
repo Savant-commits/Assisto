@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { friendlyDbError } from "@/lib/db-errors";
 import ServiceCombobox from "@/components/service-combobox";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
@@ -107,7 +108,7 @@ export default function NewRequirementPage() {
         details: error.details,
         hint: error.hint,
       });
-      setSubmitError(error.message || "Failed to post requirement");
+      setSubmitError(friendlyDbError(error, "Failed to post requirement"));
       return;
     }
 

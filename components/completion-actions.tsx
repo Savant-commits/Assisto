@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { friendlyDbError } from "@/lib/db-errors";
 
 export function CompletionActions({
   enquiryId,
@@ -53,8 +54,7 @@ export function CompletionActions({
         onReviewNeeded(enquiryId);
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to mark complete";
-      setError(message);
+      setError(friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Failed to mark complete"));
     } finally {
       setPending(false);
     }

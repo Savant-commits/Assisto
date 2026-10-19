@@ -16,6 +16,7 @@ import { ContactUnlock } from "@/components/contact-unlock";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { ReportDialog } from "@/components/report-dialog";
 import { ReviewModal } from "@/components/review-modal";
+import { friendlyDbError } from "@/lib/db-errors";
 import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib/reviews";
 
 const enquirySchema = z.object({
@@ -211,7 +212,7 @@ function EnquiryWidget({
         return;
       }
 
-      setErrorMessage(error.message || "Unable to send your enquiry right now.");
+      setErrorMessage(friendlyDbError(error, "Unable to send your enquiry right now."));
       return;
     }
 

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
+import { friendlyDbError } from "@/lib/db-errors";
 
 export type ReviewModalProps = {
   enquiryId: number;
@@ -60,7 +61,7 @@ export function ReviewModal({ enquiryId, providerName, existingReview, onClose, 
       await onSubmitted();
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Unable to save your review right now.");
+      setError(friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Unable to save your review right now."));
     } finally {
       setSubmitting(false);
     }
