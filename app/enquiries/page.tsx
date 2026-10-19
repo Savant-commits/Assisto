@@ -7,6 +7,7 @@ import { MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import LoadingSpinner from "@/components/loading-spinner";
 import { ContactUnlock } from "@/components/contact-unlock";
+import { EnquiryDirections } from "@/components/enquiry-directions";
 import { CompletionActions } from "@/components/completion-actions";
 import { ReviewModal } from "@/components/review-modal";
 import ProjectChat from "@/components/project-chat";
@@ -30,13 +31,22 @@ type SentEnquiry = {
   scheduled_start_at?: string | null;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
-  providers?: { id: string; business_name?: string | null } | null;
+  providers?: {
+    id: string;
+    business_name?: string | null;
+    locality?: string | null;
+    maps_url?: string | null;
+    city?: string | null;
+  } | null;
   customer_requirements?: { description: string | null } | null;
   projects?: { id: string; project_code: string } | null;
 };
 
 type SentEnquiryRow = Omit<SentEnquiry, "providers" | "customer_requirements" | "projects"> & {
-  providers?: { id: string; business_name?: string | null } | { id: string; business_name?: string | null }[] | null;
+  providers?:
+    | { id: string; business_name?: string | null; locality?: string | null; maps_url?: string | null; city?: string | null }
+    | { id: string; business_name?: string | null; locality?: string | null; maps_url?: string | null; city?: string | null }[]
+    | null;
   customer_requirements?: { description: string | null } | { description: string | null }[] | null;
   projects?: { id: string; project_code: string } | { id: string; project_code: string }[] | null;
 };
@@ -145,7 +155,7 @@ export default function EnquiriesPage() {
     const { data: sentData } = await supabase
       .from("enquiries")
       .select(
-        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name),customer_requirements(description),projects(id,project_code)`
+        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name,locality,maps_url,city),customer_requirements(description),projects(id,project_code)`
       )
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
@@ -1086,6 +1096,7 @@ export default function EnquiriesPage() {
                   {sentTab === "active" && enq.status === "confirmed" && (
                     <>
                       <ContactUnlock profileId={enq.providers?.id ?? ""} showUnavailable />
+                      <EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} />
                       <CompletionActions
                         enquiryId={enq.id}
                         role="customer"
@@ -1259,6 +1270,7 @@ export default function EnquiriesPage() {
                 {receivedTab === "active" && enq.status === "confirmed" && (
                   <>
                     <ContactUnlock profileId={enq.customer_id} showUnavailable />
+                    <EnquiryDirections enquiryId={enq.id} role="provider" />
                     <CompletionActions
                       enquiryId={enq.id}
                       role="provider"
