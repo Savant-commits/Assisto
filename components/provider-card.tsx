@@ -76,11 +76,12 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
       )}
 
       <CardFooter>
-        <div className="flex w-full items-center justify-between">
-          <div className="text-sm text-muted-foreground">{provider.city}</div>
+        <div className="flex w-full flex-col gap-1 text-sm text-muted-foreground">
+          <div>{provider.city}</div>
+          {provider.locality && <div>Based at {provider.locality}</div>}
           <Link
             href={requirement ? `/providers/${provider.id}?requirement=${requirement}` : `/providers/${provider.id}`}
-            className={cn("text-sm font-medium underline")}
+            className={cn("mt-1 text-sm font-medium underline")}
           >
             View profile
           </Link>

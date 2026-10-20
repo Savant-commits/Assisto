@@ -21,7 +21,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { friendlyDbError } from "@/lib/db-errors";
-import { isAllowedMapsUrl } from "@/lib/maps";
+import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
+import { LocationMap } from "@/components/map/location-map";
+import { LocationPicker } from "@/components/map/location-picker";
 
 const schema = z.object({
   full_name: z.string().min(2),
@@ -43,14 +45,16 @@ type ProviderListing = {
   headline: string;
   bio: string;
   locality: string;
-  maps_url: string;
+  lat: number | null;
+  lng: number | null;
 };
 
 const emptyProviderListing: ProviderListing = {
   headline: "",
   bio: "",
   locality: "",
-  maps_url: "",
+  lat: null,
+  lng: null,
 };
 
 const emptyFormValues: FormValues = {
@@ -116,6 +120,7 @@ export default function ProfilePage() {
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [phoneVerifiedAt, setPhoneVerifiedAt] = useState<string | null>(null);
   const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [savedFormValues, setSavedFormValues] = useState<FormValues>(emptyFormValues);
 
@@ -147,7 +152,7 @@ export default function ProfilePage() {
       if (phoneError) logSupabaseError("profile phone lookup failed", phoneError);
       const { data: providerData, error: providerError } = await supabase
         .from("providers")
-        .select("id, headline, bio, locality, maps_url")
+        .select("id, headline, bio, locality, lat, lng")
         .eq("id", userData.user.id)
         .maybeSingle();
       if (providerError) logSupabaseError("profile provider lookup failed", providerError);
@@ -171,7 +176,8 @@ export default function ProfilePage() {
             headline: providerData.headline ?? "",
             bio: providerData.bio ?? "",
             locality: providerData.locality ?? "",
-            maps_url: providerData.maps_url ?? "",
+            lat: providerData.lat ?? null,
+            lng: providerData.lng ?? null,
           });
         }
       }
@@ -212,11 +218,6 @@ export default function ProfilePage() {
     const headline = providerListing.headline.trim();
     const bio = providerListing.bio.trim();
     const locality = providerListing.locality.trim();
-    const mapsUrl = providerListing.maps_url.trim();
-    if (mapsUrl && !isAllowedMapsUrl(mapsUrl)) {
-      setListingError("Please paste a link from Google Maps (google.com/maps or maps.app.goo.gl).");
-      return;
-    }
 
     setIsSavingListing(true);
     try {
@@ -234,7 +235,6 @@ export default function ProfilePage() {
           headline: headline || null,
           bio: bio || null,
           locality: locality || null,
-          maps_url: mapsUrl || null,
         })
         .eq("id", userData.user.id);
 
@@ -244,7 +244,12 @@ export default function ProfilePage() {
         return;
       }
 
-      setProviderListing({ headline, bio, locality, maps_url: mapsUrl });
+      setProviderListing((current) => ({
+        ...current,
+        headline,
+        bio,
+        locality,
+      }));
       setListingSuccess("Business listing saved.");
     } catch (saveError: unknown) {
       setListingError(
@@ -255,6 +260,50 @@ export default function ProfilePage() {
       );
     } finally {
       setIsSavingListing(false);
+    }
+  }
+
+  async function saveProviderLocation(nextLocation: { lat: number; lng: number }) {
+    setListingError(null);
+    setListingSuccess(null);
+
+    try {
+      const supabase = createClient();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider location auth lookup failed", userError);
+      if (!userData.user) {
+        setListingError("Please sign in again to save your business location.");
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from("providers")
+        .update({
+          lat: nextLocation.lat,
+          lng: nextLocation.lng,
+        })
+        .eq("id", userData.user.id);
+
+      if (updateError) {
+        logSupabaseError("provider location save failed", updateError);
+        setListingError(friendlyDbError(updateError, "Unable to save your business location."));
+        return;
+      }
+
+      setProviderListing((current) => ({
+        ...current,
+        lat: nextLocation.lat,
+        lng: nextLocation.lng,
+      }));
+      setListingSuccess("Business location saved.");
+      setIsLocationPickerOpen(false);
+    } catch (saveError: unknown) {
+      setListingError(
+        friendlyDbError(
+          saveError && typeof saveError === "object" ? saveError as { message?: string; code?: string } : null,
+          "Unable to save your business location."
+        )
+      );
     }
   }
 
@@ -493,80 +542,102 @@ export default function ProfilePage() {
           </a>
         </section>
       )}
-      {isProvider && (
-        <section className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
-          <h2 className="mb-2 font-medium text-blue-900">Your business listing</h2>
-          <form onSubmit={saveProviderListing} className="space-y-4">
-            <div>
-              <label htmlFor="provider-headline" className="mb-1 block text-sm font-medium text-blue-900">Headline</label>
-              <Input
-                id="provider-headline"
-                value={providerListing.headline}
-                maxLength={150}
-                onChange={(event) => {
-                  setProviderListing((current) => ({ ...current, headline: event.target.value }));
-                  setListingSuccess(null);
-                }}
-              />
-              {providerListing.headline.length > 120 && (
-                <p className="mt-1 text-right text-xs text-blue-800">{providerListing.headline.length}/150</p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="provider-bio" className="mb-1 block text-sm font-medium text-blue-900">Bio</label>
-              <Textarea
-                id="provider-bio"
-                value={providerListing.bio}
-                maxLength={2000}
-                rows={5}
-                onChange={(event) => {
-                  setProviderListing((current) => ({ ...current, bio: event.target.value }));
-                  setListingSuccess(null);
-                }}
-              />
-              {providerListing.bio.length > 1600 && (
-                <p className="mt-1 text-right text-xs text-blue-800">{providerListing.bio.length}/2000</p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="provider-locality" className="mb-1 block text-sm font-medium text-blue-900">Based at (area or landmark)</label>
-              <Input
-                id="provider-locality"
-                value={providerListing.locality}
-                maxLength={150}
-                placeholder="Beach Road, Cuddalore"
-                onChange={(event) => {
-                  setProviderListing((current) => ({ ...current, locality: event.target.value }));
-                  setListingSuccess(null);
-                }}
-              />
-              {providerListing.locality.length > 120 && (
-                <p className="mt-1 text-right text-xs text-blue-800">{providerListing.locality.length}/150</p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="provider-maps-url" className="mb-1 block text-sm font-medium text-blue-900">Google Maps link (optional)</label>
-              <Input
-                id="provider-maps-url"
-                value={providerListing.maps_url}
-                maxLength={300}
-                onChange={(event) => {
-                  setProviderListing((current) => ({ ...current, maps_url: event.target.value }));
-                  setListingSuccess(null);
-                }}
-              />
-              {providerListing.maps_url.length > 240 && (
-                <p className="mt-1 text-right text-xs text-blue-800">{providerListing.maps_url.length}/300</p>
-              )}
-            </div>
-            {listingError && <p className="text-sm text-destructive" role="alert">{listingError}</p>}
-            {listingSuccess && <p className="text-sm text-green-800" role="status">{listingSuccess}</p>}
-            <Button type="submit" disabled={isSavingListing}>
-              {isSavingListing ? "Saving…" : "Save business listing"}
-            </Button>
-          </form>
-        </section>
-      )}
+      {isProvider && (() => {
+        const providerCity = profile?.city || savedFormValues.city || "Cuddalore";
+        const cityCenter = providerCity in CITY_CENTERS ? CITY_CENTERS[providerCity as keyof typeof CITY_CENTERS] : DEFAULT_MAP_CENTER;
+        const hasLocation = providerListing.lat !== null && providerListing.lng !== null;
+
+        return (
+          <section className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <h2 className="mb-2 font-medium text-blue-900">Your business listing</h2>
+            <form onSubmit={saveProviderListing} className="space-y-4">
+              <div>
+                <label htmlFor="provider-headline" className="mb-1 block text-sm font-medium text-blue-900">Headline</label>
+                <Input
+                  id="provider-headline"
+                  value={providerListing.headline}
+                  maxLength={150}
+                  onChange={(event) => {
+                    setProviderListing((current) => ({ ...current, headline: event.target.value }));
+                    setListingSuccess(null);
+                  }}
+                />
+                {providerListing.headline.length > 120 && (
+                  <p className="mt-1 text-right text-xs text-blue-800">{providerListing.headline.length}/150</p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="provider-bio" className="mb-1 block text-sm font-medium text-blue-900">Bio</label>
+                <Textarea
+                  id="provider-bio"
+                  value={providerListing.bio}
+                  maxLength={2000}
+                  rows={5}
+                  onChange={(event) => {
+                    setProviderListing((current) => ({ ...current, bio: event.target.value }));
+                    setListingSuccess(null);
+                  }}
+                />
+                {providerListing.bio.length > 1600 && (
+                  <p className="mt-1 text-right text-xs text-blue-800">{providerListing.bio.length}/2000</p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="provider-locality" className="mb-1 block text-sm font-medium text-blue-900">Based at (area or landmark)</label>
+                <Input
+                  id="provider-locality"
+                  value={providerListing.locality}
+                  maxLength={150}
+                  placeholder="Beach Road, Cuddalore"
+                  onChange={(event) => {
+                    setProviderListing((current) => ({ ...current, locality: event.target.value }));
+                    setListingSuccess(null);
+                  }}
+                />
+                {providerListing.locality.length > 120 && (
+                  <p className="mt-1 text-right text-xs text-blue-800">{providerListing.locality.length}/150</p>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-blue-900">Business location</h3>
+                {hasLocation ? (
+                  <LocationMap lat={providerListing.lat!} lng={providerListing.lng!} height={220} />
+                ) : (
+                  <>
+                    <LocationMap lat={cityCenter.lat} lng={cityCenter.lng} height={220} />
+                    <p className="text-sm text-blue-800">No location set yet</p>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsLocationPickerOpen(true)}
+                  className="rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-white"
+                >
+                  {hasLocation ? "Change location" : "Set location"}
+                </button>
+                <p className="text-xs text-blue-800">Your pin is public on your profile. If you prefer privacy, place it at your shop or office rather than your home.</p>
+              </div>
+
+              {listingError && <p className="text-sm text-destructive" role="alert">{listingError}</p>}
+              {listingSuccess && <p className="text-sm text-green-800" role="status">{listingSuccess}</p>}
+              <Button type="submit" disabled={isSavingListing}>
+                {isSavingListing ? "Saving…" : "Save business listing"}
+              </Button>
+            </form>
+
+            <LocationPicker
+              open={isLocationPickerOpen}
+              onOpenChange={setIsLocationPickerOpen}
+              initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
+              fallbackCenter={cityCenter}
+              title="Business location"
+              confirmLabel="Confirm"
+              onConfirm={saveProviderLocation}
+            />
+          </section>
+        );
+      })()}
     </div>
   );
 }

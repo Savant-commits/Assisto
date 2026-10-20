@@ -17,7 +17,7 @@ import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { ReportDialog } from "@/components/report-dialog";
 import { ReviewModal } from "@/components/review-modal";
 import { friendlyDbError } from "@/lib/db-errors";
-import { EXTERNAL_LINK_PROPS, viewOnMapUrl } from "@/lib/maps";
+import { LocationMap } from "@/components/map/location-map";
 import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib/reviews";
 
 const enquirySchema = z.object({
@@ -34,7 +34,8 @@ type ProviderRecord = {
   years_experience: number | null;
   city: string | null;
   locality: string | null;
-  maps_url: string | null;
+  lat: number | null;
+  lng: number | null;
   is_verified: boolean | null;
   avg_rating: number | null;
   review_count: number | null;
@@ -361,7 +362,7 @@ export default function ProviderProfilePage() {
       const { data: providerData, error: providerError } = await supabase
         .from("providers")
         .select(
-          `id, business_name, headline, bio, years_experience, city, locality, maps_url, is_verified,
+          `id, business_name, headline, bio, years_experience, city, locality, lat, lng, is_verified,
            avg_rating, review_count,
            profiles!providers_id_fkey ( full_name, avatar_url ),
            provider_categories ( service_categories ( id, name ) ),
@@ -460,7 +461,7 @@ export default function ProviderProfilePage() {
 
   const profile = Array.isArray(provider.profiles) ? provider.profiles[0] : provider.profiles;
   const name = provider.business_name || profile?.full_name || "Provider";
-  const providerMapUrl = viewOnMapUrl({ mapsUrl: provider.maps_url, locality: provider.locality, city: provider.city });
+  const hasPin = provider.lat !== null && provider.lat !== undefined && provider.lng !== null && provider.lng !== undefined;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -534,14 +535,10 @@ export default function ProviderProfilePage() {
             {provider.city && <p>City: {provider.city}</p>}
             {provider.locality && <p>Based at {provider.locality}</p>}
           </div>
-          {providerMapUrl && (
-            <a
-              href={providerMapUrl}
-              {...EXTERNAL_LINK_PROPS}
-              className="mt-3 inline-block text-sm font-medium text-blue-600 underline"
-            >
-              View on map
-            </a>
+          {hasPin && provider.lat !== null && provider.lng !== null && (
+            <div className="mt-3">
+              <LocationMap lat={provider.lat} lng={provider.lng} height={220} />
+            </div>
           )}
         </section>
       )}

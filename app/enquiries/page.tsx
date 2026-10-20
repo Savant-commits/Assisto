@@ -9,11 +9,13 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { EnquiryDirections } from "@/components/enquiry-directions";
 import { CompletionActions } from "@/components/completion-actions";
+import { LocationMap } from "@/components/map/location-map";
+import { LocationPicker } from "@/components/map/location-picker";
 import { ReviewModal } from "@/components/review-modal";
 import ProjectChat from "@/components/project-chat";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 import { friendlyDbError } from "@/lib/db-errors";
-import { isAllowedMapsUrl } from "@/lib/maps";
+import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { one } from "@/lib/relations";
 
@@ -34,20 +36,21 @@ type SentEnquiry = {
   providers?: {
     id: string;
     business_name?: string | null;
+    lat?: number | null;
+    lng?: number | null;
     locality?: string | null;
-    maps_url?: string | null;
     city?: string | null;
   } | null;
-  customer_requirements?: { description: string | null } | null;
+  customer_requirements?: { description: string | null; city?: string | null } | null;
   projects?: { id: string; project_code: string } | null;
 };
 
 type SentEnquiryRow = Omit<SentEnquiry, "providers" | "customer_requirements" | "projects"> & {
   providers?:
-    | { id: string; business_name?: string | null; locality?: string | null; maps_url?: string | null; city?: string | null }
-    | { id: string; business_name?: string | null; locality?: string | null; maps_url?: string | null; city?: string | null }[]
+    | { id: string; business_name?: string | null; lat?: number | null; lng?: number | null; locality?: string | null; city?: string | null }
+    | { id: string; business_name?: string | null; lat?: number | null; lng?: number | null; locality?: string | null; city?: string | null }[]
     | null;
-  customer_requirements?: { description: string | null } | { description: string | null }[] | null;
+  customer_requirements?: { description: string | null; city?: string | null } | { description: string | null; city?: string | null }[] | null;
   projects?: { id: string; project_code: string } | { id: string; project_code: string }[] | null;
 };
 
@@ -109,6 +112,14 @@ function getReviewDismissedKey(enquiryId: number) {
   return `reviews:dismissed:${enquiryId}`;
 }
 
+function resolveLocationFallbackCenter(providerCity?: string | null, requirementCity?: string | null) {
+  const cityName = requirementCity || providerCity;
+  if (cityName && cityName in CITY_CENTERS) {
+    return CITY_CENTERS[cityName as keyof typeof CITY_CENTERS];
+  }
+  return DEFAULT_MAP_CENTER;
+}
+
 export default function EnquiriesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -124,7 +135,8 @@ export default function EnquiriesPage() {
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Record<number, boolean>>({});
   const [confirmingDecline, setConfirmingDecline] = useState<Record<number, { open: boolean; reason: string }>>({});
   const [confirmingSchedule, setConfirmingSchedule] = useState<Record<number, { mode: "now" | "specific" | null; scheduledStartAt: string }>>({});
-  const [confirmingLocation, setConfirmingLocation] = useState<Record<number, { addressText: string; mapsUrl: string }>>({});
+  const [confirmingLocation, setConfirmingLocation] = useState<Record<number, { addressText: string; lat: number | null; lng: number | null }>>({});
+  const [locationPickerOpen, setLocationPickerOpen] = useState<Record<number, boolean>>({});
   const [locationErrors, setLocationErrors] = useState<Record<number, string | null>>({});
   const [reviewsByEnquiry, setReviewsByEnquiry] = useState<Record<string, ReviewRecord>>({});
   const [receivedReviewsByEnquiry, setReceivedReviewsByEnquiry] = useState<Record<string, ReviewRecord>>({});
@@ -155,7 +167,7 @@ export default function EnquiriesPage() {
     const { data: sentData } = await supabase
       .from("enquiries")
       .select(
-        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name,locality,maps_url,city),customer_requirements(description),projects(id,project_code)`
+        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name,lat,lng,locality,city),customer_requirements(description,city),projects(id,project_code)`
       )
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
@@ -495,7 +507,7 @@ export default function EnquiriesPage() {
   async function confirmAcceptedEnquiry(
     id: number,
     schedule: { isAsap: boolean; scheduledStartAt: string | null },
-    location: { addressText: string; mapsUrl: string }
+    location: { addressText: string; lat: number | null; lng: number | null }
   ) {
     const key = `sent-${id}`;
     setPending(key, true);
@@ -505,13 +517,12 @@ export default function EnquiriesPage() {
     try {
       const supabase = createClient();
       const addressText = location.addressText.trim();
-      const mapsUrl = location.mapsUrl.trim();
       if (!addressText) {
         setLocationErrors((current) => ({ ...current, [id]: "Please enter the job site address." }));
         return;
       }
-      if (mapsUrl && !isAllowedMapsUrl(mapsUrl)) {
-        setLocationErrors((current) => ({ ...current, [id]: "Please paste a link from Google Maps." }));
+      if (location.lat === null || location.lng === null) {
+        setLocationErrors((current) => ({ ...current, [id]: "Please drop a pin for the job site." }));
         return;
       }
 
@@ -523,13 +534,14 @@ export default function EnquiriesPage() {
         enquiry_id: id,
         customer_id: userData.user.id,
         address_text: addressText,
-        maps_url: mapsUrl || null,
+        lat: location.lat,
+        lng: location.lng,
       };
       const { error: locationInsertError } = await supabase.from("enquiry_locations").insert(locationPayload);
       if (locationInsertError?.code === "23505") {
         const { error: locationUpdateError } = await supabase
           .from("enquiry_locations")
-          .update({ address_text: locationPayload.address_text, maps_url: locationPayload.maps_url })
+          .update({ address_text: locationPayload.address_text, lat: locationPayload.lat, lng: locationPayload.lng })
           .eq("enquiry_id", id);
         if (locationUpdateError) {
           locationWriteFailed = true;
@@ -831,7 +843,7 @@ export default function EnquiriesPage() {
                         <div className="mt-1 text-sm text-muted-foreground">Regarding: {enq.customer_requirements.description}</div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-start justify-end gap-2">
                       {(sentTab === "active" || sentTab === "history") && enq.projects && (
                         <button
                           type="button"
@@ -872,6 +884,9 @@ export default function EnquiriesPage() {
                             })()}
                           </div>
                         </button>
+                      )}
+                      {sentTab === "active" && enq.status === "confirmed" && (
+                        <EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} />
                       )}
                       <div>{statusBadge(enq.status)}</div>
                     </div>
@@ -981,7 +996,8 @@ export default function EnquiriesPage() {
                                   ...current,
                                   [enq.id]: {
                                     addressText: event.target.value,
-                                    mapsUrl: current[enq.id]?.mapsUrl ?? "",
+                                    lat: current[enq.id]?.lat ?? null,
+                                    lng: current[enq.id]?.lng ?? null,
                                   },
                                 }));
                                 setLocationErrors((current) => ({ ...current, [enq.id]: null }));
@@ -995,32 +1011,77 @@ export default function EnquiriesPage() {
                                 {confirmingLocation[enq.id].addressText.length}/300
                               </p>
                             )}
-                            <label htmlFor={`job-site-maps-${enq.id}`} className="block text-sm font-medium">
-                              Google Maps pin link <span className="text-muted-foreground">(optional)</span>
-                            </label>
-                            <input
-                              id={`job-site-maps-${enq.id}`}
-                              type="text"
-                              maxLength={300}
-                              value={confirmingLocation[enq.id]?.mapsUrl ?? ""}
-                              onChange={(event) => {
-                                const mapsUrl = event.target.value;
-                                setConfirmingLocation((current) => ({
-                                  ...current,
-                                  [enq.id]: {
-                                    addressText: current[enq.id]?.addressText ?? "",
-                                    mapsUrl,
-                                  },
-                                }));
-                                setLocationErrors((current) => ({
-                                  ...current,
-                                  [enq.id]: mapsUrl.trim() && !isAllowedMapsUrl(mapsUrl.trim())
-                                    ? "Please paste a link from Google Maps."
-                                    : null,
-                                }));
-                              }}
-                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                            />
+
+                            {(() => {
+                              const fallbackCenter = resolveLocationFallbackCenter(enq.providers?.city, enq.customer_requirements?.city);
+                              const pin = confirmingLocation[enq.id];
+                              const selectedPin = pin && pin.lat !== null && pin.lng !== null ? { lat: pin.lat, lng: pin.lng } : null;
+
+                              if (selectedPin) {
+                                return (
+                                  <div className="space-y-2">
+                                    <LocationMap lat={selectedPin.lat} lng={selectedPin.lng} height={180} />
+                                    <button
+                                      type="button"
+                                      onClick={() => setLocationPickerOpen((current) => ({ ...current, [enq.id]: true }))}
+                                      className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium"
+                                    >
+                                      Change pin
+                                    </button>
+                                    <LocationPicker
+                                      open={!!locationPickerOpen[enq.id]}
+                                      onOpenChange={(open) => setLocationPickerOpen((current) => ({ ...current, [enq.id]: open }))}
+                                      initial={selectedPin}
+                                      fallbackCenter={fallbackCenter}
+                                      title="Job site location"
+                                      confirmLabel="Use this pin"
+                                      onConfirm={({ lat, lng }) => {
+                                        setConfirmingLocation((current) => ({
+                                          ...current,
+                                          [enq.id]: {
+                                            addressText: current[enq.id]?.addressText ?? "",
+                                            lat,
+                                            lng,
+                                          },
+                                        }));
+                                        setLocationErrors((current) => ({ ...current, [enq.id]: null }));
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setLocationPickerOpen((current) => ({ ...current, [enq.id]: true }))}
+                                    className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium"
+                                  >
+                                    Drop pin on map
+                                  </button>
+                                  <LocationPicker
+                                    open={!!locationPickerOpen[enq.id]}
+                                    onOpenChange={(open) => setLocationPickerOpen((current) => ({ ...current, [enq.id]: open }))}
+                                    initial={null}
+                                    fallbackCenter={fallbackCenter}
+                                    title="Job site location"
+                                    confirmLabel="Use this pin"
+                                    onConfirm={({ lat, lng }) => {
+                                      setConfirmingLocation((current) => ({
+                                        ...current,
+                                        [enq.id]: {
+                                          addressText: current[enq.id]?.addressText ?? "",
+                                          lat,
+                                          lng,
+                                        },
+                                      }));
+                                      setLocationErrors((current) => ({ ...current, [enq.id]: null }));
+                                    }}
+                                  />
+                                </>
+                              );
+                            })()}
                             {locationErrors[enq.id] && (
                               <p className="text-sm text-destructive" role="alert">{locationErrors[enq.id]}</p>
                             )}
@@ -1031,14 +1092,14 @@ export default function EnquiriesPage() {
                               type="button"
                               onClick={() => {
                                 const chosen = confirmingSchedule[enq.id];
-                                const location = confirmingLocation[enq.id] ?? { addressText: "", mapsUrl: "" };
+                                const location = confirmingLocation[enq.id] ?? { addressText: "", lat: null, lng: null };
                                 if (!chosen || (!chosen.scheduledStartAt && chosen.mode !== "now")) return;
                                 if (!location.addressText.trim()) {
                                   setLocationErrors((current) => ({ ...current, [enq.id]: "Please enter the job site address." }));
                                   return;
                                 }
-                                if (location.mapsUrl.trim() && !isAllowedMapsUrl(location.mapsUrl.trim())) {
-                                  setLocationErrors((current) => ({ ...current, [enq.id]: "Please paste a link from Google Maps." }));
+                                if (location.lat === null || location.lng === null) {
+                                  setLocationErrors((current) => ({ ...current, [enq.id]: "Please drop a pin for the job site." }));
                                   return;
                                 }
                                 if (chosen.mode === "now") {
@@ -1055,7 +1116,9 @@ export default function EnquiriesPage() {
                                 !!pendingMap[key] ||
                                 !confirmingSchedule[enq.id]?.mode ||
                                 (confirmingSchedule[enq.id]?.mode === "specific" && !confirmingSchedule[enq.id]?.scheduledStartAt) ||
-                                Boolean(confirmingLocation[enq.id]?.mapsUrl?.trim() && !isAllowedMapsUrl(confirmingLocation[enq.id].mapsUrl.trim()))
+                                !confirmingLocation[enq.id] ||
+                                confirmingLocation[enq.id].lat === null ||
+                                confirmingLocation[enq.id].lng === null
                               }
                               className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
                             >
@@ -1096,7 +1159,6 @@ export default function EnquiriesPage() {
                   {sentTab === "active" && enq.status === "confirmed" && (
                     <>
                       <ContactUnlock profileId={enq.providers?.id ?? ""} showUnavailable />
-                      <EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} />
                       <CompletionActions
                         enquiryId={enq.id}
                         role="customer"
@@ -1140,7 +1202,7 @@ export default function EnquiriesPage() {
                       <div className="mt-1 text-sm text-muted-foreground">Regarding: {enq.customer_requirements.description}</div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-start justify-end gap-2">
                     {(receivedTab === "active" || receivedTab === "history") && enq.projects && (
                       <button
                         type="button"
@@ -1176,6 +1238,9 @@ export default function EnquiriesPage() {
                           })()}
                         </div>
                       </button>
+                    )}
+                    {receivedTab === "active" && enq.status === "confirmed" && (
+                      <EnquiryDirections enquiryId={enq.id} role="provider" />
                     )}
                     {receivedTab === "history" && <div>{statusBadge(enq.status)}</div>}
                   </div>
@@ -1270,7 +1335,6 @@ export default function EnquiriesPage() {
                 {receivedTab === "active" && enq.status === "confirmed" && (
                   <>
                     <ContactUnlock profileId={enq.customer_id} showUnavailable />
-                    <EnquiryDirections enquiryId={enq.id} role="provider" />
                     <CompletionActions
                       enquiryId={enq.id}
                       role="provider"

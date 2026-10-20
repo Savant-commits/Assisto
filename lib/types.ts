@@ -24,6 +24,7 @@ export type ProviderListItem = {
   business_name?: string | null;
   headline?: string | null;
   city?: string | null;
+  locality?: string | null;
   avg_rating?: number | null;
   review_count?: number | null;
   is_verified?: boolean | null;

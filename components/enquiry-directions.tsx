@@ -3,19 +3,23 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { friendlyDbError } from "@/lib/db-errors";
-import { directionsUrl, EXTERNAL_LINK_PROPS, isAllowedMapsUrl } from "@/lib/maps";
+import { coordsDirectionsUrl, DEFAULT_MAP_CENTER, directionsUrl, EXTERNAL_LINK_PROPS, CITY_CENTERS } from "@/lib/maps";
+import { LocationMap } from "@/components/map/location-map";
+import { LocationPicker } from "@/components/map/location-picker";
 
 type EnquiryLocation = {
   address_text: string;
-  maps_url: string | null;
+  lat: number | null;
+  lng: number | null;
 };
 
 type EnquiryDirectionsProps = {
   enquiryId: number;
   role: "customer" | "provider";
   providerLocation?: {
+    lat?: number | null;
+    lng?: number | null;
     locality?: string | null;
-    maps_url?: string | null;
     city?: string | null;
   } | null;
 };
@@ -25,9 +29,11 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [addressText, setAddressText] = useState("");
-  const [mapsUrl, setMapsUrl] = useState("");
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -36,7 +42,7 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
       const supabase = createClient();
       const { data, error: loadError } = await supabase
         .from("enquiry_locations")
-        .select("address_text, maps_url")
+        .select("address_text, lat, lng")
         .eq("enquiry_id", enquiryId)
         .maybeSingle();
       if (!active) return;
@@ -44,12 +50,11 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
       if (loadError) {
         setError(friendlyDbError(loadError, "Unable to load the job site location."));
       } else {
-        const nextLocation = data
-          ? { address_text: data.address_text, maps_url: data.maps_url }
-          : null;
+        const nextLocation = data ? { address_text: data.address_text, lat: data.lat, lng: data.lng } : null;
         setLocation(nextLocation);
         setAddressText(nextLocation?.address_text ?? "");
-        setMapsUrl(nextLocation?.maps_url ?? "");
+        setLat(nextLocation?.lat ?? null);
+        setLng(nextLocation?.lng ?? null);
       }
       setLoading(false);
     }
@@ -62,15 +67,14 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
   async function saveLocation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanAddress = addressText.trim();
-    const cleanMapsUrl = mapsUrl.trim();
     setError(null);
 
     if (!cleanAddress) {
       setError("Please enter the job site address.");
       return;
     }
-    if (cleanMapsUrl && !isAllowedMapsUrl(cleanMapsUrl)) {
-      setError("Please paste a link from Google Maps.");
+    if (lat === null || lng === null) {
+      setError("Please drop a pin for the job site.");
       return;
     }
 
@@ -79,17 +83,18 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
       const supabase = createClient();
       const { error: updateError } = await supabase
         .from("enquiry_locations")
-        .update({ address_text: cleanAddress, maps_url: cleanMapsUrl || null })
+        .update({ address_text: cleanAddress, lat, lng })
         .eq("enquiry_id", enquiryId);
       if (updateError) {
         setError(friendlyDbError(updateError, "Unable to update the job site location."));
         return;
       }
 
-      const savedLocation = { address_text: cleanAddress, maps_url: cleanMapsUrl || null };
+      const savedLocation = { address_text: cleanAddress, lat, lng };
       setLocation(savedLocation);
       setAddressText(savedLocation.address_text);
-      setMapsUrl(savedLocation.maps_url ?? "");
+      setLat(savedLocation.lat);
+      setLng(savedLocation.lng);
       setIsEditing(false);
     } catch (saveError: unknown) {
       setError(
@@ -103,22 +108,25 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
     }
   }
 
-  if (role === "customer") {
-    const providerDirections = directionsUrl({
-      mapsUrl: providerLocation?.maps_url,
-      address: providerLocation?.locality,
-      city: providerLocation?.city,
-    });
+  const fallbackCenter = providerLocation?.city && providerLocation.city in CITY_CENTERS
+    ? CITY_CENTERS[providerLocation.city as keyof typeof CITY_CENTERS]
+    : DEFAULT_MAP_CENTER;
 
+  const providerHasPin = providerLocation?.lat != null && providerLocation.lng != null;
+  const providerDirections = providerHasPin
+    ? coordsDirectionsUrl(providerLocation.lat!, providerLocation.lng!)
+    : directionsUrl({ address: providerLocation?.locality, city: providerLocation?.city });
+
+  if (role === "customer") {
     return (
-      <div className="mt-3 space-y-3">
+      <div className="space-y-3">
         {providerDirections && (
           <a
             href={providerDirections}
             {...EXTERNAL_LINK_PROPS}
-            className="inline-flex rounded-md border px-3 py-1.5 text-sm font-medium text-blue-700 underline"
+            className="inline-flex whitespace-nowrap rounded-md border bg-background px-3 py-1.5 text-sm font-medium text-blue-700 underline"
           >
-            Directions to provider
+            Show directions
           </a>
         )}
         <div className="rounded-md border border-muted p-3 text-sm">
@@ -130,7 +138,8 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
                 onClick={() => {
                   setError(null);
                   setAddressText(location.address_text);
-                  setMapsUrl(location.maps_url ?? "");
+                  setLat(location.lat ?? null);
+                  setLng(location.lng ?? null);
                   setIsEditing(true);
                 }}
                 className="text-xs text-blue-700 underline"
@@ -152,13 +161,37 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
                 placeholder="House/street, landmark, area"
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
-              <input
-                type="text"
-                value={mapsUrl}
-                onChange={(event) => setMapsUrl(event.target.value)}
-                maxLength={300}
-                placeholder="Google Maps pin link (optional)"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              {lat !== null && lng !== null ? (
+                <div className="space-y-2">
+                  <LocationMap lat={lat} lng={lng} height={180} />
+                  <button
+                    type="button"
+                    onClick={() => setIsPickerOpen(true)}
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium"
+                  >
+                    Change pin
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsPickerOpen(true)}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium"
+                >
+                  Drop pin on map
+                </button>
+              )}
+              <LocationPicker
+                open={isPickerOpen}
+                onOpenChange={setIsPickerOpen}
+                initial={lat !== null && lng !== null ? { lat, lng } : null}
+                fallbackCenter={fallbackCenter}
+                title="Job site location"
+                confirmLabel="Use this pin"
+                onConfirm={({ lat: nextLat, lng: nextLng }) => {
+                  setLat(nextLat);
+                  setLng(nextLng);
+                }}
               />
               {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
               <div className="flex gap-2">
@@ -171,7 +204,8 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
                     setIsEditing(false);
                     setError(null);
                     setAddressText(location?.address_text ?? "");
-                    setMapsUrl(location?.maps_url ?? "");
+                    setLat(location?.lat ?? null);
+                    setLng(location?.lng ?? null);
                   }}
                   className="rounded-md border px-3 py-1.5 text-sm"
                 >
@@ -190,32 +224,40 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
     );
   }
 
-  const jobSiteDirections = location
-    ? directionsUrl({ mapsUrl: location.maps_url, address: location.address_text })
-    : null;
+  const locationHasPin = location?.lat != null && location.lng != null;
+  const jobSiteDirections = locationHasPin
+    ? coordsDirectionsUrl(location.lat!, location.lng!)
+    : directionsUrl({ address: location?.address_text });
 
   return (
-    <div className="mt-3 rounded-md border border-muted p-3 text-sm">
-      <p className="font-medium">Job site location</p>
-      {loading ? (
-        <p className="mt-1 text-muted-foreground">Loading site location…</p>
-      ) : location ? (
-        <>
-          <p className="mt-1 whitespace-pre-line text-muted-foreground">{location.address_text}</p>
-          {jobSiteDirections && (
-            <a
-              href={jobSiteDirections}
-              {...EXTERNAL_LINK_PROPS}
-              className="mt-2 inline-flex rounded-md border px-3 py-1.5 font-medium text-blue-700 underline"
-            >
-              Directions to job site
-            </a>
-          )}
-        </>
-      ) : (
-        <p className="mt-1 text-muted-foreground">The customer hasn&apos;t shared a site location yet.</p>
+    <div className="space-y-2">
+      {jobSiteDirections && (
+        <a
+          href={jobSiteDirections}
+          {...EXTERNAL_LINK_PROPS}
+          className="inline-flex whitespace-nowrap rounded-md border bg-background px-3 py-1.5 text-sm font-medium text-blue-700 underline"
+        >
+          Show directions
+        </a>
       )}
-      {error && <p className="mt-1 text-sm text-destructive" role="alert">{error}</p>}
+      <div className="rounded-md border border-muted p-3 text-sm">
+        <p className="font-medium">Job site location</p>
+        {loading ? (
+          <p className="mt-1 text-muted-foreground">Loading site location…</p>
+        ) : location ? (
+          <>
+            <p className="mt-1 whitespace-pre-line text-muted-foreground">{location.address_text}</p>
+            {locationHasPin && location.lat !== null && location.lng !== null && (
+              <div className="mt-2">
+                <LocationMap lat={location.lat} lng={location.lng} height={160} />
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="mt-1 text-muted-foreground">The customer hasn&apos;t shared a site location yet.</p>
+        )}
+        {error && <p className="mt-1 text-sm text-destructive" role="alert">{error}</p>}
+      </div>
     </div>
   );
 }

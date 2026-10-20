@@ -40,7 +40,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         hint: profileError.hint,
         code: profileError.code,
         name: profileError.name,
-        status: profileError.status,
+        status: "status" in profileError ? profileError.status : undefined,
         stringified: String(profileError),
         select: "full_name, avatar_url, role, phone_verified_at",
       });
