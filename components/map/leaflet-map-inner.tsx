@@ -86,7 +86,7 @@ export function LeafletMapInner({
   const visibleMarker = marker ?? center;
 
   return (
-    <div style={{ height, width: "100%" }} className="relative overflow-hidden rounded-lg border bg-muted/40">
+    <div style={{ height, width: "100%" }} className="relative isolate z-0 overflow-hidden rounded-lg border bg-muted/40">
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={zoom}

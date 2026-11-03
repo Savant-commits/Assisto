@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
 import { DEFAULT_MAP_CENTER, formatCoords } from "@/lib/maps";
 import type { MapPoint } from "@/components/map/leaflet-map-inner";
 
@@ -33,6 +34,27 @@ export function LocationPicker({
   const [center, setCenter] = useState<MapPoint>(initial ?? fallbackCenter);
   const [picked, setPicked] = useState<MapPoint | null>(initial ?? null);
   const [status, setStatus] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     if (initial) {
@@ -72,13 +94,29 @@ export function LocationPicker({
     );
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!fixed !inset-0 !m-0 !max-w-none !rounded-none !bg-black/50 !p-0">
-        <div className="relative flex h-[100dvh] w-screen flex-col bg-background">
+  if (!mounted || !open) return null;
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className="fixed inset-0 z-[1100] h-[100dvh] w-screen overflow-hidden bg-white"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onOpenChange(false);
+      }}
+    >
+      <div className="relative flex h-full w-full flex-col bg-background">
           <div className="flex items-center justify-between border-b bg-background px-4 py-3">
             <div className="flex items-center gap-3">
-              <DialogClose aria-label="Close location picker" className="!rounded-full border bg-background" />
+              <button
+                type="button"
+                aria-label="Close location picker"
+                onClick={() => onOpenChange(false)}
+                className="inline-flex items-center justify-center rounded-full border bg-background p-2 text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
               <h2 className="text-base font-semibold">{title}</h2>
             </div>
             <button
@@ -136,7 +174,7 @@ export function LocationPicker({
             </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </div>,
+    document.body
   );
 }
