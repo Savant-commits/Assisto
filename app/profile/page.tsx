@@ -24,6 +24,7 @@ import { friendlyDbError } from "@/lib/db-errors";
 import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
+import { Avatar } from "@/components/avatar";
 
 const schema = z.object({
   full_name: z.string().min(2),
@@ -413,9 +414,10 @@ export default function ProfilePage() {
       <div className="mb-6 rounded-lg border p-4">
         <label className="block text-sm font-medium mb-3">Profile picture</label>
         <div className="flex items-center gap-4">
-          <img
-            src={avatarUrl || "/placeholder-avatar.png"}
-            alt="Profile"
+          <Avatar
+            src={avatarUrl}
+            name={profile?.full_name || savedFormValues.full_name || "Profile"}
+            size={80}
             className="h-20 w-20 rounded-full object-cover bg-muted"
           />
           <div className="flex-1">
