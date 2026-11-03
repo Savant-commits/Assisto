@@ -939,7 +939,7 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
                 </button>
               </div>
             )}
-            {(h.status === "confirmed" || h.status === "completed") && (
+            {h.status === "confirmed" && (
               <ContactUnlock profileId={providerId} />
             )}
             {errors[h.id] && <p className="mt-2 text-sm text-destructive">{errors[h.id]}</p>}
