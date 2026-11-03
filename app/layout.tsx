@@ -42,6 +42,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         name: profileError.name,
         status: "status" in profileError ? profileError.status : undefined,
         stringified: String(profileError),
+        inspected: require("util").inspect(profileError, { depth: 5 }),
+        typeof: typeof profileError,
         select: "full_name, avatar_url, role, phone_verified_at",
       });
     }
