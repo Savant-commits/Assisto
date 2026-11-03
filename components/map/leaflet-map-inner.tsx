@@ -11,8 +11,7 @@ export type MapPoint = { lat: number; lng: number };
 export type LeafletMapInnerProps = {
   center: MapPoint;
   zoom: number;
-  marker?: MapPoint;
-  draggableMarker?: boolean;
+  marker?: MapPoint | null;
   onPick?: (lat: number, lng: number) => void;
   interactive: "inline" | "full";
   height?: number | string;
@@ -77,13 +76,12 @@ export function LeafletMapInner({
   center,
   zoom,
   marker,
-  draggableMarker = false,
   onPick,
   interactive,
   height = 320,
 }: LeafletMapInnerProps) {
   const pinIcon = useMemo(() => createPinIcon(), []);
-  const visibleMarker = marker ?? center;
+  const visibleMarker = marker === undefined ? center : marker;
 
   return (
     <div style={{ height, width: "100%" }} className="relative isolate z-0 overflow-hidden rounded-lg border bg-muted/40">
@@ -97,24 +95,12 @@ export function LeafletMapInner({
         style={{ height: "100%", width: "100%" }}
       >
         <MapResizer />
-        <MapClickHandler onPick={onPick} />
+        {onPick && <MapClickHandler onPick={onPick} />}
         <TileLayer url={MAP_TILE_URL} attribution={MAP_ATTRIBUTION} />
         {visibleMarker && (
           <Marker
             position={[visibleMarker.lat, visibleMarker.lng]}
             icon={pinIcon}
-            draggable={Boolean(draggableMarker)}
-            eventHandlers={
-              draggableMarker
-                ? {
-                    dragend(event) {
-                      if (!onPick) return;
-                      const point = event.target.getLatLng();
-                      onPick(point.lat, point.lng);
-                    },
-                  }
-                : undefined
-            }
           />
         )}
       </MapContainer>

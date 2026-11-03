@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { DEFAULT_MAP_CENTER, formatCoords } from "@/lib/maps";
@@ -11,6 +11,18 @@ const MapPreview = dynamic(() => import("@/components/map/leaflet-map-inner").th
   ssr: false,
   loading: () => <div className="h-[100dvh] w-full animate-pulse bg-zinc-200" />,
 });
+
+function subscribeToNothing() {
+  return () => {};
+}
+
+function getClientSnapshot() {
+  return true;
+}
+
+function getServerSnapshot() {
+  return false;
+}
 
 type LocationPickerProps = {
   open: boolean;
@@ -23,6 +35,15 @@ type LocationPickerProps = {
 };
 
 export function LocationPicker({
+  ...props
+}: LocationPickerProps) {
+  const { initial = null, fallbackCenter = DEFAULT_MAP_CENTER } = props;
+  const pickerKey = [initial?.lat ?? "", initial?.lng ?? "", fallbackCenter.lat, fallbackCenter.lng].join(":");
+
+  return <LocationPickerContent key={pickerKey} {...props} />;
+}
+
+function LocationPickerContent({
   open,
   onOpenChange,
   initial = null,
@@ -34,11 +55,7 @@ export function LocationPicker({
   const [center, setCenter] = useState<MapPoint>(initial ?? fallbackCenter);
   const [picked, setPicked] = useState<MapPoint | null>(initial ?? null);
   const [status, setStatus] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(subscribeToNothing, getClientSnapshot, getServerSnapshot);
 
   useEffect(() => {
     if (!open) return;
@@ -55,17 +72,6 @@ export function LocationPicker({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open, onOpenChange]);
-
-  useEffect(() => {
-    if (initial) {
-      setPicked(initial);
-      setCenter(initial);
-      return;
-    }
-    if (!picked) {
-      setCenter(fallbackCenter);
-    }
-  }, [fallbackCenter, initial, picked]);
 
   const handlePick = (lat: number, lng: number) => {
     const next = { lat, lng };
@@ -132,8 +138,7 @@ export function LocationPicker({
             <MapPreview
               center={center}
               zoom={15}
-              marker={picked ?? undefined}
-              draggableMarker={true}
+              marker={picked}
               onPick={handlePick}
               interactive="full"
               height="100%"
@@ -146,7 +151,7 @@ export function LocationPicker({
                 {picked ? (
                   <p className="text-sm font-medium">Selected: {formatCoords(picked.lat, picked.lng)}</p>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Tap the map to choose a location.</p>
+                  <p className="text-sm text-muted-foreground">Tap or click the map to set the location</p>
                 )}
                 {status && <p className="text-xs text-muted-foreground">{status}</p>}
               </div>

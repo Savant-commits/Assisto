@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import type { MapPoint } from "@/components/map/leaflet-map-inner";
@@ -11,6 +11,18 @@ const MapPreview = dynamic(() => import("@/components/map/leaflet-map-inner").th
   ssr: false,
   loading: () => <div className="h-[100dvh] w-full animate-pulse rounded-none bg-zinc-200" />,
 });
+
+function subscribeToNothing() {
+  return () => {};
+}
+
+function getClientSnapshot() {
+  return true;
+}
+
+function getServerSnapshot() {
+  return false;
+}
 
 export function FullscreenMapDialog({
   open,
@@ -25,12 +37,8 @@ export function FullscreenMapDialog({
   marker?: MapPoint | null;
   title?: string;
 }) {
-  const [mapCenter, setMapCenter] = useState(center);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mapCenter = center;
+  const mounted = useSyncExternalStore(subscribeToNothing, getClientSnapshot, getServerSnapshot);
 
   useEffect(() => {
     if (!open) return;
