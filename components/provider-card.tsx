@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from "./ui/c
 import { Badge } from "./ui/badge";
 import { cn } from "@/lib/utils";
 import type { ProviderListItem } from "@/lib/types";
+import { Avatar } from "@/components/avatar";
 
 export function ProviderCard({ provider, requirement }: { provider: ProviderListItem; requirement?: string }) {
   const name = provider.profiles?.full_name ?? provider.business_name ?? "Provider";
@@ -19,9 +20,10 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
     <Card className="overflow-hidden hover:shadow-md transition-shadow">
       <CardHeader>
         <div className="flex items-center gap-3">
-          <img
-            src={provider.profiles?.avatar_url ?? "/placeholder-avatar.png"}
-            alt={name}
+          <Avatar
+            src={provider.profiles?.avatar_url}
+            name={name}
+            size={48}
             className="h-12 w-12 rounded-full object-cover flex-shrink-0"
           />
           <div className="flex-1 min-w-0">

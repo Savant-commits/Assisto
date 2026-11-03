@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ContactUnlock } from "@/components/contact-unlock";
+import { Avatar } from "@/components/avatar";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { ReportDialog } from "@/components/report-dialog";
 import { ReviewModal } from "@/components/review-modal";
@@ -466,9 +467,10 @@ export default function ProviderProfilePage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <div className="mb-6 flex items-start gap-4">
-        <img
-          src={profile?.avatar_url || "/placeholder-avatar.png"}
-          alt={name}
+        <Avatar
+          src={profile?.avatar_url}
+          name={name}
+          size={64}
           className="h-16 w-16 shrink-0 rounded-full object-cover bg-muted"
         />
         <div className="flex-1">
