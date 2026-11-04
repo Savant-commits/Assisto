@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import Link from "next/link";
 import { GeistSans } from "geist/font/sans";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { inspect } from "node:util";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import SessionMenu from "@/components/session-menu";
@@ -28,12 +31,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   }
   let profile: { full_name?: string; avatar_url?: string | null; role?: string | null; phone_verified_at?: string | null } | null = null;
   let isProvider = false;
+  let profileLookupFailed = false;
   if (userData.user) {
     const [{ data, error: profileError }, { data: provider, error: providerError }] = await Promise.all([
       supabase.from("profiles").select("full_name, avatar_url, role, phone_verified_at").eq("id", userData.user.id).single(),
       supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle(),
     ]);
     if (profileError) {
+      profileLookupFailed = true;
       console.error("layout profile lookup failed", {
         message: profileError.message,
         details: profileError.details,
@@ -42,7 +47,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         name: profileError.name,
         status: "status" in profileError ? profileError.status : undefined,
         stringified: String(profileError),
-        inspected: require("util").inspect(profileError, { depth: 5 }),
+        inspected: inspect(profileError, { depth: 5 }),
         typeof: typeof profileError,
         select: "full_name, avatar_url, role, phone_verified_at",
       });
@@ -57,6 +62,50 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     }
     profile = data || null;
     isProvider = !!provider;
+  }
+
+  if (
+    process.env.REQUIRE_PHONE_VERIFICATION === "true" &&
+    userData.user &&
+    profile &&
+    profileLookupFailed === false &&
+    profile.role !== "admin" &&
+    profile.phone_verified_at == null
+  ) {
+    let verificationRedirect: string | null = null;
+    try {
+      const currentPath = (await headers()).get("x-pathname");
+      if (currentPath) {
+        const pathname = currentPath.split("?")[0].replace(/\/+$/, "") || "/";
+        const exemptPath =
+          pathname === "/verify-phone" ||
+          pathname === "/login" ||
+          pathname === "/signup" ||
+          pathname === "/auth" ||
+          pathname.startsWith("/auth/") ||
+          pathname === "/api" ||
+          pathname.startsWith("/api/") ||
+          pathname === "/_next" ||
+          pathname.startsWith("/_next/") ||
+          /(^|\/)[^/]+\.[^/]+$/.test(pathname);
+
+        if (!exemptPath) {
+          verificationRedirect = `/verify-phone?next=${encodeURIComponent(currentPath)}`;
+        }
+      }
+    } catch (error) {
+      const errorInfo = error && typeof error === "object"
+        ? error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown }
+        : {};
+      console.error("layout phone verification redirect check failed", {
+        message: errorInfo.message ?? String(error),
+        details: errorInfo.details,
+        hint: errorInfo.hint,
+        code: errorInfo.code,
+      });
+    }
+
+    if (verificationRedirect) redirect(verificationRedirect);
   }
 
   return (
