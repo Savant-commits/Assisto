@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
@@ -15,6 +16,7 @@ export function ContactUnlock({
   profileId: string;
   showUnavailable?: boolean;
 }) {
+  const phoneVerificationRequired = usePhoneVerificationRequired();
   const [phone, setPhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -45,7 +47,13 @@ export function ContactUnlock({
   if (loading) return <div className="text-sm text-muted-foreground">Loading contact…</div>;
   if (loadError) return <div className="text-sm text-muted-foreground">Couldn&apos;t load contact details. Please refresh.</div>;
   if (!phone && showUnavailable) {
-    return <div className="text-sm text-muted-foreground">Phone number isn&apos;t available yet. They haven&apos;t verified their number.</div>;
+    return (
+      <div className="text-sm text-muted-foreground">
+        {phoneVerificationRequired
+          ? "Phone number isn’t available yet. They haven’t verified their number."
+          : "Phone number isn’t available yet."}
+      </div>
+    );
   }
   if (!phone) return null;
 

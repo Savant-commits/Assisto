@@ -12,6 +12,8 @@ import { EnquiriesNavBadge } from "@/components/enquiries-nav-badge";
 import NotificationBell from "@/components/notification-bell";
 import BanGate from "@/components/ban-gate";
 import { PhoneVerifyBanner } from "@/components/phone-verify-banner";
+import { PhoneVerificationRequiredProvider } from "@/components/phone-verification-required-context";
+import { getPhoneVerificationRequired } from "@/lib/phone-verification-required";
 
 export const metadata: Metadata = {
   title: "Assisto — Find the right person for the job",
@@ -32,36 +34,52 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   let profile: { full_name?: string; avatar_url?: string | null; role?: string | null; phone_verified_at?: string | null } | null = null;
   let isProvider = false;
   let profileLookupFailed = false;
-  if (userData.user) {
-    const [{ data, error: profileError }, { data: provider, error: providerError }] = await Promise.all([
-      supabase.from("profiles").select("full_name, avatar_url, role, phone_verified_at").eq("id", userData.user.id).single(),
-      supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle(),
-    ]);
-    if (profileError) {
-      profileLookupFailed = true;
-      console.error("layout profile lookup failed", {
-        message: profileError.message,
-        details: profileError.details,
-        hint: profileError.hint,
-        code: profileError.code,
-        name: profileError.name,
-        status: "status" in profileError ? profileError.status : undefined,
-        stringified: String(profileError),
-        inspected: inspect(profileError, { depth: 5 }),
-        typeof: typeof profileError,
-        select: "full_name, avatar_url, role, phone_verified_at",
-      });
+  let phoneVerificationRequired = true;
+  try {
+    phoneVerificationRequired = await getPhoneVerificationRequired();
+    if (userData.user) {
+      const [{ data, error: profileError }, { data: provider, error: providerError }] = await Promise.all([
+        supabase.from("profiles").select("full_name, avatar_url, role, phone_verified_at").eq("id", userData.user.id).single(),
+        supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle(),
+      ]);
+      if (profileError) {
+        profileLookupFailed = true;
+        console.error("layout profile lookup failed", {
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint,
+          code: profileError.code,
+          name: profileError.name,
+          status: "status" in profileError ? profileError.status : undefined,
+          stringified: String(profileError),
+          inspected: inspect(profileError, { depth: 5 }),
+          typeof: typeof profileError,
+          select: "full_name, avatar_url, role, phone_verified_at",
+        });
+      }
+      if (providerError) {
+        console.error("layout provider lookup failed", {
+          message: providerError.message,
+          details: providerError.details,
+          hint: providerError.hint,
+          code: providerError.code,
+        });
+      }
+      profile = data || null;
+      isProvider = !!provider;
     }
-    if (providerError) {
-      console.error("layout provider lookup failed", {
-        message: providerError.message,
-        details: providerError.details,
-        hint: providerError.hint,
-        code: providerError.code,
-      });
-    }
-    profile = data || null;
-    isProvider = !!provider;
+  } catch (error) {
+    const errorInfo = error && typeof error === "object"
+      ? error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown }
+      : {};
+    console.error("layout profile lookup failed", {
+      message: errorInfo.message ?? String(error),
+      details: errorInfo.details,
+      hint: errorInfo.hint,
+      code: errorInfo.code,
+    });
+    profileLookupFailed = true;
+    phoneVerificationRequired = true;
   }
 
   if (
@@ -114,6 +132,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${GeistSans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <PhoneVerificationRequiredProvider required={phoneVerificationRequired}>
         <header className="border-b bg-background/50">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
             <Link href="/" className="text-lg font-semibold">
@@ -162,10 +181,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             </div>
           </div>
         </header>
-        {userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
+        {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
         {children}
         {userData.user && <NotificationBell />}
         {userData.user && <BanGate />}
+        </PhoneVerificationRequiredProvider>
       </body>
     </html>
   );

@@ -25,6 +25,7 @@ import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
 import { Avatar } from "@/components/avatar";
+import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 
 const schema = z.object({
   full_name: z.string().min(2),
@@ -105,6 +106,7 @@ async function resizeAvatar(file: File): Promise<Blob> {
 }
 
 export default function ProfilePage() {
+  const phoneVerificationRequired = usePhoneVerificationRequired();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -438,7 +440,7 @@ export default function ProfilePage() {
         <p className="mb-1 text-sm font-medium text-muted-foreground">Phone</p>
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-base">{phoneNumber || "Not provided"}</p>
-          {phoneVerifiedAt ? (
+          {phoneVerificationRequired && (phoneVerifiedAt ? (
             <Badge variant="outline" className="border-green-600 text-green-700 dark:text-green-400">
               Verified · {new Date(phoneVerifiedAt).toLocaleDateString()}
             </Badge>
@@ -446,8 +448,8 @@ export default function ProfilePage() {
             <Badge variant="outline" className="border-amber-600 text-amber-700 dark:text-amber-400">
               Not verified
             </Badge>
-          )}
-          {!phoneVerifiedAt && (
+          ))}
+          {phoneVerificationRequired && !phoneVerifiedAt && (
             <Button type="button" size="sm" variant="outline" onClick={() => setIsPhoneGateOpen(true)}>
               Verify
             </Button>
@@ -534,6 +536,7 @@ export default function ProfilePage() {
           void refreshPhoneDetails();
         }}
         initialPhone={phoneNumber || undefined}
+        bypassWhenVerificationDisabled={false}
       />
       {isProvider && (
         <section className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">

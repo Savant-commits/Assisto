@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 import {
   Form,
   FormControl,
@@ -30,6 +31,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function SignupPage() {
+  const phoneVerificationRequired = usePhoneVerificationRequired();
   const searchParams = useSearchParams();
   const redirectTo = safeRedirectPath(searchParams.get("redirect"));
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
@@ -105,8 +107,8 @@ export default function SignupPage() {
       <div className="mx-auto max-w-sm px-4 py-20 text-center">
         <h1 className="mb-2 text-2xl font-semibold">Check your email</h1>
         <p className="text-muted-foreground">
-          We sent a confirmation link to your inbox. Click it, then come back
-          and <Link href={`/login?redirect=${encodeURIComponent(redirectTo)}`} className="underline">log in</Link>.
+          We sent a confirmation link to your inbox. Click it, then come back and{" "}
+          <Link href={`/login?redirect=${encodeURIComponent(redirectTo)}`} className="underline">log in</Link>.
         </p>
       </div>
     );
@@ -158,7 +160,9 @@ export default function SignupPage() {
                 <FormControl>
                   <Input placeholder="Mobile number" {...field} />
                 </FormControl>
-                <p className="text-xs text-muted-foreground">You will verify it with a code before you can send enquiries.</p>
+                {phoneVerificationRequired && (
+                  <p className="text-xs text-muted-foreground">You will verify it with a code before you can send enquiries.</p>
+                )}
                 <FormMessage />
               </FormItem>
             )}

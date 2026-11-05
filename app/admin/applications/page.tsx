@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ApplicationActions } from "@/components/application-actions";
 import { ApplicationCallDialog, CallRecordingPlayer } from "@/components/application-call-dialog";
 import { CredentialReviewActions } from "@/components/credential-review-actions";
+import { getPhoneVerificationRequired } from "@/lib/phone-verification-required";
 
 const callStatusLabels = {
   pending: "Not called yet",
@@ -51,6 +52,7 @@ const credentialStatusStyles = {
 } as const;
 
 export default async function AdminApplicationsPage() {
+  const phoneVerificationRequired = await getPhoneVerificationRequired();
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError && !isAuthSessionMissingError(userError)) {
@@ -179,9 +181,11 @@ export default async function AdminApplicationsPage() {
                     <p className="break-words font-medium [overflow-wrap:anywhere]">
                       {applicantName} · {app.professional_type}
                     </p>
-                    <p className={`text-xs ${profilesById.get(app.user_id)?.phone_verified_at ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
-                      {profilesById.get(app.user_id)?.phone_verified_at ? "Phone verified" : "Phone not verified"}
-                    </p>
+                    {phoneVerificationRequired && (
+                      <p className={`text-xs ${profilesById.get(app.user_id)?.phone_verified_at ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}`}>
+                        {profilesById.get(app.user_id)?.phone_verified_at ? "Phone verified" : "Phone not verified"}
+                      </p>
+                    )}
                     <p className="text-sm text-muted-foreground">
                       {app.city} · {app.years_experience ?? "Not stated"} {app.years_experience === 1 ? "year" : "years"} experience
                     </p>

@@ -20,6 +20,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import LoadingSpinner from "@/components/loading-spinner";
+import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 
 const schema: z.ZodType<FormValues> = z.object({
   business_name: z.string().optional(),
@@ -49,6 +50,7 @@ function logLookupError(label: string, error: { message: string; code?: string; 
 }
 
 export default function ApplyForm() {
+  const phoneVerificationRequired = usePhoneVerificationRequired();
   const router = useRouter();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema as any) as any,
@@ -351,7 +353,11 @@ export default function ApplyForm() {
 
             {submitError && <p className="text-sm text-destructive">{submitError}</p>}
 
-            <p className="text-sm text-muted-foreground">After you apply, someone from Assisto will call you on your verified number to confirm your details.</p>
+            <p className="text-sm text-muted-foreground">
+              {phoneVerificationRequired
+                ? "After you apply, someone from Assisto will call you on your verified number to confirm your details."
+                : "After you apply, someone from Assisto will call you to confirm your details."}
+            </p>
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || isSubmitting}>
               {isSubmitting ? "Submitting…" : "Submit application"}
             </Button>

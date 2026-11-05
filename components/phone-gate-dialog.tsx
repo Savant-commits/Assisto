@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { createClient } from "@/lib/supabase/client";
 import { PhoneVerification } from "@/components/phone-verification";
+import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   onVerified: () => void;
   initialPhone?: string;
+  bypassWhenVerificationDisabled?: boolean;
 };
 
 function ProfilePhoneVerification({ initialPhone, onVerified }: Pick<Props, "initialPhone" | "onVerified">) {
@@ -59,10 +61,22 @@ function ProfilePhoneVerification({ initialPhone, onVerified }: Pick<Props, "ini
   return <PhoneVerification initialPhone={profilePhone || initialPhone} onVerified={onVerified} />;
 }
 
-export function PhoneGateDialog({ isOpen, onClose, onVerified, initialPhone }: Props) {
+export function PhoneGateDialog({
+  isOpen,
+  onClose,
+  onVerified,
+  initialPhone,
+  bypassWhenVerificationDisabled = true,
+}: Props) {
   useEscapeKey(isOpen, onClose);
+  const phoneVerificationRequired = usePhoneVerificationRequired();
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen || phoneVerificationRequired || !bypassWhenVerificationDisabled) return;
+    onVerified();
+  }, [bypassWhenVerificationDisabled, isOpen, onVerified, phoneVerificationRequired]);
+
+  if (!isOpen || (!phoneVerificationRequired && bypassWhenVerificationDisabled)) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" role="presentation" onMouseDown={(event) => {
