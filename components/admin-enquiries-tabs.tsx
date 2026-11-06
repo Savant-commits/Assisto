@@ -3,14 +3,14 @@
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import AdminEnquiryDetail from "./admin-enquiry-detail";
+import AdminEnquiryDetail, { type AdminEnquiryRow } from "./admin-enquiry-detail";
 
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { enquiries: any[]; initialSearch?: string }) {
+export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { enquiries: AdminEnquiryRow[]; initialSearch?: string }) {
   const tabs = [
     { key: "active_services", label: "Active services", statuses: ["confirmed"] },
     { key: "active_enquiries", label: "Active enquiries", statuses: ["sent"] },
@@ -25,7 +25,7 @@ export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { 
   const [to, setTo] = useState("");
 
   const filteredEnquiries = useMemo(() => {
-    return (enquiries || []).filter((e: any) => {
+    return enquiries.filter((e) => {
       if (from) {
         const fromTime = new Date(from).getTime();
         if (!e.created_at || new Date(e.created_at).getTime() < fromTime) return false;
@@ -45,7 +45,7 @@ export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { 
         e.providers?.profiles?.user_code,
       ].filter(Boolean);
 
-      return matches.some((item: any) => String(item).toLowerCase().includes(q));
+      return matches.some((item) => String(item).toLowerCase().includes(q));
     });
   }, [enquiries, from, search, to]);
 
@@ -75,7 +75,7 @@ export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { 
 
         <TabsList>
           {tabs.map((t) => {
-            const count = filteredEnquiries.filter((e: any) => t.statuses.includes(e.status)).length;
+            const count = filteredEnquiries.filter((e) => t.statuses.includes(e.status)).length;
             return (
               <TabsTrigger key={t.key} value={t.key} className="flex items-center gap-2">
                 {t.label}
@@ -87,7 +87,7 @@ export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { 
       </div>
 
       {tabs.map((t) => {
-        const rows = filteredEnquiries.filter((e: any) => t.statuses.includes(e.status));
+        const rows = filteredEnquiries.filter((e) => t.statuses.includes(e.status));
 
         return (
           <TabsContent key={t.key} value={t.key}>
@@ -95,7 +95,7 @@ export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { 
               <div className="rounded-lg border p-4 text-muted-foreground">No items</div>
             ) : (
               <div className="space-y-4">
-                {rows.map((enq: any) => {
+                {rows.map((enq) => {
                   const staleAgeMs = enq.status === "sent" && enq.created_at ? Date.now() - new Date(enq.created_at).getTime() : 0;
                   const isStale = enq.status === "sent" && staleAgeMs > 48 * 60 * 60 * 1000;
                   const ageDays = enq.created_at ? Math.max(0, Math.floor(staleAgeMs / (1000 * 60 * 60 * 24))) : 0;

@@ -45,7 +45,7 @@ export default function ManageServicesPage() {
         return;
       }
 
-      setServiceEditCredits((provider as any)?.service_edit_credits ?? 0);
+      setServiceEditCredits(provider.service_edit_credits ?? 0);
 
       // Fetch categories, services, and this provider's selections in parallel
       const [catRes, svcRes, provCatRes, provSvcRes] = await Promise.all([
@@ -57,10 +57,10 @@ export default function ManageServicesPage() {
 
       if (!mounted) return;
 
-      setCategories((catRes.data as any) || []);
-      setServices((svcRes.data as any) || []);
-      const provCatIds = ((provCatRes.data as any) || []).map((r: any) => r.category_id);
-      const provSvcIds = ((provSvcRes.data as any) || []).map((r: any) => r.service_id);
+      setCategories(catRes.data ?? []);
+      setServices(svcRes.data ?? []);
+      const provCatIds = (provCatRes.data ?? []).map((row) => row.category_id);
+      const provSvcIds = (provSvcRes.data ?? []).map((row) => row.service_id);
       setSelectedCategoryIds(provCatIds);
       setSelectedServiceIds(provSvcIds);
       setDraftCategoryIds(provCatIds);
@@ -110,8 +110,12 @@ export default function ManageServicesPage() {
       setSelectedCategoryIds(draftCategoryIds);
       // Update credits with the returned value
       setServiceEditCredits(data);
-    } catch (err: any) {
-      setError(err?.message || "Failed to save changes");
+    } catch (err: unknown) {
+      setError(
+        typeof err === "object" && err !== null && "message" in err && typeof err.message === "string"
+          ? err.message
+          : "Failed to save changes"
+      );
     } finally {
       setIsSaving(false);
     }
@@ -147,7 +151,7 @@ export default function ManageServicesPage() {
           {serviceEditCredits > 0 ? (
             <p className="text-sm">You have {serviceEditCredits} edit{serviceEditCredits !== 1 ? "s" : ""} left for your services. Choose carefully.</p>
           ) : (
-            <p className="text-sm text-muted-foreground">You've used all your service edits. Contact support to request more.</p>
+            <p className="text-sm text-muted-foreground">You&apos;ve used all your service edits. Contact support to request more.</p>
           )}
         </div>
       )}

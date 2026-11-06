@@ -4,12 +4,31 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 
+export type AdminChatSummary = {
+  id: string;
+  project_code: string;
+  enquiry_code: string | null;
+  enquiry_status: string | null;
+  customer: { id?: string; full_name: string | null; user_code: string | null } | null;
+  provider: {
+    id: string;
+    business_name: string | null;
+    profiles: { user_code: string | null } | null;
+  } | null;
+  openedAt: string;
+  duration: string;
+  totalReports: number;
+  unresolvedReports: number;
+  latestReportTime: string | null;
+  jumpMessageId: string | null;
+};
+
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export default function AdminChatsList({ chats }: { chats: any[] }) {
+export default function AdminChatsList({ chats }: { chats: AdminChatSummary[] }) {
   const [value, setValue] = useState("unresolved");
   const [search, setSearch] = useState("");
 

@@ -2,12 +2,12 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import ServiceCombobox from "@/components/service-combobox";
+import ServiceCombobox, { type Service } from "@/components/service-combobox";
 
 export default function ServicePicker({ initialSlug, category, city, requirement }: { initialSlug?: string; category?: string; city?: string; requirement?: string }) {
   const router = useRouter();
 
-  function handleSelect(s: any | null) {
+  function handleSelect(s: Service | null) {
     const qp = new URLSearchParams();
     if (city) qp.set("city", city);
     if (category) qp.set("category", category);

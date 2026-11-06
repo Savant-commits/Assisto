@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 
-type Service = { id: number; slug: string; name: string; category_id?: number };
+export type Service = { id: number; slug: string; name: string; category_id?: number };
 
 type Props = {
   value?: string; // slug or free text
@@ -14,34 +14,21 @@ type Props = {
   placeholder?: string;
 };
 
-export default function ServiceCombobox({ value = "", onChange, onSelect, initialSlug, placeholder = "Service (e.g. Interior painting)" }: Props) {
+export default function ServiceCombobox({ value, onChange, onSelect, initialSlug, placeholder = "Service (e.g. Interior painting)" }: Props) {
   const [services, setServices] = useState<Service[]>([]);
-  const [input, setInput] = useState("");
+  const [uncontrolledInput, setUncontrolledInput] = useState("");
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const ref = useRef<HTMLDivElement | null>(null);
-  const [selected, setSelected] = useState<Service | null>(null);
+  const [uncontrolledSelected, setUncontrolledSelected] = useState<Service | null>(null);
+  const selected = value === undefined ? uncontrolledSelected : services.find((service) => service.slug === value) ?? null;
+  const input = value === undefined ? uncontrolledInput : services.find((service) => service.slug === value)?.name ?? value;
 
   useEffect(() => {
-    // When the external `value` (slug or free text) changes, prefer showing
-    // the friendly service name if we can resolve the slug from `services`.
-    if (!value) {
-      setInput("");
-      setSelected(null);
-      return;
+    if (value !== undefined) {
+      onSelect?.(services.find((service) => service.slug === value) ?? null);
     }
-    const resolved = services.find((s) => s.slug === value);
-    if (resolved) {
-      setSelected(resolved);
-      setInput(resolved.name);
-      onSelect?.(resolved);
-    } else {
-      // free text or unknown slug — show raw value
-      setSelected(null);
-      setInput(value);
-      onSelect?.(null);
-    }
-  }, [value, services]);
+  }, [value, services, onSelect]);
 
   useEffect(() => {
     let mounted = true;
@@ -54,13 +41,16 @@ export default function ServiceCombobox({ value = "", onChange, onSelect, initia
         .order("category_id")
         .order("sort_order");
       if (!mounted) return;
-      setServices((data as any) || []);
+      const loadedServices = (data ?? []) as Service[];
+      setServices(loadedServices);
       // If an initialSlug was provided, try to resolve and set the input to the service name
-      if (initialSlug && data) {
-        const s = (data as any[]).find((x) => x.slug === initialSlug);
+      if (initialSlug && loadedServices.length > 0) {
+        const s = loadedServices.find((service) => service.slug === initialSlug);
         if (s) {
-          setSelected(s);
-          setInput(s.name);
+          if (value === undefined) {
+            setUncontrolledSelected(s);
+            setUncontrolledInput(s.name);
+          }
           onChange?.(s.slug);
           onSelect?.(s);
         }
@@ -87,16 +77,20 @@ export default function ServiceCombobox({ value = "", onChange, onSelect, initia
     : services.slice(0, 20);
 
   function handleSelect(s: Service) {
-    setSelected(s);
-    setInput(s.name);
+    if (value === undefined) {
+      setUncontrolledSelected(s);
+      setUncontrolledInput(s.name);
+    }
     setOpen(false);
     onChange?.(s.slug);
     onSelect?.(s);
   }
 
   function handleInputChange(next: string) {
-    setInput(next);
-    setSelected(null);
+    if (value === undefined) {
+      setUncontrolledInput(next);
+      setUncontrolledSelected(null);
+    }
     onChange?.(next);
     onSelect?.(null);
     setOpen(true);
@@ -134,8 +128,10 @@ export default function ServiceCombobox({ value = "", onChange, onSelect, initia
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
-            setSelected(null);
-            setInput("");
+            if (value === undefined) {
+              setUncontrolledSelected(null);
+              setUncontrolledInput("");
+            }
             onChange?.("");
             onSelect?.(null);
             setOpen(false);

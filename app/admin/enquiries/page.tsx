@@ -2,6 +2,17 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AdminEnquiryDetail from "@/components/admin-enquiry-detail";
 import AdminEnquiriesTabs from "@/components/admin-enquiries-tabs";
+import type { AdminEnquiryRow } from "@/components/admin-enquiry-detail";
+import { one } from "@/lib/relations";
+
+type Relation<T> = T | T[] | null;
+type EnquiryQueryRow = Omit<AdminEnquiryRow, "profiles" | "providers" | "customer_requirements"> & {
+  profiles?: Relation<NonNullable<AdminEnquiryRow["profiles"]>>;
+  providers?: Relation<Omit<NonNullable<AdminEnquiryRow["providers"]>, "profiles"> & {
+    profiles?: Relation<{ user_code: string | null }>;
+  }>;
+  customer_requirements?: Relation<NonNullable<AdminEnquiryRow["customer_requirements"]>>;
+};
 
 export default async function AdminEnquiriesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const resolvedSearchParams = await searchParams;
@@ -32,7 +43,18 @@ export default async function AdminEnquiriesPage({ searchParams }: { searchParam
       <h1 className="mb-1 text-2xl font-semibold">Enquiries (admin)</h1>
       <p className="mb-6 text-muted-foreground">{enquiries?.length ?? 0} enquiries</p>
 
-      <AdminEnquiriesTabs enquiries={enquiries || []} initialSearch={resolvedSearchParams?.q ?? ""} />
+      <AdminEnquiriesTabs
+        enquiries={((enquiries ?? []) as EnquiryQueryRow[]).map((enquiry): AdminEnquiryRow => {
+          const provider = one(enquiry.providers);
+          return {
+            ...enquiry,
+            profiles: one(enquiry.profiles),
+            providers: provider ? { ...provider, profiles: one(provider.profiles) } : null,
+            customer_requirements: one(enquiry.customer_requirements),
+          };
+        })}
+        initialSearch={resolvedSearchParams?.q ?? ""}
+      />
     </div>
   );
 }

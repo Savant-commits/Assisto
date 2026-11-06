@@ -3,7 +3,40 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return fallback;
+}
+
+export type AdminEnquiryRow = {
+  id: string;
+  enquiry_code: string | null;
+  message: string | null;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  decline_reason: string | null;
+  is_asap: boolean | null;
+  scheduled_start_at: string | null;
+  customer_id: string;
+  provider_id: string;
+  accepted_at: string | null;
+  declined_at: string | null;
+  completed_at: string | null;
+  contact_unlocked_at: string | null;
+  admin_note: string | null;
+  profiles: { full_name: string | null; user_code: string | null } | null;
+  providers: {
+    id: string;
+    business_name: string | null;
+    profiles: { user_code: string | null } | null;
+  } | null;
+  customer_requirements: { description: string | null } | null;
+};
+
+export default function AdminEnquiryDetail({ enquiry }: { enquiry: AdminEnquiryRow }) {
   const [note, setNote] = useState(enquiry?.admin_note ?? "");
   const [saving, setSaving] = useState(false);
   const [reason, setReason] = useState("");
@@ -22,8 +55,8 @@ export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
       // simple feedback: collapse editor and reload to pick up server-side changes
       setEditing(false);
       window.location.reload();
-    } catch (err) {
-      setNoteError((err as any)?.message || "Failed to save note");
+    } catch (err: unknown) {
+      setNoteError(getErrorMessage(err, "Failed to save note"));
     } finally {
       setSaving(false);
     }
@@ -41,8 +74,8 @@ export default function AdminEnquiryDetail({ enquiry }: { enquiry: any }) {
       const { error } = await supabase.rpc("admin_force_cancel", { p_enquiry_id: enquiry.id, p_reason: reason });
       if (error) throw error;
       window.location.reload();
-    } catch (err) {
-      setCancelError((err as any)?.message || "Failed to cancel enquiry");
+    } catch (err: unknown) {
+      setCancelError(getErrorMessage(err, "Failed to cancel enquiry"));
     } finally {
       setSaving(false);
     }

@@ -5,6 +5,9 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DialogContext = React.createContext<{ open: boolean; onOpenChange: (open: boolean) => void } | null>(null);
+const subscribeToMount = () => () => {};
+const getClientMountedSnapshot = () => true;
+const getServerMountedSnapshot = () => false;
 
 export function Dialog({
   open,
@@ -15,11 +18,7 @@ export function Dialog({
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
 }) {
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = React.useSyncExternalStore(subscribeToMount, getClientMountedSnapshot, getServerMountedSnapshot);
 
   if (!mounted || !open) return null;
 

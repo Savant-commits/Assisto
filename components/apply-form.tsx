@@ -22,7 +22,7 @@ import {
 import LoadingSpinner from "@/components/loading-spinner";
 import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 
-const schema: z.ZodType<FormValues> = z.object({
+const schema = z.object({
   business_name: z.string().optional(),
   professional_type: z.string().min(2, "e.g. Electrician, Civil Engineer, Interior Designer"),
   years_experience: z.coerce.number().min(0).max(60),
@@ -31,13 +31,12 @@ const schema: z.ZodType<FormValues> = z.object({
   service_area_notes: z.string().optional(),
 });
 
-type FormValues = {
-  business_name?: string;
-  professional_type: string;
-  years_experience: number;
-  bio: string;
-  city: "Cuddalore" | "Chidambaram";
-  service_area_notes?: string;
+type FormValues = z.output<typeof schema>;
+type FormInput = z.input<typeof schema>;
+
+type ExistingApplication = {
+  status: string;
+  rejection_reason?: string | null;
 };
 
 function logLookupError(label: string, error: { message: string; code?: string; details?: string; hint?: string }) {
@@ -52,8 +51,8 @@ function logLookupError(label: string, error: { message: string; code?: string; 
 export default function ApplyForm() {
   const phoneVerificationRequired = usePhoneVerificationRequired();
   const router = useRouter();
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema as any) as any,
+  const form = useForm<FormInput, unknown, FormValues>({
+    resolver: zodResolver(schema),
     defaultValues: {
       business_name: "",
       professional_type: "",
@@ -69,7 +68,7 @@ export default function ApplyForm() {
   const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
   const [pendingValues, setPendingValues] = useState<FormValues | null>(null);
 
-  const [existingApp, setExistingApp] = useState<any | null>(null);
+  const [existingApp, setExistingApp] = useState<ExistingApplication | null>(null);
   const [isProvider, setIsProvider] = useState(false);
   const [loading, setLoading] = useState(true);
   const servicesList = [
@@ -280,7 +279,13 @@ export default function ApplyForm() {
                 <FormItem>
                   <FormLabel>Years of experience</FormLabel>
                   <FormControl>
-                    <Input type="number" min={0} max={60} {...field} />
+                    <Input
+                      type="number"
+                      min={0}
+                      max={60}
+                      {...field}
+                      value={typeof field.value === "number" || typeof field.value === "string" ? field.value : ""}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

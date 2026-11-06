@@ -1,7 +1,34 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AdminChatsList from "@/components/admin-chats-list";
-import { humanDuration, formatDateTime } from "@/lib/chat-duration";
+import type { AdminChatSummary } from "@/components/admin-chats-list";
+import { humanDuration } from "@/lib/chat-duration";
+import { one } from "@/lib/relations";
+
+type Relation<T> = T | T[] | null;
+type ReportRow = { reportable_id: string; status: string; created_at: string };
+type ProjectMessageRow = { id: string; project_id: string };
+type EnquiryProfile = { full_name: string | null; user_code: string | null };
+type EnquiryProvider = {
+  id: string;
+  business_name: string | null;
+  profiles?: Relation<{ user_code: string | null }>;
+};
+type EnquiryRow = {
+  enquiry_code: string | null;
+  status: string | null;
+  completed_at: string | null;
+  admin_cancelled_at: string | null;
+  updated_at: string | null;
+  profiles?: Relation<EnquiryProfile>;
+  providers?: Relation<EnquiryProvider>;
+};
+type ProjectRow = {
+  id: string;
+  project_code: string;
+  created_at: string;
+  enquiries?: Relation<EnquiryRow>;
+};
 
 export default async function AdminChatsPage() {
   const supabase = await createClient();
@@ -27,11 +54,12 @@ export default async function AdminChatsPage() {
     });
   }
 
-  const reportIds = (reports || []).map((r: any) => r.reportable_id);
+  const reportRows = (reports ?? []) as ReportRow[];
+  const reportIds = reportRows.map((report) => report.reportable_id);
 
   const { data: projectMessages, error: pmError } = reportIds.length
     ? await supabase.from("project_messages").select("id,project_id").in("id", reportIds)
-    : { data: [] };
+    : { data: [] as ProjectMessageRow[], error: null };
 
   if (pmError) {
     console.error("project_messages query failed:", {
@@ -42,7 +70,8 @@ export default async function AdminChatsPage() {
     });
   }
 
-  const projectIds = Array.from(new Set((projectMessages || []).map((m: any) => m.project_id)));
+  const messageRows = (projectMessages ?? []) as ProjectMessageRow[];
+  const projectIds = Array.from(new Set(messageRows.map((message) => message.project_id)));
 
   const { data: projects, error: projectsError } = projectIds.length
     ? await supabase
@@ -51,7 +80,7 @@ export default async function AdminChatsPage() {
           `id,project_code,created_at,enquiries(id,enquiry_code,status,completed_at,admin_cancelled_at,updated_at,customer_id,provider_id,profiles!enquiries_customer_id_fkey(full_name,user_code),providers(id,business_name,profiles!providers_id_fkey(user_code)))`
         )
         .in("id", projectIds)
-    : { data: [] };
+      : { data: [] as ProjectRow[], error: null };
 
   if (projectsError) {
     console.error("projects query failed:", {
@@ -62,35 +91,36 @@ export default async function AdminChatsPage() {
     });
   }
 
-  const byProject = (projects || []).map((p: any) => {
-    const projectReports = (reports || []).filter((r: any) => {
-      const msg = (projectMessages || []).find((m: any) => m.id === r.reportable_id);
-      return msg?.project_id === p.id;
+  const byProject: AdminChatSummary[] = ((projects ?? []) as ProjectRow[]).map((project) => {
+    const projectReports = reportRows.filter((report) => {
+      const msg = messageRows.find((message) => message.id === report.reportable_id);
+      return msg?.project_id === project.id;
     });
 
     const totalReports = projectReports.length;
-    const unresolvedReports = projectReports.filter((r: any) => r.status === "open" || r.status === "reviewed").length;
-    const latestReport = projectReports.reduce((acc: any, cur: any) => (acc && acc.created_at > cur.created_at ? acc : cur), projectReports[0]);
+    const unresolvedReports = projectReports.filter((report) => report.status === "open" || report.status === "reviewed").length;
+    const latestReport = projectReports.reduce<ReportRow | undefined>((acc, cur) => (acc && acc.created_at > cur.created_at ? acc : cur), undefined);
     const oldestUnresolved = projectReports
-      .filter((r: any) => r.status === "open" || r.status === "reviewed")
-      .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
-    const jumpMessageId = (oldestUnresolved || latestReport)?.reportable_id ?? null;
+      .filter((report) => report.status === "open" || report.status === "reviewed")
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+    const jumpMessageId = (oldestUnresolved ?? latestReport)?.reportable_id ?? null;
 
-    const enquiry = Array.isArray(p.enquiries) ? p.enquiries[0] : p.enquiries ?? null;
-    const openedAt = p.created_at;
+    const enquiry = one(project.enquiries);
+    const openedAt = project.created_at;
     // closedAt: for any non-confirmed enquiry use completed/admin_cancelled/updated, otherwise leave null so duration is "Open for"
     const closedAt = enquiry?.status !== "confirmed" ? enquiry?.completed_at ?? enquiry?.admin_cancelled_at ?? enquiry?.updated_at ?? null : null;
 
-    const customer = enquiry?.profiles ?? null;
-    const provider = Array.isArray(enquiry?.providers) ? enquiry?.providers[0] ?? null : enquiry?.providers ?? null;
+    const customer = one(enquiry?.profiles);
+    const provider = one(enquiry?.providers);
+    const providerProfile = one(provider?.profiles);
 
     return {
-      id: p.id,
-      project_code: p.project_code,
+      id: project.id,
+      project_code: project.project_code,
       enquiry_code: enquiry?.enquiry_code ?? null,
       enquiry_status: enquiry?.status ?? null,
       customer,
-      provider,
+      provider: provider ? { ...provider, profiles: providerProfile } : null,
       openedAt,
       duration: humanDuration(openedAt, closedAt),
       totalReports,
@@ -101,7 +131,7 @@ export default async function AdminChatsPage() {
   });
 
   // Sorting: unresolved first (newest latestReportTime), then resolved by latestReportTime desc
-  byProject.sort((a: any, b: any) => {
+  byProject.sort((a, b) => {
     if ((a.unresolvedReports > 0) !== (b.unresolvedReports > 0)) return a.unresolvedReports > 0 ? -1 : 1;
     return (b.latestReportTime || "") > (a.latestReportTime || "") ? 1 : -1;
   });

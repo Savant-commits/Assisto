@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { BanDuration } from "@/lib/types";
 
@@ -25,21 +25,12 @@ function formatDateTime(dateStr: string | null | undefined) {
 export default function BanGate() {
   const [activeBan, setActiveBan] = useState<ActiveBan | null>(null);
   const [signingOut, setSigningOut] = useState(false);
-  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
-
-  if (!supabaseRef.current) {
-    supabaseRef.current = createClient();
-  }
+  const [supabase] = useState(() => createClient());
 
   useEffect(() => {
-    const supabase = supabaseRef.current;
-    if (!supabase) return;
-
     async function checkBan() {
       try {
-        const client = supabaseRef.current;
-        if (!client) return;
-        const { data, error } = await client.rpc("my_active_ban");
+        const { data, error } = await supabase.rpc("my_active_ban");
         if (error) return;
         setActiveBan((data as ActiveBan | null) ?? null);
       } catch {
@@ -65,7 +56,7 @@ export default function BanGate() {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [activeBan, signingOut]);
+  }, [activeBan, signingOut, supabase]);
 
   useEffect(() => {
     if (!activeBan) return;
@@ -92,7 +83,7 @@ export default function BanGate() {
     setSigningOut(true);
 
     try {
-      await supabaseRef.current?.auth.signOut({ scope: "global" });
+      await supabase.auth.signOut({ scope: "global" });
     } catch {
       // Ignore auth sign-out failures and still redirect to the login page.
     }
