@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { CredentialDocumentButton } from "@/components/credential-review-actions";
 import { createClient } from "@/lib/supabase/client";
-
+import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 type CallOutcome = "verified" | "not_verified" | "unreachable";
 
 type Props = {
@@ -61,6 +61,7 @@ export function ApplicationCallDialog({
   credentials,
 }: Props) {
   const router = useRouter();
+  const phoneVerificationRequired = usePhoneVerificationRequired();
   const [isOpen, setIsOpen] = useState(false);
   const [outcome, setOutcome] = useState<CallOutcome>("verified");
   const [notes, setNotes] = useState("");
@@ -152,7 +153,9 @@ export function ApplicationCallDialog({
         const knownErrors: Record<string, string> = {
           NOTES_REQUIRED: "Please write what went wrong.",
           APPLICATION_NOT_PENDING: "This application has already been decided.",
-          PHONE_NOT_VERIFIED: "This applicant never verified their number. Ask them to verify it first.",
+          PHONE_NOT_VERIFIED: phoneVerificationRequired
+            ? "This applicant never verified their number. Ask them to verify it first."
+            : "The applicant’s phone details could not be confirmed.",
           CONSENT_REQUIRED: "Please confirm the applicant agreed to the recording.",
           FILE_NOT_FOUND: "The recording could not be attached. Please try again.",
           INVALID_FILE_PATH: "The recording could not be attached. Please try again.",
