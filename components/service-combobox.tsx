@@ -21,8 +21,13 @@ export default function ServiceCombobox({ value, onChange, onSelect, initialSlug
   const [highlight, setHighlight] = useState(0);
   const ref = useRef<HTMLDivElement | null>(null);
   const [uncontrolledSelected, setUncontrolledSelected] = useState<Service | null>(null);
+  const latestPropsRef = useRef({ value, onChange, onSelect });
   const selected = value === undefined ? uncontrolledSelected : services.find((service) => service.slug === value) ?? null;
   const input = value === undefined ? uncontrolledInput : services.find((service) => service.slug === value)?.name ?? value;
+
+  useEffect(() => {
+    latestPropsRef.current = { value, onChange, onSelect };
+  }, [value, onChange, onSelect]);
 
   useEffect(() => {
     if (value !== undefined) {
@@ -43,16 +48,17 @@ export default function ServiceCombobox({ value, onChange, onSelect, initialSlug
       if (!mounted) return;
       const loadedServices = (data ?? []) as Service[];
       setServices(loadedServices);
+      const { value: currentValue, onChange: currentOnChange, onSelect: currentOnSelect } = latestPropsRef.current;
       // If an initialSlug was provided, try to resolve and set the input to the service name
       if (initialSlug && loadedServices.length > 0) {
         const s = loadedServices.find((service) => service.slug === initialSlug);
         if (s) {
-          if (value === undefined) {
+          if (currentValue === undefined) {
             setUncontrolledSelected(s);
             setUncontrolledInput(s.name);
           }
-          onChange?.(s.slug);
-          onSelect?.(s);
+          currentOnChange?.(s.slug);
+          currentOnSelect?.(s);
         }
       }
     }

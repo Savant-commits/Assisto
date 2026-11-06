@@ -45,7 +45,7 @@ export function ReportDialog({
     setError(null);
 
     try {
-      const { data, error: rpcError } = await supabase.rpc("submit_report", {
+      const { error: rpcError } = await supabase.rpc("submit_report", {
         p_reportable_type: reportableType,
         p_reportable_id: reportableId,
         p_reason: values.reason,

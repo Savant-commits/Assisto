@@ -15,7 +15,6 @@ export default function ManageServicesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   // Committed state: what's actually saved in Supabase
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
   // Draft state: what the checkboxes currently show (local only)
   const [draftCategoryIds, setDraftCategoryIds] = useState<number[]>([]);
@@ -61,7 +60,6 @@ export default function ManageServicesPage() {
       setServices(svcRes.data ?? []);
       const provCatIds = (provCatRes.data ?? []).map((row) => row.category_id);
       const provSvcIds = (provSvcRes.data ?? []).map((row) => row.service_id);
-      setSelectedCategoryIds(provCatIds);
       setSelectedServiceIds(provSvcIds);
       setDraftCategoryIds(provCatIds);
       setDraftServiceIds(provSvcIds);
@@ -72,7 +70,7 @@ export default function ManageServicesPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [router]);
 
   function toggleService(service: Service, on: boolean) {
     if (on) {
@@ -107,7 +105,6 @@ export default function ManageServicesPage() {
 
       // Update committed state to match draft
       setSelectedServiceIds(draftServiceIds);
-      setSelectedCategoryIds(draftCategoryIds);
       // Update credits with the returned value
       setServiceEditCredits(data);
     } catch (err: unknown) {

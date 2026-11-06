@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import AdminEnquiryDetail from "@/components/admin-enquiry-detail";
 import AdminEnquiriesTabs from "@/components/admin-enquiries-tabs";
 import type { AdminEnquiryRow } from "@/components/admin-enquiry-detail";
 import { one } from "@/lib/relations";

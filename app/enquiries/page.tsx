@@ -153,6 +153,43 @@ export default function EnquiriesPage() {
   const mountedRef = useRef(true);
   const unreadDebounceRef = useRef<number | null>(null);
 
+  const loadUnread = useCallback(async (userId: string, sentList: SentEnquiry[], receivedList: ReceivedEnquiry[]) => {
+    try {
+      if (!userId) return;
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("project_messages")
+        .select("project_id")
+        .is("read_at", null)
+        .is("deleted_at", null)
+        .neq("sender_id", userId);
+
+      if (error) {
+        console.error("project_messages unread query failed:", error.message, error.details, error.hint, error.code);
+        return;
+      }
+
+      const rows = (data as { project_id: string }[]) || [];
+      const counts: Record<string, number> = {};
+      for (const row of rows) {
+        if (!row.project_id) continue;
+        counts[row.project_id] = (counts[row.project_id] || 0) + 1;
+      }
+
+      const sentIds = new Set(sentList.map((enquiry) => enquiry.projects?.id).filter(Boolean) as string[]);
+      const receivedIds = new Set(receivedList.map((enquiry) => enquiry.projects?.id).filter(Boolean) as string[]);
+      const keep = new Set<string>([...sentIds, ...receivedIds]);
+      const filtered: Record<string, number> = {};
+      for (const [projectId, count] of Object.entries(counts)) {
+        if (keep.has(projectId)) filtered[projectId] = count;
+      }
+
+      setUnreadByProject(filtered);
+    } catch {
+      console.error("loadUnread failed");
+    }
+  }, []);
+
   const load = useCallback(async () => {
     const supabase = createClient();
     const { data: userData } = await supabase.auth.getUser();
@@ -304,51 +341,8 @@ export default function EnquiriesPage() {
     setLoading(false);
     // Load unread counts for visible projects
     // pass the freshly-loaded lists so we count only projects shown
-    loadUnread?.(sentList, receivedData);
-  }, [router]);
-
-  const loadUnread = useCallback(
-    async (sentListParam?: SentEnquiry[], receivedListParam?: ReceivedEnquiry[]) => {
-      try {
-        if (!currentUserId) return;
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from("project_messages")
-          .select("project_id")
-          .is("read_at", null)
-          .is("deleted_at", null)
-          .neq("sender_id", currentUserId);
-
-        if (error) {
-          console.error("project_messages unread query failed:", error.message, error.details, error.hint, error.code);
-          return;
-        }
-
-        const rows = (data as { project_id: string }[]) || [];
-
-        const counts: Record<string, number> = {};
-        for (const r of rows) {
-          if (!r.project_id) continue;
-          counts[r.project_id] = (counts[r.project_id] || 0) + 1;
-        }
-
-        // Only keep counts for projects that appear in the sent/received lists
-        const sentIds = new Set((sentListParam || sent).map((s) => s.projects?.id).filter(Boolean) as string[]);
-        const receivedIds = new Set((receivedListParam || received).map((r) => r.projects?.id).filter(Boolean) as string[]);
-        const keep = new Set<string>([...sentIds, ...receivedIds]);
-
-        const filtered: Record<string, number> = {};
-        for (const [k, v] of Object.entries(counts)) {
-          if (keep.has(k)) filtered[k] = v;
-        }
-
-        setUnreadByProject(filtered);
-      } catch {
-        console.error("loadUnread failed");
-      }
-    },
-    [currentUserId, sent, received]
-  );
+    void loadUnread(userData.user.id, sentList, receivedData);
+  }, [loadUnread, router]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -366,7 +360,7 @@ export default function EnquiriesPage() {
     const scheduleLoad = () => {
       if (unreadDebounceRef.current) window.clearTimeout(unreadDebounceRef.current);
       unreadDebounceRef.current = window.setTimeout(() => {
-        loadUnread();
+        loadUnread(currentUserId, sent, received);
         unreadDebounceRef.current = null;
       }, 300);
     };
@@ -388,7 +382,7 @@ export default function EnquiriesPage() {
       if (unreadDebounceRef.current) window.clearTimeout(unreadDebounceRef.current);
       supabase.removeChannel(channel);
     };
-  }, [loadUnread]);
+  }, [currentUserId, loadUnread, received, sent]);
 
   useEffect(() => {
     function handleVisibility() {
@@ -1373,7 +1367,7 @@ export default function EnquiriesPage() {
                   onClick={() => {
                     setOpenChatModal(null);
                     // reload unread counts when chat closes
-                    loadUnread();
+                    loadUnread(currentUserId, sent, received);
                   }}
                   className="text-gray-600 hover:text-gray-900"
                   aria-label="Close chat"

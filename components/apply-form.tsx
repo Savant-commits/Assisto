@@ -179,7 +179,7 @@ export default function ApplyForm() {
       // Store selected services as a comma-separated list inside `service_area_notes`.
       const servicesText = selectedServices.join(", ");
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("provider_applications")
         .insert({ ...values, user_id: userId, status: "pending", service_area_notes: servicesText })
         .select("id,status")
