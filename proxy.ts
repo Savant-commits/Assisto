@@ -2,6 +2,23 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+function requiresAuthentication(pathname: string): boolean {
+  return (
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/") ||
+    pathname === "/enquiries" ||
+    pathname === "/my-enquiries" ||
+    pathname === "/your-work" ||
+    pathname === "/profile" ||
+    pathname.startsWith("/profile/") ||
+    pathname === "/projects" ||
+    pathname.startsWith("/projects/") ||
+    pathname === "/notifications" ||
+    pathname.startsWith("/notifications/") ||
+    pathname === "/verify-phone"
+  );
+}
+
 export async function proxy(request: NextRequest) {
   const nextResponse = () => {
     const requestHeaders = new Headers(request.headers);
@@ -32,7 +49,20 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  const { data: userData } = await supabase.auth.getUser();
+
+  const isEmailConfirmed = Boolean(userData.user?.email_confirmed_at);
+  if ((!userData.user || !isEmailConfirmed) && requiresAuthentication(request.nextUrl.pathname)) {
+    const loginUrl = request.nextUrl.clone();
+    const redirectPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("redirect", redirectPath);
+
+    const redirectResponse = NextResponse.redirect(loginUrl);
+    response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+    return redirectResponse;
+  }
 
   return response;
 }

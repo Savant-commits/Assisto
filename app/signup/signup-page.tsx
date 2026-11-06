@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { safeRedirectPath } from "@/lib/safe-redirect";
@@ -32,9 +32,9 @@ type FormValues = z.infer<typeof schema>;
 
 export default function SignupPage() {
   const phoneVerificationRequired = usePhoneVerificationRequired();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = safeRedirectPath(searchParams.get("redirect"));
-  const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
@@ -45,11 +45,15 @@ export default function SignupPage() {
   async function onSubmit(values: FormValues) {
     setFormError(null);
     const supabase = createClient();
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
 
     const { data, error } = await supabase.auth.signUp({
       email: values.email,
       password: values.password,
-      options: { data: { full_name: values.full_name } },
+      options: {
+        emailRedirectTo: `${siteUrl}/auth/confirm`,
+        data: { full_name: values.full_name, phone: values.phone, city: values.city },
+      },
     });
 
     if (error) {
@@ -59,6 +63,11 @@ export default function SignupPage() {
 
     if (!data.user) {
       setFormError("Something went wrong. Please try again.");
+      return;
+    }
+
+    if (!data.session) {
+      router.push(`/check-email?email=${encodeURIComponent(values.email)}`);
       return;
     }
 
@@ -91,27 +100,9 @@ export default function SignupPage() {
       return;
     }
 
-    if (data.session) {
-      // Email confirmation is off (or already satisfied) — session is live.
-      // Use full reload so server components see the session immediately.
-      window.location.assign(redirectTo);
-    } else {
-      // Project has "Confirm email" enabled — no session until they click
-      // the email link. Show a clear next step instead of a silent stall.
-      setNeedsConfirmation(true);
-    }
-  }
-
-  if (needsConfirmation) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-20 text-center">
-        <h1 className="mb-2 text-2xl font-semibold">Check your email</h1>
-        <p className="text-muted-foreground">
-          We sent a confirmation link to your inbox. Click it, then come back and{" "}
-          <Link href={`/login?redirect=${encodeURIComponent(redirectTo)}`} className="underline">log in</Link>.
-        </p>
-      </div>
-    );
+    // Email confirmation is off (or already satisfied) — session is live.
+    // Use full reload so server components see the session immediately.
+    window.location.assign(redirectTo);
   }
 
   return (
