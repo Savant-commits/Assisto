@@ -51,8 +51,7 @@ export async function proxy(request: NextRequest) {
 
   const { data: userData } = await supabase.auth.getUser();
 
-  const isEmailConfirmed = Boolean(userData.user?.email_confirmed_at);
-  if ((!userData.user || !isEmailConfirmed) && requiresAuthentication(request.nextUrl.pathname)) {
+  if (!userData.user && requiresAuthentication(request.nextUrl.pathname)) {
     const loginUrl = request.nextUrl.clone();
     const redirectPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
     loginUrl.pathname = "/login";
