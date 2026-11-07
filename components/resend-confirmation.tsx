@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { emailSchema } from "@/lib/email-validation";
 
 type Props = { email: string };
 
@@ -21,9 +22,14 @@ export default function ResendConfirmation({ email }: Props) {
 
   async function resend() {
     setMessage(null);
+    const validatedEmail = emailSchema.safeParse(email);
+    if (!validatedEmail.success) {
+      setMessage(validatedEmail.error.issues[0]?.message ?? "Enter a valid email address.");
+      return;
+    }
     setIsSending(true);
     try {
-      const { error } = await createClient().auth.resend({ type: "signup", email });
+      const { error } = await createClient().auth.resend({ type: "signup", email: validatedEmail.data });
       if (error) {
         const detail = error.message.toLowerCase();
         if (error.status === 429 || detail.includes("rate limit") || detail.includes("too many")) {

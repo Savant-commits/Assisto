@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { emailSchema } from "@/lib/email-validation";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -29,9 +30,11 @@ export async function sendEmail({
     throw new Error("EMAIL_FROM is not configured.");
   }
 
+  const validatedEmail = emailSchema.parse(to);
+
   const { data, error } = await resend.emails.send({
     from,
-    to,
+    to: validatedEmail,
     subject,
     html,
   });

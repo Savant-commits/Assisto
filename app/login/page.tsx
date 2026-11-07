@@ -8,6 +8,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { safeRedirectPath } from "@/lib/safe-redirect";
+import { emailSchema } from "@/lib/email-validation";
 import ResendConfirmation from "@/components/resend-confirmation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/form";
 
 const schema = z.object({
-  email: z.string().email("Enter a valid email"),
+  email: emailSchema,
   password: z.string().min(1, "Enter your password"),
 });
 
@@ -42,9 +43,10 @@ export default function LoginPage() {
     setFormError(null);
     setUnconfirmedEmail(null);
     const supabase = createClient();
+    const email = values.email.trim().toLowerCase();
 
     const { error } = await supabase.auth.signInWithPassword({
-      email: values.email,
+      email,
       password: values.password,
     });
 
@@ -57,7 +59,7 @@ export default function LoginPage() {
 
       if (error.code === "email_not_confirmed" || lowerMessage.includes("email not confirmed")) {
         setFormError("Please confirm your email before logging in. You can resend the confirmation link below.");
-        setUnconfirmedEmail(values.email);
+        setUnconfirmedEmail(email);
         return;
       }
 
@@ -98,7 +100,7 @@ export default function LoginPage() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input type="email" placeholder="you@example.com" {...field} />
+                  <Input type="email" autoComplete="email" placeholder="you@example.com" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { safeRedirectPath } from "@/lib/safe-redirect";
+import { emailSchema } from "@/lib/email-validation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
@@ -22,7 +23,7 @@ import {
 
 const schema = z.object({
   full_name: z.string().min(2, "Enter your name"),
-  email: z.string().email("Enter a valid email"),
+  email: emailSchema,
   password: z.string().min(8, "At least 8 characters"),
   phone: z.string().min(6, "Enter a phone number"),
   city: z.enum(["Cuddalore", "Chidambaram"]),
@@ -45,10 +46,11 @@ export default function SignupPage() {
   async function onSubmit(values: FormValues) {
     setFormError(null);
     const supabase = createClient();
+    const email = values.email.trim().toLowerCase();
     const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
 
     const { data, error } = await supabase.auth.signUp({
-      email: values.email,
+      email,
       password: values.password,
       options: {
         emailRedirectTo: `${siteUrl}/auth/confirm`,
@@ -67,7 +69,7 @@ export default function SignupPage() {
     }
 
     if (!data.session) {
-      router.push(`/check-email?email=${encodeURIComponent(values.email)}`);
+      router.push(`/check-email?email=${encodeURIComponent(email)}`);
       return;
     }
 
@@ -78,7 +80,7 @@ export default function SignupPage() {
       role: "customer",
       phone: values.phone,
       city: values.city,
-      email: values.email,
+      email,
     });
 
     let profileError = insertError;
@@ -89,7 +91,7 @@ export default function SignupPage() {
           full_name: values.full_name,
           phone: values.phone,
           city: values.city,
-          email: values.email,
+          email,
         })
         .eq("id", data.user.id);
       profileError = updateError;
@@ -135,7 +137,7 @@ export default function SignupPage() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input type="email" placeholder="you@example.com" {...field} />
+                  <Input type="email" autoComplete="email" placeholder="you@example.com" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
