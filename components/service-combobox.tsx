@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
+import { useServices, type Service } from "@/hooks/use-services";
 
-export type Service = { id: number; slug: string; name: string; category_id?: number };
+export type { Service } from "@/hooks/use-services";
 
 type Props = {
   value?: string; // slug or free text
@@ -15,39 +15,29 @@ type Props = {
 };
 
 export default function ServiceCombobox({ value, onChange, onSelect, initialSlug, placeholder = "Service (e.g. Interior painting)" }: Props) {
-  const [services, setServices] = useState<Service[]>([]);
   const [uncontrolledInput, setUncontrolledInput] = useState("");
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const ref = useRef<HTMLDivElement | null>(null);
   const [uncontrolledSelected, setUncontrolledSelected] = useState<Service | null>(null);
+  const { allServices, services: filteredServices } = useServices(value ?? uncontrolledInput);
   const latestPropsRef = useRef({ value, onChange, onSelect });
-  const selected = value === undefined ? uncontrolledSelected : services.find((service) => service.slug === value) ?? null;
-  const input = value === undefined ? uncontrolledInput : services.find((service) => service.slug === value)?.name ?? value;
+  const selected = value === undefined ? uncontrolledSelected : allServices.find((service) => service.slug === value) ?? null;
+  const input = value === undefined ? uncontrolledInput : allServices.find((service) => service.slug === value)?.name ?? value;
 
   useEffect(() => {
     latestPropsRef.current = { value, onChange, onSelect };
   }, [value, onChange, onSelect]);
 
   useEffect(() => {
-    if (value !== undefined) {
-      onSelect?.(services.find((service) => service.slug === value) ?? null);
+    if (value !== undefined && allServices.length > 0) {
+      onSelect?.(allServices.find((service) => service.slug === value) ?? null);
     }
-  }, [value, services, onSelect]);
+  }, [value, allServices, onSelect]);
 
   useEffect(() => {
-    let mounted = true;
-    async function load() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("services")
-        .select("id,slug,name,category_id")
-        .eq("is_active", true)
-        .order("category_id")
-        .order("sort_order");
-      if (!mounted) return;
-      const loadedServices = (data ?? []) as Service[];
-      setServices(loadedServices);
+    const timer = window.setTimeout(() => {
+      const loadedServices = allServices;
       const { value: currentValue, onChange: currentOnChange, onSelect: currentOnSelect } = latestPropsRef.current;
       // If an initialSlug was provided, try to resolve and set the input to the service name
       if (initialSlug && loadedServices.length > 0) {
@@ -61,12 +51,9 @@ export default function ServiceCombobox({ value, onChange, onSelect, initialSlug
           currentOnSelect?.(s);
         }
       }
-    }
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, [initialSlug]);
+      }, 0);
+      return () => window.clearTimeout(timer);
+  }, [initialSlug, allServices]);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -78,9 +65,7 @@ export default function ServiceCombobox({ value, onChange, onSelect, initialSlug
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const filtered = input
-    ? services.filter((s) => s.name.toLowerCase().includes(input.toLowerCase())).slice(0, 20)
-    : services.slice(0, 20);
+  const filtered = filteredServices;
 
   function handleSelect(s: Service) {
     if (value === undefined) {

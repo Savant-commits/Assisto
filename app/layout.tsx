@@ -19,6 +19,8 @@ import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import AppHeader from "@/components/shell/app-header";
 import BottomNav from "@/components/shell/bottom-nav";
 import { NotificationsProvider } from "@/components/notification-bell";
+import { getSelectedLocation } from "@/lib/location/server";
+import { LocationProvider } from "@/lib/location/provider";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -140,6 +142,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const currentPath = (await headers()).get("x-pathname") || "/";
   const pathname = currentPath.split("?")[0];
   const isMainTabRoute = ["/", "/discover", "/enquiries", "/profile"].includes(pathname);
+  const selectedLocation = await getSelectedLocation();
 
   return (
     <html
@@ -151,6 +154,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
+        <LocationProvider key={JSON.stringify(selectedLocation)} initialLocation={selectedLocation}>
         <PhoneVerificationRequiredProvider required={phoneVerificationRequired}>
         {isMainTabRoute ? (
           userData.user ? (
@@ -238,6 +242,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         )}
         {userData.user && <BanGate />}
         </PhoneVerificationRequiredProvider>
+        </LocationProvider>
       </body>
     </html>
   );

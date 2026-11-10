@@ -9,7 +9,7 @@ import type { MapPoint } from "@/components/map/leaflet-map-inner";
 
 const MapPreview = dynamic(() => import("@/components/map/leaflet-map-inner").then((mod) => mod.LeafletMapInner), {
   ssr: false,
-  loading: () => <div className="h-[100dvh] w-full animate-pulse bg-zinc-200" />,
+  loading: () => <div className="h-[100dvh] w-full animate-pulse bg-zinc-200 dark:bg-zinc-800" />,
 });
 
 function subscribeToNothing() {
@@ -107,7 +107,7 @@ function LocationPickerContent({
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      className="fixed inset-0 z-[1100] h-[100dvh] w-screen overflow-hidden bg-white"
+      className="fixed inset-0 z-[1100] h-[100dvh] w-screen overflow-hidden bg-background"
       onClick={(event) => {
         if (event.target === event.currentTarget) onOpenChange(false);
       }}
@@ -119,7 +119,7 @@ function LocationPickerContent({
                 type="button"
                 aria-label="Close location picker"
                 onClick={() => onOpenChange(false)}
-                className="inline-flex items-center justify-center rounded-full border bg-background p-2 text-muted-foreground hover:bg-muted"
+                className="inline-flex size-11 items-center justify-center rounded-full border bg-background text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -128,7 +128,7 @@ function LocationPickerContent({
             <button
               type="button"
               onClick={handleUseCurrentLocation}
-              className="rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+              className="min-h-11 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Use my current location
             </button>
@@ -159,7 +159,7 @@ function LocationPickerContent({
                 <button
                   type="button"
                   onClick={() => onOpenChange(false)}
-                  className="rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+                  className="min-h-11 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Cancel
                 </button>
@@ -171,7 +171,7 @@ function LocationPickerContent({
                     onOpenChange(false);
                   }}
                   disabled={!picked}
-                  className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="min-h-11 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {confirmLabel}
                 </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +40,7 @@ export function DialogContent({ className, children, ...props }: React.Component
 
   if (!context) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => context.onOpenChange(false)}>
       <div
         className={cn(
@@ -51,7 +52,8 @@ export function DialogContent({ className, children, ...props }: React.Component
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
