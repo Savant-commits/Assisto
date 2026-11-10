@@ -5,6 +5,20 @@ import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
+export async function signOutUser() {
+  const supabase = createClient();
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    console.error("session menu sign-out failed", {
+      message: error.message,
+      details: "details" in error ? error.details : undefined,
+      hint: "hint" in error ? error.hint : undefined,
+      code: error.code,
+    });
+  }
+  window.location.replace("/");
+}
+
 export default function SessionMenu({ fullName, avatarUrl }: { fullName?: string | null; avatarUrl?: string | null }) {
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string | null>(null);
@@ -55,21 +69,6 @@ export default function SessionMenu({ fullName, avatarUrl }: { fullName?: string
     };
   }, []);
 
-  async function signOut() {
-    const supabase = createClient();
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error("session menu sign-out failed", {
-        message: error.message,
-        details: "details" in error ? error.details : undefined,
-        hint: "hint" in error ? error.hint : undefined,
-        code: error.code,
-      });
-    }
-    // reload to clear server components relying on cookies
-    window.location.href = "/";
-  }
-
   if (loading) return <div className="w-8 h-8 rounded-full bg-gray-200" />;
 
   if (!email) {
@@ -100,7 +99,7 @@ export default function SessionMenu({ fullName, avatarUrl }: { fullName?: string
       <Link href="/profile" className="rounded-full border px-3 py-1">
         Profile
       </Link>
-      <button onClick={signOut} className="rounded-full border px-3 py-1">
+      <button onClick={signOutUser} className="rounded-full border px-3 py-1">
         Sign out
       </button>
     </div>

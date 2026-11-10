@@ -16,6 +16,9 @@ import { PhoneVerifyBanner } from "@/components/phone-verify-banner";
 import { PhoneVerificationRequiredProvider } from "@/components/phone-verification-required-context";
 import { getPhoneVerificationRequired } from "@/lib/phone-verification-required";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
+import AppHeader from "@/components/shell/app-header";
+import BottomNav from "@/components/shell/bottom-nav";
+import { NotificationsProvider } from "@/components/notification-bell";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -134,6 +137,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     if (verificationRedirect) redirect(verificationRedirect);
   }
 
+  const currentPath = (await headers()).get("x-pathname") || "/";
+  const pathname = currentPath.split("?")[0];
+  const isMainTabRoute = ["/", "/discover", "/enquiries", "/profile"].includes(pathname);
+
   return (
     <html
       lang="en"
@@ -145,57 +152,90 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col">
         <PhoneVerificationRequiredProvider required={phoneVerificationRequired}>
-        <header className="border-b bg-background/50">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-            <Link href="/" className="text-lg font-semibold">
-              Assisto
-            </Link>
-            <nav className="flex items-center gap-3 text-sm">
-                {userData.user && (
-                  <a href="/enquiries" className="relative rounded-full border px-3 py-1">
-                    Enquiries
-                    <EnquiriesNavBadge />
+        {isMainTabRoute ? (
+          userData.user ? (
+            <NotificationsProvider>
+              <AppHeader
+                currentPath={currentPath}
+                fullName={profile?.full_name}
+                avatarUrl={profile?.avatar_url}
+                isLoggedIn
+              />
+              {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
+              <div style={{ paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
+                {children}
+              </div>
+              <BottomNav currentPath={pathname} isLoggedIn />
+            </NotificationsProvider>
+          ) : (
+            <>
+              <AppHeader currentPath={currentPath} isLoggedIn={false} />
+              {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
+              <div style={{ paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
+                {children}
+              </div>
+              <BottomNav currentPath={pathname} isLoggedIn={false} />
+            </>
+          )
+        ) : (
+          <>
+            <header className="border-b bg-background/50">
+              <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+                <Link href="/" className="text-lg font-semibold">
+                  Assisto
+                </Link>
+                <nav className="flex items-center gap-3 text-sm">
+                  {userData.user && (
+                    <a href="/enquiries" className="relative rounded-full border px-3 py-1">
+                      Enquiries
+                      <EnquiriesNavBadge />
+                    </a>
+                  )}
+                  <a href="/discover" className="rounded-full border px-3 py-1">
+                    Discover
                   </a>
-                )}
-                <a href="/discover" className="rounded-full border px-3 py-1">
-                  Discover
-                </a>
-                <a href="/requirements/new" className="rounded-full border px-3 py-1">
-                  Describe need
-                </a>
-                <a href="/apply" className="rounded-full border px-3 py-1">
-                  Apply
-                </a>
-                {isProvider && (
-                  <a href="/your-work" className="rounded-full border px-3 py-1">
-                    Your work
+                  <a href="/requirements/new" className="rounded-full border px-3 py-1">
+                    Describe need
                   </a>
-                )}
-                {profile?.role === "admin" && (
-                  <>
-                    <a href="/admin/enquiries" className="rounded-full border px-3 py-1">
-                      Admin
+                  <a href="/apply" className="rounded-full border px-3 py-1">
+                    Apply
+                  </a>
+                  {isProvider && (
+                    <a href="/your-work" className="rounded-full border px-3 py-1">
+                      Your work
                     </a>
-                    <a href="/admin/reports" className="rounded-full border px-3 py-1">
-                      Reports
-                    </a>
-                    <a href="/admin/chats" className="rounded-full border px-3 py-1">
-                      Chats
-                    </a>
-                    <a href="/admin/bans" className="rounded-full border px-3 py-1">
-                      Bans
-                    </a>
-                  </>
-                )}
-              </nav>
-            <div>
-              <SessionMenu fullName={profile?.full_name} avatarUrl={profile?.avatar_url} />
-            </div>
-          </div>
-        </header>
-        {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
-        {children}
-        {userData.user && <NotificationBell />}
+                  )}
+                  {profile?.role === "admin" && (
+                    <>
+                      <a href="/admin/enquiries" className="rounded-full border px-3 py-1">
+                        Admin
+                      </a>
+                      <a href="/admin/reports" className="rounded-full border px-3 py-1">
+                        Reports
+                      </a>
+                      <a href="/admin/chats" className="rounded-full border px-3 py-1">
+                        Chats
+                      </a>
+                      <a href="/admin/bans" className="rounded-full border px-3 py-1">
+                        Bans
+                      </a>
+                    </>
+                  )}
+                </nav>
+                <div>
+                  <SessionMenu fullName={profile?.full_name} avatarUrl={profile?.avatar_url} />
+                </div>
+              </div>
+            </header>
+            {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
+            {children}
+            {userData.user && (
+              <NotificationsProvider>
+                <NotificationBell />
+              </NotificationsProvider>
+            )}
+          </>
+        )}
         {userData.user && <BanGate />}
         </PhoneVerificationRequiredProvider>
       </body>

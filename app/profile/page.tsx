@@ -2,6 +2,7 @@
 
 import { useState, useEffect, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -411,6 +412,12 @@ export default function ProfilePage() {
         {isProvider && <Badge>Provider</Badge>}
       </div>
       <p className="mb-6 text-muted-foreground">Edit your public details.</p>
+      <Link
+        href="/profile/settings"
+        className="mb-6 inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        Settings
+      </Link>
 
       {/* Profile Picture Section */}
       <div className="mb-6 rounded-lg border p-4">
