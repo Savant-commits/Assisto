@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import Link from "next/link";
 import { GeistSans } from "geist/font/sans";
+import { Fraunces } from "next/font/google";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { inspect } from "node:util";
@@ -14,6 +15,13 @@ import BanGate from "@/components/ban-gate";
 import { PhoneVerifyBanner } from "@/components/phone-verify-banner";
 import { PhoneVerificationRequiredProvider } from "@/components/phone-verification-required-context";
 import { getPhoneVerificationRequired } from "@/lib/phone-verification-required";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
+
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Assisto — Find the right person for the job",
@@ -129,8 +137,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${GeistSans.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${fraunces.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <PhoneVerificationRequiredProvider required={phoneVerificationRequired}>
         <header className="border-b bg-background/50">
