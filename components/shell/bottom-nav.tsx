@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useNotifications } from "@/components/notification-bell";
 import { Compass, House, MessageCircle, UserRound, ClipboardList } from "lucide-react";
+import AuthGatedLink from "@/components/auth/auth-gated-link";
 
 type BottomNavProps = {
   currentPath: string;
@@ -19,7 +20,6 @@ const items = [
 
 export default function BottomNav({ currentPath, isLoggedIn }: BottomNavProps) {
   const notifications = useNotifications();
-  const loginHref = (target: string) => `/login?redirect=${encodeURIComponent(target)}`;
 
   return (
     <nav
@@ -51,15 +51,24 @@ export default function BottomNav({ currentPath, isLoggedIn }: BottomNavProps) {
 
           return (
             <li key={label} className="flex min-w-0 flex-1">
-              <Link
-                href={requiresLogin && !isLoggedIn ? loginHref(href) : href}
-                className={className}
-                aria-current={active ? "page" : undefined}
-                aria-label={label}
-              >
-                <Icon aria-hidden="true" className="size-5" />
-                <span>{label}</span>
-              </Link>
+              {requiresLogin ? (
+                <AuthGatedLink
+                  href={href}
+                  actionLabel={`to view ${label.toLowerCase()}`}
+                  onAuthenticated={messages ? () => notifications?.openPanel("messages") : undefined}
+                  className={className}
+                  aria-current={active ? "page" : undefined}
+                  aria-label={label}
+                >
+                  <Icon aria-hidden="true" className="size-5" />
+                  <span>{label}</span>
+                </AuthGatedLink>
+              ) : (
+                <Link href={href} className={className} aria-current={active ? "page" : undefined} aria-label={label}>
+                  <Icon aria-hidden="true" className="size-5" />
+                  <span>{label}</span>
+                </Link>
+              )}
             </li>
           );
         })}

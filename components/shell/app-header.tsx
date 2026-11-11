@@ -7,6 +7,7 @@ import { Avatar } from "@/components/avatar";
 import { useNotifications } from "@/components/notification-bell";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
 import HomeSearchBar from "@/components/search/home-search-bar";
+import AuthGatedLink from "@/components/auth/auth-gated-link";
 
 type AppHeaderProps = {
   currentPath: string;
@@ -31,7 +32,6 @@ export default function AppHeader({ currentPath, fullName, avatarUrl, isLoggedIn
   const hidden = useScrollDirection();
   const [hasFocus, setHasFocus] = useState(false);
   const notifications = useNotifications();
-  const loginHref = `/login?redirect=${encodeURIComponent(currentPath)}`;
 
   const isHomeRoute = currentPath.split("?")[0] === "/";
   const compact = hidden && !hasFocus;
@@ -66,10 +66,24 @@ export default function AppHeader({ currentPath, fullName, avatarUrl, isLoggedIn
               }
 
               return (
-                <Link key={label} href={requiresLogin && !isLoggedIn ? `/login?redirect=${encodeURIComponent(href)}` : href} className={className} aria-current={active ? "page" : undefined}>
-                  <Icon aria-hidden="true" className="size-4" />
-                  {label}
-                </Link>
+                requiresLogin ? (
+                  <AuthGatedLink
+                    key={label}
+                    href={href}
+                    actionLabel={`to view ${label.toLowerCase()}`}
+                    onAuthenticated={messages ? () => notifications?.openPanel("messages") : undefined}
+                    className={className}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <Icon aria-hidden="true" className="size-4" />
+                    {label}
+                  </AuthGatedLink>
+                ) : (
+                  <Link key={label} href={href} className={className} aria-current={active ? "page" : undefined}>
+                    <Icon aria-hidden="true" className="size-4" />
+                    {label}
+                  </Link>
+                )
               );
             })}
           </nav>
@@ -90,17 +104,19 @@ export default function AppHeader({ currentPath, fullName, avatarUrl, isLoggedIn
                 )}
               </button>
             ) : (
-              <Link href={loginHref} aria-label="Log in to view notifications" className="inline-flex size-11 items-center justify-center rounded-full text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+              <AuthGatedLink href="/discover" actionLabel="to view notifications" onAuthenticated={() => notifications?.openPanel("all")} aria-label="Log in to view notifications" className="inline-flex size-11 items-center justify-center rounded-full text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 <Bell aria-hidden="true" className="size-5" />
-              </Link>
+              </AuthGatedLink>
             )}
-            <Link
-              href={isLoggedIn ? "/profile" : loginHref}
-              aria-label={isLoggedIn ? `${fullName || "Your"} profile` : "Log in to view your profile"}
-              className="inline-flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <Avatar src={avatarUrl} name={fullName || "Profile"} size={36} className="size-9 rounded-full object-cover" />
-            </Link>
+            {isLoggedIn ? (
+              <Link href="/profile" aria-label={`${fullName || "Your"} profile`} className="inline-flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                <Avatar src={avatarUrl} name={fullName || "Profile"} size={36} className="size-9 rounded-full object-cover" />
+              </Link>
+            ) : (
+              <AuthGatedLink href="/profile" actionLabel="to view your profile" aria-label="Log in to view your profile" className="inline-flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                <Avatar src={avatarUrl} name={fullName || "Profile"} size={36} className="size-9 rounded-full object-cover" />
+              </AuthGatedLink>
+            )}
           </div>
         </div>
       </header>

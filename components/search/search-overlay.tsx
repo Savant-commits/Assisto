@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLocation } from "@/lib/location/provider";
 import { useServices, type Service } from "@/hooks/use-services";
+import AuthGatedLink from "@/components/auth/auth-gated-link";
 
 const RECENT_SEARCHES_KEY = "assisto-recent-searches";
 
@@ -361,7 +362,7 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
                   <p className="mt-1 text-sm text-muted-foreground">Try browsing a category or describe what you need.</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" onClick={() => setQuery("")} className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Browse categories</button>
-                    <button type="button" onClick={() => navigate("/requirements/new", query)} className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-sm text-primary-foreground hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Describe what you need</button>
+                    <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" onAuthenticated={() => navigate("/requirements/new", query)} className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-sm text-primary-foreground hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Describe what you need</AuthGatedLink>
                   </div>
                 </section>
               )}

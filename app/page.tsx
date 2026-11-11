@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import AuthGatedLink from "@/components/auth/auth-gated-link";
 
 export default function HomePage() {
   return (
@@ -13,9 +14,9 @@ export default function HomePage() {
         work with.
       </p>
       <div className="flex gap-3">
-        <Link href="/requirements/new" className={buttonVariants({ size: "lg" })}>
+        <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" className={buttonVariants({ size: "lg" })}>
           Describe what you need
-        </Link>
+        </AuthGatedLink>
         <Link href="/discover" className={buttonVariants({ size: "lg", variant: "outline" })}>
           Browse professionals
         </Link>

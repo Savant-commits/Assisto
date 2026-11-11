@@ -20,6 +20,7 @@ import { ReviewModal } from "@/components/review-modal";
 import { friendlyDbError } from "@/lib/db-errors";
 import { LocationMap } from "@/components/map/location-map";
 import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib/reviews";
+import { useAuthGate } from "@/components/auth/auth-sheet";
 
 const enquirySchema = z.object({
   message: z.string().trim().min(1, "Add a short message to send with your enquiry"),
@@ -84,11 +85,6 @@ function formatDateTime(dateStr: string | null | undefined): string {
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
-function buildLoginRedirect(providerId: string, requirementId?: string) {
-  const target = requirementId ? `/providers/${providerId}?requirement=${requirementId}` : `/providers/${providerId}`;
-  return `/login?redirect=${encodeURIComponent(target)}`;
-}
-
 function EnquiryWidget({
   providerId,
   providerName,
@@ -101,6 +97,7 @@ function EnquiryWidget({
   initialMessage?: string;
 }) {
   const router = useRouter();
+  const { requireAuth } = useAuthGate();
   const supabase = createClient();
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
@@ -129,7 +126,7 @@ function EnquiryWidget({
     if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider enquiry auth lookup failed:", userError);
 
     if (!user) {
-      router.push(buildLoginRedirect(providerId, requirementId));
+      router.push(`/login?redirect=${encodeURIComponent(requirementId ? `/providers/${providerId}?requirement=${requirementId}` : `/providers/${providerId}`)}`);
       return;
     }
 
@@ -163,7 +160,7 @@ function EnquiryWidget({
     if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider enquiry submit auth lookup failed:", userError);
 
     if (!user) {
-      router.push(buildLoginRedirect(providerId, requirementId));
+      router.push(`/login?redirect=${encodeURIComponent(requirementId ? `/providers/${providerId}?requirement=${requirementId}` : `/providers/${providerId}`)}`);
       return;
     }
 
@@ -232,6 +229,14 @@ function EnquiryWidget({
     if (values) void onSubmit(values);
   }
 
+  function startEnquiry() {
+    requireAuth(() => void handleStart(), "to send an enquiry");
+  }
+
+  function submitEnquiry(values: EnquiryFormValues) {
+    requireAuth(() => void onSubmit(values), "to send an enquiry");
+  }
+
   if (isSuccess) {
     return (
       <p className="text-sm text-foreground">
@@ -253,7 +258,7 @@ function EnquiryWidget({
 
   if (!isOpen) {
     return (
-      <Button className="w-full" onClick={handleStart}>
+      <Button className="w-full" onClick={startEnquiry}>
         Send enquiry
       </Button>
     );
@@ -262,7 +267,7 @@ function EnquiryWidget({
   return (
     <>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(submitEnquiry)} className="space-y-4">
         <FormField
           control={form.control}
           name="message"

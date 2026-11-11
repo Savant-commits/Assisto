@@ -87,6 +87,10 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
     }
   }
 
+  if (notification.type === "welcome") {
+    redirect("/discover");
+  }
+
   if (notification.type === "credential_submitted" && notification.related_id) {
     redirect(`/admin/credentials?credential=${encodeURIComponent(notification.related_id)}`);
   }

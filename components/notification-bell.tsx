@@ -109,6 +109,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
 
     void load();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+        window.setTimeout(() => void load(), 0);
+      }
+    });
     const interval = setInterval(() => void load(), 30000);
 
     function onVisible() {
@@ -118,6 +123,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       mounted = false;
+      subscription.unsubscribe();
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };

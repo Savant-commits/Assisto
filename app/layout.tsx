@@ -21,6 +21,8 @@ import BottomNav from "@/components/shell/bottom-nav";
 import { NotificationsProvider } from "@/components/notification-bell";
 import { getSelectedLocation } from "@/lib/location/server";
 import { LocationProvider } from "@/lib/location/provider";
+import { AuthSheetProvider } from "@/components/auth/auth-sheet";
+import AuthGatedLink from "@/components/auth/auth-gated-link";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -155,23 +157,25 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col">
         <LocationProvider key={JSON.stringify(selectedLocation)} initialLocation={selectedLocation}>
+        <AuthSheetProvider initialIsAuthenticated={!!userData.user}>
         <PhoneVerificationRequiredProvider required={phoneVerificationRequired}>
         {isMainTabRoute ? (
-          userData.user ? (
-            <NotificationsProvider>
-              <AppHeader
-                currentPath={currentPath}
-                fullName={profile?.full_name}
-                avatarUrl={profile?.avatar_url}
-                isLoggedIn
-              />
-              {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
-              <div style={{ paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
-                {children}
-              </div>
-              <BottomNav currentPath={pathname} isLoggedIn />
-            </NotificationsProvider>
-          ) : (
+          <NotificationsProvider>
+            {userData.user ? (
+              <>
+                <AppHeader
+                  currentPath={currentPath}
+                  fullName={profile?.full_name}
+                  avatarUrl={profile?.avatar_url}
+                  isLoggedIn
+                />
+                {phoneVerificationRequired && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
+                <div style={{ paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
+                  {children}
+                </div>
+                <BottomNav currentPath={pathname} isLoggedIn />
+              </>
+            ) : (
             <>
               <AppHeader currentPath={currentPath} isLoggedIn={false} />
               {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
@@ -180,7 +184,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </div>
               <BottomNav currentPath={pathname} isLoggedIn={false} />
             </>
-          )
+            )}
+          </NotificationsProvider>
         ) : (
           <>
             <header className="border-b bg-background/50">
@@ -198,12 +203,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   <a href="/discover" className="rounded-full border px-3 py-1">
                     Discover
                   </a>
-                  <a href="/requirements/new" className="rounded-full border px-3 py-1">
+                  <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" className="rounded-full border px-3 py-1">
                     Describe need
-                  </a>
-                  <a href="/apply" className="rounded-full border px-3 py-1">
+                  </AuthGatedLink>
+                  <AuthGatedLink href="/apply" actionLabel="to apply as a professional" className="rounded-full border px-3 py-1">
                     Apply
-                  </a>
+                  </AuthGatedLink>
                   {isProvider && (
                     <a href="/your-work" className="rounded-full border px-3 py-1">
                       Your work
@@ -242,6 +247,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         )}
         {userData.user && <BanGate />}
         </PhoneVerificationRequiredProvider>
+        </AuthSheetProvider>
         </LocationProvider>
       </body>
     </html>

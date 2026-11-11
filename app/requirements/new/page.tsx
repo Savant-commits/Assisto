@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { friendlyDbError } from "@/lib/db-errors";
 import ServiceCombobox from "@/components/service-combobox";
+import { useAuthGate } from "@/components/auth/auth-sheet";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function NewRequirementPage() {
   const router = useRouter();
+  const { isAuthenticated, requireAuth } = useAuthGate();
   const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
   const [pendingValues, setPendingValues] = useState<FormValues | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -42,9 +44,15 @@ export default function NewRequirementPage() {
     defaultValues: { title: "", description: "", city: "Cuddalore", budget_range: "", service: "" },
   });
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace("/login?redirect=%2Frequirements%2Fnew");
+    }
+  }, [isAuthenticated, router]);
+
   // no client-side category list needed — ServiceCombobox handles services
 
-  async function onSubmit(values: FormValues) {
+  async function createRequirement(values: FormValues) {
     setSubmitError(null);
     const supabase = createClient();
     const { data: userData } = await supabase.auth.getUser();
@@ -126,6 +134,10 @@ export default function NewRequirementPage() {
       params.set("requirement", data.id);
       router.push(`/discover?${params.toString()}`);
     }
+  }
+
+  function onSubmit(values: FormValues) {
+    requireAuth(() => void createRequirement(values), "to create a requirement");
   }
 
   function handlePhoneVerified() {

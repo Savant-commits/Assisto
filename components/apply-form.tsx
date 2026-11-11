@@ -7,6 +7,7 @@ import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { friendlyDbError } from "@/lib/db-errors";
+import { useAuthGate } from "@/components/auth/auth-sheet";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,7 @@ function logLookupError(label: string, error: { message: string; code?: string; 
 export default function ApplyForm() {
   const phoneVerificationRequired = usePhoneVerificationRequired();
   const router = useRouter();
+  const { requireAuth } = useAuthGate();
   const form = useForm<FormInput, unknown, FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -136,7 +138,7 @@ export default function ApplyForm() {
     };
   }, []);
 
-  async function onSubmit(values: FormValues) {
+  async function submitApplication(values: FormValues) {
     setSubmitError(null);
     setIsSubmitting(true);
     try {
@@ -204,6 +206,10 @@ export default function ApplyForm() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function onSubmit(values: FormValues) {
+    requireAuth(() => void submitApplication(values), "to apply as a professional");
   }
 
   function handlePhoneVerified() {
