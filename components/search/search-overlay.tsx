@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLocation } from "@/lib/location/provider";
 import { useServices, type Service } from "@/hooks/use-services";
 import AuthGatedLink from "@/components/auth/auth-gated-link";
+import { buildDiscoverUrl } from "@/lib/location/discover-url";
 
 const RECENT_SEARCHES_KEY = "assisto-recent-searches";
 
@@ -22,14 +23,6 @@ function readRecentSearches() {
   } catch {
     return [];
   }
-}
-
-function discoverUrl(params: { category?: string; service?: string; city?: string | null }) {
-  const query = new URLSearchParams();
-  if (params.category) query.set("category", params.category);
-  if (params.service) query.set("service", params.service);
-  if (params.city) query.set("city", params.city);
-  return `/discover?${query.toString()}`;
 }
 
 function recordSearch(query: string, current: string[]) {
@@ -151,7 +144,7 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
   }
 
   function selectService(service: Service) {
-    navigate(discoverUrl({ service: service.slug, city: location.city }), query || service.name);
+    navigate(buildDiscoverUrl({ service: service.slug, city: location.city }), query || service.name);
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -172,9 +165,9 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
       } else if (hasQuery && services.length > 0) {
         selectService(services[0]);
       } else if (!hasQuery && categories[activeIndex]) {
-        navigate(discoverUrl({ category: categories[activeIndex].slug, city: location.city }), categories[activeIndex].name);
+        navigate(buildDiscoverUrl({ category: categories[activeIndex].slug, city: location.city }), categories[activeIndex].name);
       } else if (!hasQuery && categories.length > 0) {
-        navigate(discoverUrl({ category: categories[0].slug, city: location.city }), categories[0].name);
+        navigate(buildDiscoverUrl({ category: categories[0].slug, city: location.city }), categories[0].name);
       }
     }
   }
@@ -290,7 +283,7 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
                       type="button"
                       role="option"
                       aria-selected={activeIndex === index}
-                      onClick={() => navigate(discoverUrl({ category: category.slug, city: location.city }), category.name)}
+                      onClick={() => navigate(buildDiscoverUrl({ category: category.slug, city: location.city }), category.name)}
                       className={`flex min-h-12 w-full items-center justify-between rounded-xl border border-border px-3 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeIndex === index ? "bg-muted" : ""}`}
                     >
                       {category.name}
@@ -308,7 +301,7 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
               <ul className="flex flex-wrap gap-2">
                 {popular.map((category) => (
                   <li key={`${category.slug}-${category.scope}`}>
-                    <button type="button" onClick={() => navigate(discoverUrl({ category: category.slug, city: location.city }), category.name)} className="inline-flex min-h-11 items-center rounded-full border border-border px-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{category.name}</button>
+                    <button type="button" onClick={() => navigate(buildDiscoverUrl({ category: category.slug, city: location.city }), category.name)} className="inline-flex min-h-11 items-center rounded-full border border-border px-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{category.name}</button>
                   </li>
                 ))}
               </ul>
@@ -373,7 +366,7 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
                   <ul className="flex flex-wrap gap-2">
                     {popular.map((category) => (
                       <li key={`${category.slug}-${category.scope}`}>
-                        <button type="button" onClick={() => navigate(discoverUrl({ category: category.slug, city: location.city }), query)} className="inline-flex min-h-11 items-center rounded-full border border-border px-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{category.name}</button>
+                        <button type="button" onClick={() => navigate(buildDiscoverUrl({ category: category.slug, city: location.city }), query)} className="inline-flex min-h-11 items-center rounded-full border border-border px-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{category.name}</button>
                       </li>
                     ))}
                   </ul>

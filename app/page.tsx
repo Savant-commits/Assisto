@@ -1,26 +1,58 @@
-import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-import AuthGatedLink from "@/components/auth/auth-gated-link";
+import { Suspense } from "react";
+import { HomeRefresh } from "@/components/home/home-refresh";
+import { HomeSectionSkeleton } from "@/components/home/home-section-skeleton";
+import { CoverageNotice } from "@/components/home/coverage-notice";
+import { HeroSection } from "@/components/home/hero-section";
+import { ServiceCategories } from "@/components/home/service-categories";
+import { PopularServices } from "@/components/home/popular-services";
+import { ProviderRecruitment } from "@/components/home/provider-recruitment";
+import { createClient } from "@/lib/supabase/server";
+import { getSelectedLocation } from "@/lib/location/server";
+import { getCityProviders } from "@/lib/home/queries";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const [location, supabase] = await Promise.all([getSelectedLocation(), createClient()]);
+  const { data: authData } = await supabase.auth.getUser();
+  let role: string | null = null;
+  if (authData.user) {
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", authData.user.id).maybeSingle();
+    role = typeof profile?.role === "string" ? profile.role : null;
+  }
+  const hideRecruitment = role === "provider" || role === "admin";
+  const coverageArea = location.source === "manual" ? null : location.city;
+  let showCoverage = !coverageArea;
+  if (coverageArea) {
+    try {
+      showCoverage = (await getCityProviders(coverageArea)).length === 0;
+    } catch {
+      showCoverage = true;
+    }
+  }
+
   return (
-    <div className="mx-auto flex max-w-3xl flex-col items-center px-4 py-20 text-center">
-      <h1 className="mb-4 text-4xl font-semibold tracking-tight">
-        Find the right person for the job.
-      </h1>
-      <p className="mb-8 max-w-xl text-muted-foreground">
-        Tell us what you need, and we&apos;ll connect you with approved professionals
-        near you in Cuddalore and Chidambaram — you choose who to
-        work with.
-      </p>
-      <div className="flex gap-3">
-        <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" className={buttonVariants({ size: "lg" })}>
-          Describe what you need
-        </AuthGatedLink>
-        <Link href="/discover" className={buttonVariants({ size: "lg", variant: "outline" })}>
-          Browse professionals
-        </Link>
-      </div>
-    </div>
+    <HomeRefresh>
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 overflow-x-clip px-4 py-6 sm:gap-14 sm:py-10">
+        <h1 className="sr-only">Find the right professional for your home</h1>
+        {showCoverage && (
+          <Suspense fallback={<HomeSectionSkeleton kind="coverage" />}>
+            <CoverageNotice location={location} />
+          </Suspense>
+        )}
+        <Suspense fallback={<HomeSectionSkeleton kind="hero" />}>
+          <HeroSection location={location} hideRecruitment={hideRecruitment} />
+        </Suspense>
+        <Suspense fallback={<HomeSectionSkeleton kind="categories" />}>
+          <ServiceCategories location={location} />
+        </Suspense>
+        <Suspense fallback={<HomeSectionSkeleton kind="popular" />}>
+          <PopularServices location={location} />
+        </Suspense>
+        {!hideRecruitment && (
+          <Suspense fallback={<HomeSectionSkeleton kind="recruitment" />}>
+            <ProviderRecruitment />
+          </Suspense>
+        )}
+      </main>
+    </HomeRefresh>
   );
 }

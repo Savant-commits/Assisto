@@ -61,6 +61,7 @@
   --sage: oklch(0.92 0.03 145);
   --stone: oklch(0.91 0.018 85);
   --ivory: oklch(0.975 0.012 90);
+  --image-scrim: oklch(0.08 0.015 155 / 0.9);
   --background: oklch(0.975 0.012 90);
   --foreground: oklch(0.24 0.01 150);
   --card: oklch(1 0 0);
@@ -140,6 +141,10 @@
   font-family: var(--font-serif);
   font-optical-sizing: auto;
   letter-spacing: -0.01em;
+}
+
+.image-scrim {
+  background: linear-gradient(0deg, var(--image-scrim) 0%, var(--image-scrim) 58%, color-mix(in oklch, var(--image-scrim) 90%, transparent) 100%);
 }
 
 .scrollbar-none {
