@@ -3,6 +3,7 @@ import type { GeocodedLocation } from "@/lib/location/types";
 const rateLimitWindowMs = 60_000;
 const rateLimitLimit = 30;
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
+const placeKindsWithCityFallback = new Set(["city", "town", "village", "suburb", "district"]);
 
 export function allowGeocodeRequest(ip: string): boolean {
   const now = Date.now();
@@ -46,11 +47,14 @@ export function normalizePhotonFeature(feature: PhotonFeature): GeocodedLocation
   const lat = coordinates[1];
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
 
-  const city = text(properties.city) ?? text(properties.town) ?? text(properties.village);
   const district = text(properties.district) ?? text(properties.county);
-  const name = text(properties.name) ?? text(properties.street) ?? city ?? district ?? "Tamil Nadu";
-  const locality = text(properties.locality) ?? text(properties.suburb) ?? text(properties.neighbourhood) ?? city ?? text(properties.street) ?? name;
-  const label = [name, city && city !== name ? city : district && district !== name ? district : null]
+  const kind = text(properties.osm_value) ?? text(properties.type) ?? "place";
+  const featureName = text(properties.name);
+  const city = text(properties.city) ?? text(properties.town) ?? text(properties.village) ??
+    (placeKindsWithCityFallback.has(kind.toLowerCase()) ? featureName ?? district : null);
+  const displayName = featureName ?? text(properties.street) ?? city ?? district ?? "Tamil Nadu";
+  const locality = text(properties.locality) ?? text(properties.suburb) ?? text(properties.neighbourhood) ?? city ?? text(properties.street) ?? displayName;
+  const label = [displayName, city && city !== displayName ? city : district && district !== displayName ? district : null]
     .filter((part, index, parts): part is string => Boolean(part) && parts.indexOf(part) === index)
     .join(", ");
   const osmType = text(properties.osm_type) ?? "place";
@@ -59,14 +63,14 @@ export function normalizePhotonFeature(feature: PhotonFeature): GeocodedLocation
   return {
     id: `${osmType}/${osmId}`,
     label,
-    name,
+    name: displayName,
     locality,
     city,
     district,
     state: "Tamil Nadu",
     lat,
     lng,
-    kind: text(properties.osm_value) ?? text(properties.type) ?? "place",
+    kind,
     source: "search",
   };
 }
