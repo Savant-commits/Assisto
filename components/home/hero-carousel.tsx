@@ -101,7 +101,7 @@ export function HeroCarousel({ banners }: { banners: HeroBanner[] }) {
                 fill
                 priority={index === 0}
                 loading={index === 0 ? undefined : "lazy"}
-                sizes="(min-width: 768px) 100vw, 100vw"
+                sizes="(min-width: 1184px) 1120px, calc(100vw - 2rem)"
                 className="-z-10 object-cover"
                 onError={() => markImageError(banner.id)}
               />
