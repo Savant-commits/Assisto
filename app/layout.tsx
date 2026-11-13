@@ -32,7 +32,7 @@ const fraunces = Fraunces({
 
 export const metadata: Metadata = {
   title: "Assisto — Find the right person for the job",
-  description: "Describe what you need and discover approved local professionals in Cuddalore and Chidambaram. You choose who to work with.",
+  description: "Describe what you need and discover approved local professionals in Chidambaram and Cuddalore. You choose who to work with.",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
@@ -166,7 +166,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <AppHeader
                   currentPath={currentPath}
                   fullName={profile?.full_name}
-                  avatarUrl={profile?.avatar_url}
                   isLoggedIn
                 />
                 {phoneVerificationRequired && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}

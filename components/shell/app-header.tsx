@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Bell, Compass, House, LogIn, MessageCircle, Settings as SettingsIcon, UserRound, ClipboardList } from "lucide-react";
-import { Avatar } from "@/components/avatar";
 import { useNotifications } from "@/components/notification-bell";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
 import HomeSearchBar from "@/components/search/home-search-bar";
@@ -13,7 +12,6 @@ import { useAuthGate } from "@/components/auth/auth-sheet";
 type AppHeaderProps = {
   currentPath: string;
   fullName?: string | null;
-  avatarUrl?: string | null;
   isLoggedIn: boolean;
 };
 
@@ -29,7 +27,7 @@ export function HeaderSearchSlot({ compact, firstName }: { compact: boolean; fir
   return <HomeSearchBar compact={compact} firstName={firstName} />;
 }
 
-export default function AppHeader({ currentPath, fullName, avatarUrl, isLoggedIn }: AppHeaderProps) {
+export default function AppHeader({ currentPath, fullName, isLoggedIn }: AppHeaderProps) {
   const hidden = useScrollDirection();
   const [hasFocus, setHasFocus] = useState(false);
   const notifications = useNotifications();
@@ -110,15 +108,6 @@ export default function AppHeader({ currentPath, fullName, avatarUrl, isLoggedIn
             ) : (
               <AuthGatedLink href="/discover" actionLabel="to view notifications" onAuthenticated={() => notifications?.openPanel("all")} aria-label="Log in to view notifications" className="inline-flex size-11 items-center justify-center rounded-full text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 <Bell aria-hidden="true" className="size-5" />
-              </AuthGatedLink>
-            )}
-            {isLoggedIn ? (
-              <Link href="/profile" aria-label={`${fullName || "Your"} profile`} className="inline-flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                <Avatar src={avatarUrl} name={fullName || "Profile"} size={36} className="size-9 rounded-full object-cover" />
-              </Link>
-            ) : (
-              <AuthGatedLink href="/profile" actionLabel="to view your profile" aria-label="Log in to view your profile" className="inline-flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                <Avatar src={avatarUrl} name={fullName || "Profile"} size={36} className="size-9 rounded-full object-cover" />
               </AuthGatedLink>
             )}
             <Link

@@ -83,6 +83,7 @@
   --shadow-soft: 0 2px 12px rgb(34 45 38 / 0.08);
   --shadow-lifted: 0 12px 32px rgb(34 45 38 / 0.14);
   --bottom-nav-height: 4rem;
+  --section-gap: 2.75rem;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -135,6 +136,12 @@
   --sidebar-accent-foreground: oklch(0.94 0.012 90);
   --sidebar-border: oklch(0.94 0.012 90 / 12%);
   --sidebar-ring: oklch(0.78 0.07 150);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --section-gap: 4.25rem;
+  }
 }
 
 .font-display {

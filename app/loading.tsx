@@ -1,12 +1,8 @@
-import LoadingSpinner from "@/components/loading-spinner";
-
 export default function Loading() {
   return (
-    <div className="flex h-screen items-center justify-center">
-      <div className="text-center">
-        <LoadingSpinner size={12} />
-        <div className="mt-4 text-sm text-muted-foreground">Loading…</div>
-      </div>
+    <div aria-label="Loading" role="status" className="mx-auto flex w-full max-w-6xl items-center px-4 py-6 sm:px-6 sm:py-10">
+      <div className="skeleton h-11 w-40 rounded-full" aria-hidden="true" />
+      <span className="sr-only">Loading…</span>
     </div>
   );
 }

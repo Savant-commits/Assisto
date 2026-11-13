@@ -31,7 +31,7 @@ export default async function HomePage() {
 
   return (
     <HomeRefresh>
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 overflow-x-clip px-4 py-6 sm:gap-14 sm:py-10">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-[var(--section-gap)] overflow-x-clip px-4 py-6 sm:py-10">
         <h1 className="sr-only">Find the right professional for your home</h1>
         {showCoverage && (
           <Suspense fallback={<HomeSectionSkeleton kind="coverage" />}>
