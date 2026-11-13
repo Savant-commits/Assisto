@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, Compass, House, MessageCircle, UserRound, ClipboardList } from "lucide-react";
+import { Bell, Compass, House, LogIn, MessageCircle, Settings as SettingsIcon, UserRound, ClipboardList } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { useNotifications } from "@/components/notification-bell";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
 import HomeSearchBar from "@/components/search/home-search-bar";
 import AuthGatedLink from "@/components/auth/auth-gated-link";
+import { useAuthGate } from "@/components/auth/auth-sheet";
 
 type AppHeaderProps = {
   currentPath: string;
@@ -32,8 +33,11 @@ export default function AppHeader({ currentPath, fullName, avatarUrl, isLoggedIn
   const hidden = useScrollDirection();
   const [hasFocus, setHasFocus] = useState(false);
   const notifications = useNotifications();
+  const { requireAuth } = useAuthGate();
 
-  const isHomeRoute = currentPath.split("?")[0] === "/";
+  const routePath = currentPath.split("?")[0];
+  const isHomeRoute = routePath === "/";
+  const isSettingsRoute = routePath === "/settings";
   const compact = hidden && !hasFocus;
 
   return (
@@ -116,6 +120,25 @@ export default function AppHeader({ currentPath, fullName, avatarUrl, isLoggedIn
               <AuthGatedLink href="/profile" actionLabel="to view your profile" aria-label="Log in to view your profile" className="inline-flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 <Avatar src={avatarUrl} name={fullName || "Profile"} size={36} className="size-9 rounded-full object-cover" />
               </AuthGatedLink>
+            )}
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              aria-current={isSettingsRoute ? "page" : undefined}
+              className={`inline-flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isSettingsRoute ? "bg-accent text-primary" : "text-foreground hover:bg-muted"}`}
+            >
+              <SettingsIcon aria-hidden="true" className="size-5" />
+            </Link>
+            {!isLoggedIn && (
+              <button
+                type="button"
+                aria-label="Sign in"
+                onClick={() => requireAuth(() => {}, "to access your account")}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[380px]:size-11 max-[380px]:px-0"
+              >
+                <LogIn aria-hidden="true" className="size-4" />
+                <span className="max-[380px]:sr-only">Sign in</span>
+              </button>
             )}
           </div>
         </div>

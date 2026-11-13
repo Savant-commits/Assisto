@@ -143,7 +143,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
 
   const currentPath = (await headers()).get("x-pathname") || "/";
   const pathname = currentPath.split("?")[0];
-  const isMainTabRoute = ["/", "/discover", "/enquiries", "/profile"].includes(pathname);
+  const isMainTabRoute = ["/", "/discover", "/enquiries", "/profile", "/settings"].includes(pathname);
   const selectedLocation = await getSelectedLocation();
 
   return (

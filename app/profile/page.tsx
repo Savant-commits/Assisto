@@ -413,7 +413,7 @@ export default function ProfilePage() {
       </div>
       <p className="mb-6 text-muted-foreground">Edit your public details.</p>
       <Link
-        href="/profile/settings"
+        href="/settings"
         className="mb-6 inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         Settings
