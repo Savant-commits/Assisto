@@ -54,6 +54,7 @@ export function normalizePhotonFeature(feature: PhotonFeature): GeocodedLocation
   const houseNumber = text(properties.housenumber) ?? text(properties.house_number);
   const neighbourhood = text(properties.neighbourhood) ?? text(properties.neighborhood);
   const suburb = text(properties.suburb);
+  const postcode = text(properties.postcode);
   const city = text(properties.city) ?? text(properties.town) ?? text(properties.village) ??
     (placeKindsWithCityFallback.has(kind.toLowerCase()) ? featureName ?? district : null);
   const displayName = featureName ?? street ?? city ?? district ?? "Tamil Nadu";
@@ -66,6 +67,7 @@ export function normalizePhotonFeature(feature: PhotonFeature): GeocodedLocation
     landmark ? `Near ${landmark}` : null,
     neighbourhood,
     suburb,
+    postcode,
     district,
     city,
   ].filter((part, index, parts): part is string => Boolean(part) && parts.indexOf(part) === index);

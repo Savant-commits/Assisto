@@ -2,7 +2,6 @@
 
 import { useState, useEffect, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -26,8 +25,8 @@ import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
 import { Avatar } from "@/components/avatar";
+import { PrivateProfileAddress } from "@/components/profile/private-address";
 import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
-import { useLocation } from "@/lib/location/provider";
 
 const schema = z.object({
   full_name: z.string().min(2),
@@ -109,7 +108,6 @@ async function resizeAvatar(file: File): Promise<Blob> {
 
 export default function ProfilePage() {
   const phoneVerificationRequired = usePhoneVerificationRequired();
-  const { location } = useLocation();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +122,7 @@ export default function ProfilePage() {
   const [listingError, setListingError] = useState<string | null>(null);
   const [listingSuccess, setListingSuccess] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [phoneVerifiedAt, setPhoneVerifiedAt] = useState<string | null>(null);
   const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
@@ -172,6 +171,7 @@ export default function ProfilePage() {
         router.push(`/login?redirect=/profile`);
         return;
       }
+      if (mounted) setProfileId(userData.user.id);
 
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
@@ -441,13 +441,6 @@ export default function ProfilePage() {
         {isProvider && <Badge>Provider</Badge>}
       </div>
       <p className="mb-6 text-muted-foreground">Edit your public details.</p>
-      <Link
-        href="/settings"
-        className="mb-6 inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      >
-        Settings
-      </Link>
-
       {/* Profile Picture Section */}
       <div className="mb-6 rounded-lg border p-4">
         <label className="block text-sm font-medium mb-3">Profile picture</label>
@@ -503,15 +496,7 @@ export default function ProfilePage() {
             {profile?.user_code ? <p className="mt-1 text-xs text-muted-foreground">#{profile.user_code}</p> : null}
           </div>
 
-          <div>
-            <p className="mb-1 text-sm font-medium text-muted-foreground">City</p>
-            <p className="text-base">{savedFormValues.city || "Not provided"}</p>
-            <p className="mt-3 mb-1 text-sm font-medium text-muted-foreground">Current search location</p>
-            <p className="truncate text-base" title={location.formattedLabel || location.label}>{location.formattedLabel || location.label}</p>
-            {location.locality && location.locality !== (location.formattedLabel || location.label) && (
-              <p className="truncate text-sm text-muted-foreground">{location.locality}</p>
-            )}
-          </div>
+          {profileId && <PrivateProfileAddress profileId={profileId} editable={false} onEdit={() => setIsEditing(true)} />}
 
           <Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
             Edit
@@ -567,6 +552,7 @@ export default function ProfilePage() {
               </div>
             </form>
           </Form>
+          {profileId && <PrivateProfileAddress profileId={profileId} editable onEdit={() => setIsEditing(true)} />}
         </>
       )}
       <PhoneGateDialog

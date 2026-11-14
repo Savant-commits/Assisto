@@ -67,6 +67,7 @@ export function LocationProvider({
     delete cookieLocation.district;
     delete cookieLocation.landmark;
     delete cookieLocation.name;
+    delete cookieLocation.postcode;
 
     const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
     document.cookie = `${LOCATION_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(cookieLocation))}; Expires=${expires}; Path=/; SameSite=Lax`;

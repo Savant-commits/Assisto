@@ -16,6 +16,7 @@ export type SelectedLocation = {
   district?: string | null;
   landmark?: string | null;
   name?: string | null;
+  postcode?: string | null;
 };
 
 export type GeocodedLocation = SelectedLocation & {

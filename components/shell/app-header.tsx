@@ -52,7 +52,7 @@ export default function AppHeader({ currentPath, fullName, isLoggedIn }: AppHead
             Assisto
           </Link>
 
-          <nav aria-label="Main navigation" className="hidden items-center gap-1 lg:flex">
+          {isHomeRoute && <nav aria-label="Main navigation" className="hidden items-center gap-1 lg:flex">
             {tabs.map(({ label, href, Icon, requiresLogin, messages }) => {
               const messagesOpen = !!notifications?.isOpen && notifications.activeTab === "messages";
               const active = messages ? messagesOpen : !messagesOpen && currentPath.split("?")[0] === href;
@@ -88,7 +88,7 @@ export default function AppHeader({ currentPath, fullName, isLoggedIn }: AppHead
                 )
               );
             })}
-          </nav>
+          </nav>}
 
           <div className="flex items-center gap-2">
             {isLoggedIn ? (
@@ -132,7 +132,7 @@ export default function AppHeader({ currentPath, fullName, isLoggedIn }: AppHead
           </div>
         </div>
       </header>
-      {isHomeRoute && <HeaderSearchSlot compact={compact} firstName={fullName} />}
+      {routePath === "/" && <HeaderSearchSlot compact={compact} firstName={fullName} />}
     </>
   );
 }

@@ -24,7 +24,7 @@ export function SettingsLogOutButton() {
       onClick={() => void signOutUser()}
       className="inline-flex min-h-11 items-center justify-center rounded-full border border-destructive/40 px-5 text-sm font-medium text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
-      Log out
+    Sign out
     </button>
   );
 }

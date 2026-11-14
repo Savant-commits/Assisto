@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
-import Link from "next/link";
 import { GeistSans } from "geist/font/sans";
 import { Fraunces } from "next/font/google";
 import { headers } from "next/headers";
@@ -8,9 +7,6 @@ import { redirect } from "next/navigation";
 import { inspect } from "node:util";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
-import SessionMenu from "@/components/session-menu";
-import { EnquiriesNavBadge } from "@/components/enquiries-nav-badge";
-import NotificationBell from "@/components/notification-bell";
 import BanGate from "@/components/ban-gate";
 import { PhoneVerifyBanner } from "@/components/phone-verify-banner";
 import { PhoneVerificationRequiredProvider } from "@/components/phone-verification-required-context";
@@ -22,7 +18,6 @@ import { NotificationsProvider } from "@/components/notification-bell";
 import { getSelectedLocation } from "@/lib/location/server";
 import { LocationProvider } from "@/lib/location/provider";
 import { AuthSheetProvider } from "@/components/auth/auth-sheet";
-import AuthGatedLink from "@/components/auth/auth-gated-link";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -47,16 +42,16 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     });
   }
   let profile: { full_name?: string; avatar_url?: string | null; role?: string | null; phone_verified_at?: string | null } | null = null;
-  let isProvider = false;
   let profileLookupFailed = false;
   let phoneVerificationRequired = true;
   try {
     phoneVerificationRequired = await getPhoneVerificationRequired();
     if (userData.user) {
-      const [{ data, error: profileError }, { data: provider, error: providerError }] = await Promise.all([
-        supabase.from("profiles").select("full_name, avatar_url, role, phone_verified_at").eq("id", userData.user.id).single(),
-        supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle(),
-      ]);
+      const { data, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url, role, phone_verified_at")
+        .eq("id", userData.user.id)
+        .single();
       if (profileError) {
         profileLookupFailed = true;
         console.error("layout profile lookup failed", {
@@ -72,16 +67,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           select: "full_name, avatar_url, role, phone_verified_at",
         });
       }
-      if (providerError) {
-        console.error("layout provider lookup failed", {
-          message: providerError.message,
-          details: providerError.details,
-          hint: providerError.hint,
-          code: providerError.code,
-        });
-      }
       profile = data || null;
-      isProvider = !!provider;
     }
   } catch (error) {
     const errorInfo = error && typeof error === "object"
@@ -187,61 +173,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </NotificationsProvider>
         ) : (
           <>
-            <header className="border-b bg-background/50">
-              <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-                <Link href="/" className="text-lg font-semibold">
-                  Assisto
-                </Link>
-                <nav className="flex items-center gap-3 text-sm">
-                  {userData.user && (
-                    <a href="/enquiries" className="relative rounded-full border px-3 py-1">
-                      Enquiries
-                      <EnquiriesNavBadge />
-                    </a>
-                  )}
-                  <a href="/discover" className="rounded-full border px-3 py-1">
-                    Discover
-                  </a>
-                  <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" className="rounded-full border px-3 py-1">
-                    Describe need
-                  </AuthGatedLink>
-                  <AuthGatedLink href="/apply" actionLabel="to apply as a professional" className="rounded-full border px-3 py-1">
-                    Apply
-                  </AuthGatedLink>
-                  {isProvider && (
-                    <a href="/your-work" className="rounded-full border px-3 py-1">
-                      Your work
-                    </a>
-                  )}
-                  {profile?.role === "admin" && (
-                    <>
-                      <a href="/admin/enquiries" className="rounded-full border px-3 py-1">
-                        Admin
-                      </a>
-                      <a href="/admin/reports" className="rounded-full border px-3 py-1">
-                        Reports
-                      </a>
-                      <a href="/admin/chats" className="rounded-full border px-3 py-1">
-                        Chats
-                      </a>
-                      <a href="/admin/bans" className="rounded-full border px-3 py-1">
-                        Bans
-                      </a>
-                    </>
-                  )}
-                </nav>
-                <div>
-                  <SessionMenu fullName={profile?.full_name} avatarUrl={profile?.avatar_url} />
-                </div>
-              </div>
-            </header>
+            <NotificationsProvider>
+              <AppHeader currentPath={currentPath} fullName={profile?.full_name} isLoggedIn={!!userData.user} />
             {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
             {children}
-            {userData.user && (
-              <NotificationsProvider>
-                <NotificationBell />
-              </NotificationsProvider>
-            )}
+            </NotificationsProvider>
           </>
         )}
         {userData.user && <BanGate />}
