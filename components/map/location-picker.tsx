@@ -54,6 +54,8 @@ function LocationPickerContent({
 }: LocationPickerProps) {
   const [center, setCenter] = useState<MapPoint>(initial ?? fallbackCenter);
   const [picked, setPicked] = useState<MapPoint | null>(initial ?? null);
+  const [pickedLabel, setPickedLabel] = useState<string | null>(null);
+  const [isLookingUpLabel, setIsLookingUpLabel] = useState(Boolean(initial));
   const [status, setStatus] = useState<string | null>(null);
   const mounted = useSyncExternalStore(subscribeToNothing, getClientSnapshot, getServerSnapshot);
 
@@ -73,10 +75,38 @@ function LocationPickerContent({
     };
   }, [open, onOpenChange]);
 
+  useEffect(() => {
+    if (!open || !picked) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setIsLookingUpLabel(true);
+      try {
+        const response = await fetch(`/api/geocode/reverse?lat=${encodeURIComponent(String(picked.lat))}&lng=${encodeURIComponent(String(picked.lng))}`, {
+          signal: controller.signal,
+        });
+        const payload = await response.json() as { location?: { formattedLabel?: string; label?: string } | null };
+        if (response.ok && !controller.signal.aborted) {
+          setPickedLabel(payload.location?.formattedLabel || payload.location?.label || null);
+        }
+      } catch {
+        // The selected coordinates remain usable if reverse geocoding is unavailable.
+      } finally {
+        if (!controller.signal.aborted) setIsLookingUpLabel(false);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [open, picked]);
+
   const handlePick = (lat: number, lng: number) => {
     const next = { lat, lng };
     setPicked(next);
     setCenter(next);
+    setPickedLabel(null);
+    setIsLookingUpLabel(true);
     setStatus(null);
   };
 
@@ -91,6 +121,8 @@ function LocationPickerContent({
         const next = { lat: coords.latitude, lng: coords.longitude };
         setPicked(next);
         setCenter(next);
+        setPickedLabel(null);
+        setIsLookingUpLabel(true);
         setStatus("Using your current location.");
       },
       () => {
@@ -149,7 +181,12 @@ function LocationPickerContent({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 {picked ? (
-                  <p className="text-sm font-medium">Selected: {formatCoords(picked.lat, picked.lng)}</p>
+                  <>
+                    <p className="max-w-[min(80vw,32rem)] truncate text-sm font-medium" title={pickedLabel || undefined}>
+                      {isLookingUpLabel ? "Looking up location…" : pickedLabel || `Selected: ${formatCoords(picked.lat, picked.lng)}`}
+                    </p>
+                    {pickedLabel && <p className="text-xs text-muted-foreground">{formatCoords(picked.lat, picked.lng)}</p>}
+                  </>
                 ) : (
                   <p className="text-sm text-muted-foreground">Tap or click the map to set the location</p>
                 )}
@@ -170,7 +207,7 @@ function LocationPickerContent({
                     onConfirm(picked);
                     onOpenChange(false);
                   }}
-                  disabled={!picked}
+                  disabled={!picked || isLookingUpLabel}
                   className="min-h-11 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {confirmLabel}

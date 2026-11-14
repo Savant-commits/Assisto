@@ -22,6 +22,11 @@ function readRecentLocations(): SelectedLocation[] {
   }
 }
 
+function matchesLocation(left: SelectedLocation, right: SelectedLocation) {
+  return left.city === right.city && left.locality === right.locality &&
+    left.lat === right.lat && left.lng === right.lng;
+}
+
 export function LocationProvider({
   children,
   initialLocation = DEFAULT_LOCATION,
@@ -34,9 +39,14 @@ export function LocationProvider({
   const [recentLocations, setRecentLocations] = useState<SelectedLocation[]>([]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setRecentLocations(readRecentLocations()), 0);
+    const timer = window.setTimeout(() => {
+      const recent = readRecentLocations();
+      setRecentLocations(recent);
+      const enrichedInitialLocation = recent.find((item) => matchesLocation(item, initialLocation) && item.formattedLabel);
+      if (enrichedInitialLocation) setLocationState(enrichedInitialLocation);
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [initialLocation]);
 
   const setLocation = useCallback((nextLocation: SelectedLocation) => {
     const safeLocation = { ...nextLocation };
@@ -45,8 +55,21 @@ export function LocationProvider({
       safeLocation.lng = Math.round(safeLocation.lng * 1000) / 1000;
     }
 
+    const cookieLocation = {
+      ...safeLocation,
+      label: safeLocation.locality || safeLocation.city || safeLocation.label,
+    };
+    delete cookieLocation.formattedLabel;
+    delete cookieLocation.street;
+    delete cookieLocation.houseNumber;
+    delete cookieLocation.neighbourhood;
+    delete cookieLocation.suburb;
+    delete cookieLocation.district;
+    delete cookieLocation.landmark;
+    delete cookieLocation.name;
+
     const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
-    document.cookie = `${LOCATION_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(safeLocation))}; Expires=${expires}; Path=/; SameSite=Lax`;
+    document.cookie = `${LOCATION_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(cookieLocation))}; Expires=${expires}; Path=/; SameSite=Lax`;
     setLocationState(safeLocation);
 
     setRecentLocations((current) => {

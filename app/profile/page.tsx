@@ -27,6 +27,7 @@ import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
 import { Avatar } from "@/components/avatar";
 import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
+import { useLocation } from "@/lib/location/provider";
 
 const schema = z.object({
   full_name: z.string().min(2),
@@ -108,6 +109,7 @@ async function resizeAvatar(file: File): Promise<Blob> {
 
 export default function ProfilePage() {
   const phoneVerificationRequired = usePhoneVerificationRequired();
+  const { location } = useLocation();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +119,7 @@ export default function ProfilePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isProvider, setIsProvider] = useState(false);
   const [providerListing, setProviderListing] = useState<ProviderListing>(emptyProviderListing);
+  const [providerLocationLabel, setProviderLocationLabel] = useState<{ coordinates: string; label: string } | null>(null);
   const [isSavingListing, setIsSavingListing] = useState(false);
   const [listingError, setListingError] = useState<string | null>(null);
   const [listingSuccess, setListingSuccess] = useState<string | null>(null);
@@ -132,6 +135,32 @@ export default function ProfilePage() {
     resolver: zodResolver(schema),
     defaultValues: emptyFormValues,
   });
+
+  useEffect(() => {
+    if (providerListing.lat === null || providerListing.lng === null) return;
+
+    const controller = new AbortController();
+    const coordinates = `${providerListing.lat},${providerListing.lng}`;
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/geocode/reverse?lat=${encodeURIComponent(String(providerListing.lat))}&lng=${encodeURIComponent(String(providerListing.lng))}`, {
+          signal: controller.signal,
+        });
+        const payload = await response.json() as { location?: { formattedLabel?: string; label?: string } | null };
+        if (response.ok && !controller.signal.aborted) {
+          const label = payload.location?.formattedLabel || payload.location?.label;
+          if (label) setProviderLocationLabel({ coordinates, label });
+        }
+      } catch {
+        // The saved coordinates remain visible even if reverse geocoding is unavailable.
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [providerListing.lat, providerListing.lng]);
 
   useEffect(() => {
     let mounted = true;
@@ -477,6 +506,11 @@ export default function ProfilePage() {
           <div>
             <p className="mb-1 text-sm font-medium text-muted-foreground">City</p>
             <p className="text-base">{savedFormValues.city || "Not provided"}</p>
+            <p className="mt-3 mb-1 text-sm font-medium text-muted-foreground">Current search location</p>
+            <p className="truncate text-base" title={location.formattedLabel || location.label}>{location.formattedLabel || location.label}</p>
+            {location.locality && location.locality !== (location.formattedLabel || location.label) && (
+              <p className="truncate text-sm text-muted-foreground">{location.locality}</p>
+            )}
           </div>
 
           <Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
@@ -613,6 +647,9 @@ export default function ProfilePage() {
 
               <div className="space-y-3">
                 <h3 className="text-sm font-medium text-blue-900">Business location</h3>
+                {providerLocationLabel?.coordinates === `${providerListing.lat},${providerListing.lng}` && (
+                  <p className="truncate text-sm text-blue-900" title={providerLocationLabel.label}>{providerLocationLabel.label}</p>
+                )}
                 {hasLocation ? (
                   <LocationMap lat={providerListing.lat!} lng={providerListing.lng!} height={220} />
                 ) : (

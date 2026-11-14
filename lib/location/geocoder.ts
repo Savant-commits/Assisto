@@ -50,20 +50,39 @@ export function normalizePhotonFeature(feature: PhotonFeature): GeocodedLocation
   const district = text(properties.district) ?? text(properties.county);
   const kind = text(properties.osm_value) ?? text(properties.type) ?? "place";
   const featureName = text(properties.name);
+  const street = text(properties.street);
+  const houseNumber = text(properties.housenumber) ?? text(properties.house_number);
+  const neighbourhood = text(properties.neighbourhood) ?? text(properties.neighborhood);
+  const suburb = text(properties.suburb);
   const city = text(properties.city) ?? text(properties.town) ?? text(properties.village) ??
     (placeKindsWithCityFallback.has(kind.toLowerCase()) ? featureName ?? district : null);
-  const displayName = featureName ?? text(properties.street) ?? city ?? district ?? "Tamil Nadu";
-  const locality = text(properties.locality) ?? text(properties.suburb) ?? text(properties.neighbourhood) ?? city ?? text(properties.street) ?? displayName;
-  const label = [displayName, city && city !== displayName ? city : district && district !== displayName ? district : null]
-    .filter((part, index, parts): part is string => Boolean(part) && parts.indexOf(part) === index)
-    .join(", ");
+  const displayName = featureName ?? street ?? city ?? district ?? "Tamil Nadu";
+  const locality = text(properties.locality) ?? text(properties.suburb) ?? text(properties.neighbourhood) ?? city ?? street ?? displayName;
+  const knownComponents = [street, neighbourhood, suburb, text(properties.locality), district, city];
+  const landmark = featureName && !knownComponents.includes(featureName) ? featureName : null;
+  const streetAddress = [houseNumber, street].filter(Boolean).join(" ") || null;
+  const labelParts = [
+    streetAddress,
+    landmark ? `Near ${landmark}` : null,
+    neighbourhood,
+    suburb,
+    district,
+    city,
+  ].filter((part, index, parts): part is string => Boolean(part) && parts.indexOf(part) === index);
+  const formattedLabel = (labelParts.length ? labelParts : [displayName]).join(", ");
   const osmType = text(properties.osm_type) ?? "place";
   const osmId = properties.osm_id == null ? `${lat.toFixed(5)},${lng.toFixed(5)}` : String(properties.osm_id);
 
   return {
     id: `${osmType}/${osmId}`,
-    label,
-    name: displayName,
+    label: formattedLabel,
+    formattedLabel,
+    name: featureName,
+    landmark,
+    street,
+    houseNumber,
+    neighbourhood,
+    suburb,
     locality,
     city,
     district,

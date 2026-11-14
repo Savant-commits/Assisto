@@ -15,14 +15,26 @@ const LocationPicker = dynamic(
 
 function selectedFromGeocoded(result: GeocodedLocation, source: SelectedLocation["source"]): SelectedLocation {
   return {
-    label: result.label,
+    label: result.formattedLabel || result.label,
     locality: result.locality,
     city: result.city,
     state: result.state,
     lat: result.lat,
     lng: result.lng,
     source,
+    formattedLabel: result.formattedLabel || result.label,
+    street: result.street,
+    houseNumber: result.houseNumber,
+    neighbourhood: result.neighbourhood,
+    suburb: result.suburb,
+    district: result.district,
+    landmark: result.landmark,
+    name: result.name,
   };
+}
+
+function locationDisplayLabel(location: SelectedLocation) {
+  return location.formattedLabel || location.label;
 }
 
 export default function LocationSelector() {
@@ -218,7 +230,7 @@ export default function LocationSelector() {
             <div>
               <DialogTitle id="location-dialog-title" className="mb-1">Choose your location</DialogTitle>
               <p className="text-xs text-muted-foreground">
-                {location.source === "default" ? "Showing Chidambaram. Change location" : `Showing ${location.label}`}
+                {location.source === "default" ? "Showing Chidambaram. Change location" : `Showing ${locationDisplayLabel(location)}`}
               </p>
             </div>
             <button type="button" aria-label="Close location dialog" onClick={closeDialog} className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -286,7 +298,12 @@ export default function LocationSelector() {
                     <li key={`${recent.label}-${index}`}>
                       <button type="button" onClick={() => chooseLocation(recent)} className="flex min-h-12 w-full items-center gap-3 px-3 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                         <MapPin aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{recent.label}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium" title={locationDisplayLabel(recent)}>{locationDisplayLabel(recent)}</span>
+                          {recent.locality && !locationDisplayLabel(recent).toLocaleLowerCase().includes(recent.locality.toLocaleLowerCase()) && (
+                            <span className="block truncate text-xs text-muted-foreground">{recent.locality}</span>
+                          )}
+                        </span>
                       </button>
                     </li>
                   ))}
@@ -310,8 +327,8 @@ export default function LocationSelector() {
                     >
                       <MapPin aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">{result.label}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{[result.locality, result.district, result.state].filter(Boolean).join(" · ")}</span>
+                        <span className="block truncate text-sm font-medium" title={locationDisplayLabel(result)}>{locationDisplayLabel(result)}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{[result.locality, result.state].filter(Boolean).join(" · ")}</span>
                       </span>
                     </button>
                   </li>
