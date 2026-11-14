@@ -12,9 +12,7 @@ import { PhoneVerifyBanner } from "@/components/phone-verify-banner";
 import { PhoneVerificationRequiredProvider } from "@/components/phone-verification-required-context";
 import { getPhoneVerificationRequired } from "@/lib/phone-verification-required";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
-import AppHeader from "@/components/shell/app-header";
-import BottomNav from "@/components/shell/bottom-nav";
-import { NotificationsProvider } from "@/components/notification-bell";
+import { RouteChrome } from "@/components/shell/route-chrome";
 import { getSelectedLocation } from "@/lib/location/server";
 import { LocationProvider } from "@/lib/location/provider";
 import { AuthSheetProvider } from "@/components/auth/auth-sheet";
@@ -127,9 +125,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     if (verificationRedirect) redirect(verificationRedirect);
   }
 
-  const currentPath = (await headers()).get("x-pathname") || "/";
-  const pathname = currentPath.split("?")[0];
-  const isMainTabRoute = ["/", "/discover", "/enquiries", "/profile", "/settings"].includes(pathname);
   const selectedLocation = await getSelectedLocation();
 
   return (
@@ -145,41 +140,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <LocationProvider key={JSON.stringify(selectedLocation)} initialLocation={selectedLocation}>
         <AuthSheetProvider initialIsAuthenticated={!!userData.user}>
         <PhoneVerificationRequiredProvider required={phoneVerificationRequired}>
-        {isMainTabRoute ? (
-          <NotificationsProvider>
-            {userData.user ? (
-              <>
-                <AppHeader
-                  currentPath={currentPath}
-                  fullName={profile?.full_name}
-                  isLoggedIn
-                />
-                {phoneVerificationRequired && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
-                <div style={{ paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
-                  {children}
-                </div>
-                <BottomNav currentPath={pathname} isLoggedIn />
-              </>
-            ) : (
-            <>
-              <AppHeader currentPath={currentPath} isLoggedIn={false} />
-              {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
-              <div style={{ paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
-                {children}
-              </div>
-              <BottomNav currentPath={pathname} isLoggedIn={false} />
-            </>
-            )}
-          </NotificationsProvider>
-        ) : (
-          <>
-            <NotificationsProvider>
-              <AppHeader currentPath={currentPath} fullName={profile?.full_name} isLoggedIn={!!userData.user} />
-            {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
-            {children}
-            </NotificationsProvider>
-          </>
-        )}
+        <RouteChrome fullName={profile?.full_name} isLoggedIn={!!userData.user}>
+          {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
+          {children}
+        </RouteChrome>
         {userData.user && <BanGate />}
         </PhoneVerificationRequiredProvider>
         </AuthSheetProvider>

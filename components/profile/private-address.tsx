@@ -53,8 +53,9 @@ function fieldsFromAddress(address: PrivateAddress | null): AddressFields {
 
 function fieldsFromGeocoded(location: GeocodedLocation): AddressFields {
   const city = location.city ?? "";
-  const mostSpecificArea = location.neighbourhood ?? location.suburb ??
-    (location.locality && location.locality !== city ? location.locality : "") ?? "";
+  const mostSpecificArea = location.suburb ?? location.district ??
+    (location.locality && location.locality !== city && location.locality !== location.street ? location.locality : null) ??
+    location.neighbourhood ?? "";
   return {
     street: location.street ?? "",
     houseNumber: location.houseNumber ?? "",
@@ -86,6 +87,7 @@ export function PrivateProfileAddress({
   const [isSaving, setIsSaving] = useState(false);
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
   const [addressQuery, setAddressQuery] = useState("");
+  const [autocompleteQuery, setAutocompleteQuery] = useState("");
   const [results, setResults] = useState<GeocodedLocation[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -163,7 +165,7 @@ export function PrivateProfileAddress({
   }, [profileId]);
 
   useEffect(() => {
-    const query = addressQuery.trim();
+    const query = autocompleteQuery.trim().slice(0, 100);
     if (!isEditing || query.length < 3) {
       const timer = window.setTimeout(() => {
         setResults([]);
@@ -178,12 +180,14 @@ export function PrivateProfileAddress({
       try {
         const response = await fetch(`/api/geocode/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
         const payload = await response.json() as { results?: GeocodedLocation[]; error?: string };
-        if (!response.ok) throw new Error(payload.error || "Address search is unavailable.");
+        if (!response.ok) {
+          setResults([]);
+          return;
+        }
         setResults(payload.results ?? []);
-      } catch (lookupError) {
+      } catch {
         if (!controller.signal.aborted) {
           setResults([]);
-          setStatus(lookupError instanceof Error ? lookupError.message : "Address search is unavailable.");
         }
       } finally {
         if (!controller.signal.aborted) setIsSearching(false);
@@ -194,24 +198,30 @@ export function PrivateProfileAddress({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [addressQuery, isEditing]);
+  }, [autocompleteQuery, isEditing]);
 
-  function selectGeocodedLocation(location: GeocodedLocation) {
+  function selectGeocodedLocation(location: GeocodedLocation, exactPoint?: { lat: number; lng: number }) {
     setFields(fieldsFromGeocoded(location));
-    setCoordinates(location.lat !== null && location.lng !== null
+    setCoordinates(exactPoint ?? (location.lat !== null && location.lng !== null
       ? { lat: location.lat, lng: location.lng }
-      : null);
+      : null));
     setAddressQuery(location.formattedLabel || location.label);
+    setAutocompleteQuery("");
     setResults([]);
     setError(null);
     setStatus("Review and edit the address details before saving.");
   }
 
-  async function fillFromCoordinates(point: { lat: number; lng: number }) {
+  async function fillFromCoordinates(point: { lat: number; lng: number }, suggestion?: GeocodedLocation | null) {
     setIsLookingUp(true);
     setError(null);
     setStatus(null);
     setCoordinates(point);
+    if (suggestion) {
+      selectGeocodedLocation(suggestion, point);
+      setIsLookingUp(false);
+      return;
+    }
     try {
       const response = await fetch(`/api/geocode/reverse?lat=${encodeURIComponent(String(point.lat))}&lng=${encodeURIComponent(String(point.lng))}`);
       const payload = await response.json() as { location?: GeocodedLocation | null; error?: string };
@@ -220,12 +230,14 @@ export function PrivateProfileAddress({
       } else {
         setFields(emptyFields);
         setAddressQuery("");
+        setAutocompleteQuery("");
         setStatus("No address details were returned for this point. You can enter them manually.");
       }
       if (!response.ok && !payload.location) setStatus(payload.error || "No address details were returned. Enter them manually.");
     } catch {
       setFields(emptyFields);
       setAddressQuery("");
+      setAutocompleteQuery("");
       setStatus("Address lookup is unavailable. You can enter the address manually.");
     } finally {
       setIsLookingUp(false);
@@ -308,6 +320,7 @@ export function PrivateProfileAddress({
       ? { lat: address.lat, lng: address.lng }
       : null);
     setAddressQuery("");
+    setAutocompleteQuery("");
     setResults([]);
     setError(null);
     setStatus(null);
@@ -398,7 +411,7 @@ export function PrivateProfileAddress({
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             <label htmlFor="profile-address-search" className="mb-1 block text-sm font-medium">Search address or landmark</label>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Input ref={searchInputRef} id="profile-address-search" value={addressQuery} onChange={(event) => setAddressQuery(event.target.value)} placeholder="Type a street, area, or landmark" autoComplete="off" />
+              <Input ref={searchInputRef} id="profile-address-search" value={addressQuery} maxLength={100} onChange={(event) => { setAddressQuery(event.target.value); setAutocompleteQuery(event.target.value.trim().slice(0, 100)); }} placeholder="Type a street, area, or landmark" autoComplete="off" />
               <Button type="button" variant="outline" className="min-h-11" onClick={() => setIsLocationPickerOpen(true)}>Choose on map</Button>
             </div>
             {(isSearching || results.length > 0) && (
@@ -420,6 +433,7 @@ export function PrivateProfileAddress({
                 setFields(emptyFields);
                 setCoordinates(null);
                 setAddressQuery("");
+                setAutocompleteQuery("");
                 setResults([]);
                 setError(null);
                 setStatus("Enter the address details below.");
@@ -459,7 +473,7 @@ export function PrivateProfileAddress({
             <Button type="button" variant="outline" className="min-h-11" onClick={cancelAddressEdit} disabled={isSaving}>Cancel</Button>
             <Button type="submit" form="private-address-form" className="min-h-11" disabled={isSaving || isLookingUp}>{isSaving ? "Saving…" : "Save address"}</Button>
           </footer>
-          <LocationPicker open={isLocationPickerOpen} onOpenChange={setIsLocationPickerOpen} title="Choose your address on the map" confirmLabel="Use this location" onConfirm={(point) => void fillFromCoordinates(point)} />
+          <LocationPicker open={isLocationPickerOpen} onOpenChange={setIsLocationPickerOpen} title="Choose your address on the map" confirmLabel="Use this location" onConfirm={(point, suggestion) => void fillFromCoordinates(point, suggestion)} />
         </DialogContent>
       </Dialog>
     </>

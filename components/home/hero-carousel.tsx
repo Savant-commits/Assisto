@@ -85,9 +85,9 @@ export function HeroCarousel({ banners }: { banners: HeroBanner[] }) {
   if (!banners.length) return null;
   return (
     <section ref={sectionRef} role="region" aria-label="Featured ways to use Assisto" aria-roledescription="carousel" aria-live="off" className="relative" onMouseEnter={() => setEngaged(true)} onMouseLeave={() => { if (!sectionRef.current?.contains(document.activeElement)) setEngaged(false); }} onFocusCapture={() => setEngaged(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) resumeAfterInteraction(); }} onTouchStart={() => setEngaged(true)} onTouchEnd={resumeAfterTouch}>
-      <div ref={trackRef} className="scrollbar-none grid grid-flow-col auto-cols-[100%] snap-x snap-mandatory overflow-x-auto rounded-3xl" onPointerDown={(event) => { if (event.pointerType !== "mouse") setEngaged(true); }}>
+      <div ref={trackRef} className="scrollbar-none flex snap-x snap-mandatory overflow-x-auto rounded-3xl" onPointerDown={(event) => { if (event.pointerType !== "mouse") setEngaged(true); }}>
         {banners.map((banner, index) => (
-          <article key={banner.id} role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${banners.length}`} className="relative isolate aspect-[4/5] snap-start overflow-hidden rounded-3xl bg-forest md:aspect-[16/9]">
+          <article key={banner.id} role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${banners.length}`} className="relative isolate aspect-[4/5] w-full shrink-0 snap-start overflow-hidden rounded-3xl bg-forest md:aspect-[16/9]">
             {!imageErrors.includes(banner.id) && (
               <Image
                 src={banner.image}

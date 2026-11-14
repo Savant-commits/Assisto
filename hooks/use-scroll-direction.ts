@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-export function useScrollDirection(threshold = 64) {
-  const [isHidden, setIsHidden] = useState(false);
+export function useScrollDirection(threshold = 64, resetKey?: string) {
+  const routeVersion = useMemo(() => ({ key: resetKey }), [resetKey]);
+  const [hiddenState, setHiddenState] = useState({ hidden: false, routeVersion });
 
   useEffect(() => {
     let previousY = window.scrollY;
@@ -11,18 +12,18 @@ export function useScrollDirection(threshold = 64) {
     function handleScroll() {
       const currentY = window.scrollY;
       if (currentY <= threshold) {
-        setIsHidden(false);
+        setHiddenState({ hidden: false, routeVersion });
       } else if (currentY > previousY) {
-        setIsHidden(true);
+        setHiddenState({ hidden: true, routeVersion });
       } else if (currentY < previousY) {
-        setIsHidden(false);
+        setHiddenState({ hidden: false, routeVersion });
       }
       previousY = currentY;
     }
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [threshold]);
+  }, [routeVersion, threshold]);
 
-  return isHidden;
+  return hiddenState.routeVersion === routeVersion && hiddenState.hidden;
 }

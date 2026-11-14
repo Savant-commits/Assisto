@@ -157,7 +157,11 @@ export default function LocationSelector() {
     );
   }
 
-  function handleMapConfirm(point: { lat: number; lng: number }) {
+  function handleMapConfirm(point: { lat: number; lng: number }, suggestion?: GeocodedLocation | null) {
+    if (suggestion) {
+      chooseLocation(selectedFromGeocoded({ ...suggestion, lat: point.lat, lng: point.lng }, "map"));
+      return;
+    }
     void reverseGeocode(point.lat, point.lng, "map").catch((error: unknown) => {
       setStatus(error instanceof Error ? error.message : "We couldn’t identify that map location. Try another point.");
       setMapOpen(false);

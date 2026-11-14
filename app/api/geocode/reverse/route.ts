@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isValidCoords } from "@/lib/maps";
-import { allowGeocodeRequest, geocodeResponseHeaders, normalizePhotonFeature, photonBaseUrl, type PhotonFeature } from "@/lib/location/geocoder";
+import { allowGeocodeRequest, geocodeResponseHeaders, normalizePhotonReverseFeatures, photonBaseUrl, type PhotonFeature } from "@/lib/location/geocoder";
 
 const photonUserAgent = "Assisto/1.0 (Tamil Nadu location search)";
 
@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
   photonUrl.searchParams.set("lat", String(lat));
   photonUrl.searchParams.set("lon", String(lng));
   photonUrl.searchParams.set("lang", "en");
+  photonUrl.searchParams.set("limit", "5");
+  photonUrl.searchParams.set("radius", "0.5");
 
   try {
     const response = await fetch(photonUrl, {
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest) {
     });
     if (!response.ok) throw new Error("Geocoder returned an unsuccessful response.");
     const payload = await response.json() as { features?: PhotonFeature[] };
-    const location = (payload.features || []).map(normalizePhotonFeature).find((item) => item !== null) ?? null;
+    const location = normalizePhotonReverseFeatures(payload.features || [], { lat, lng });
     return NextResponse.json({ location }, { headers: geocodeResponseHeaders() });
   } catch {
     return NextResponse.json(

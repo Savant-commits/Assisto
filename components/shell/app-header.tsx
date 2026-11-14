@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Bell, Compass, House, LogIn, MessageCircle, Settings as SettingsIcon, UserRound, ClipboardList } from "lucide-react";
 import { useNotifications } from "@/components/notification-bell";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
@@ -10,7 +11,6 @@ import AuthGatedLink from "@/components/auth/auth-gated-link";
 import { useAuthGate } from "@/components/auth/auth-sheet";
 
 type AppHeaderProps = {
-  currentPath: string;
   fullName?: string | null;
   isLoggedIn: boolean;
 };
@@ -27,15 +27,15 @@ export function HeaderSearchSlot({ compact, firstName }: { compact: boolean; fir
   return <HomeSearchBar compact={compact} firstName={firstName} />;
 }
 
-export default function AppHeader({ currentPath, fullName, isLoggedIn }: AppHeaderProps) {
-  const hidden = useScrollDirection();
+export default function AppHeader({ fullName, isLoggedIn }: AppHeaderProps) {
+  const pathname = usePathname();
+  const hidden = useScrollDirection(64, pathname ?? "/");
   const [hasFocus, setHasFocus] = useState(false);
   const notifications = useNotifications();
   const { requireAuth } = useAuthGate();
 
-  const routePath = currentPath.split("?")[0];
-  const isHomeRoute = routePath === "/";
-  const isSettingsRoute = routePath === "/settings";
+  const isHomeRoute = pathname === "/";
+  const isSettingsRoute = pathname === "/settings";
   const compact = hidden && !hasFocus;
 
   return (
@@ -55,7 +55,7 @@ export default function AppHeader({ currentPath, fullName, isLoggedIn }: AppHead
           {isHomeRoute && <nav aria-label="Main navigation" className="hidden items-center gap-1 lg:flex">
             {tabs.map(({ label, href, Icon, requiresLogin, messages }) => {
               const messagesOpen = !!notifications?.isOpen && notifications.activeTab === "messages";
-              const active = messages ? messagesOpen : !messagesOpen && currentPath.split("?")[0] === href;
+              const active = messages ? messagesOpen : !messagesOpen && pathname === href;
               const className = `inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${active ? "bg-accent text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`;
 
               if (messages && isLoggedIn) {
@@ -132,7 +132,7 @@ export default function AppHeader({ currentPath, fullName, isLoggedIn }: AppHead
           </div>
         </div>
       </header>
-      {routePath === "/" && <HeaderSearchSlot compact={compact} firstName={fullName} />}
+      {isHomeRoute && <HeaderSearchSlot compact={compact} firstName={fullName} />}
     </>
   );
 }

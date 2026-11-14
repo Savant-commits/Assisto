@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { DEFAULT_MAP_CENTER, formatCoords } from "@/lib/maps";
 import type { MapPoint } from "@/components/map/leaflet-map-inner";
+import type { GeocodedLocation } from "@/lib/location/types";
 
 const MapPreview = dynamic(() => import("@/components/map/leaflet-map-inner").then((mod) => mod.LeafletMapInner), {
   ssr: false,
@@ -24,6 +25,12 @@ function getServerSnapshot() {
   return false;
 }
 
+function suggestedArea(location: GeocodedLocation) {
+  return location.suburb ?? location.district ??
+    (location.locality && location.locality !== location.city && location.locality !== location.street ? location.locality : null) ??
+    location.neighbourhood;
+}
+
 type LocationPickerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -31,7 +38,7 @@ type LocationPickerProps = {
   fallbackCenter?: { lat: number; lng: number };
   title?: string;
   confirmLabel?: string;
-  onConfirm: (value: { lat: number; lng: number }) => void;
+  onConfirm: (value: { lat: number; lng: number }, suggestion?: GeocodedLocation | null) => void;
 };
 
 export function LocationPicker({
@@ -54,7 +61,7 @@ function LocationPickerContent({
 }: LocationPickerProps) {
   const [center, setCenter] = useState<MapPoint>(initial ?? fallbackCenter);
   const [picked, setPicked] = useState<MapPoint | null>(initial ?? null);
-  const [pickedLabel, setPickedLabel] = useState<string | null>(null);
+  const [pickedSuggestion, setPickedSuggestion] = useState<GeocodedLocation | null>(null);
   const [isLookingUpLabel, setIsLookingUpLabel] = useState(Boolean(initial));
   const [status, setStatus] = useState<string | null>(null);
   const mounted = useSyncExternalStore(subscribeToNothing, getClientSnapshot, getServerSnapshot);
@@ -84,9 +91,9 @@ function LocationPickerContent({
         const response = await fetch(`/api/geocode/reverse?lat=${encodeURIComponent(String(picked.lat))}&lng=${encodeURIComponent(String(picked.lng))}`, {
           signal: controller.signal,
         });
-        const payload = await response.json() as { location?: { formattedLabel?: string; label?: string } | null };
+        const payload = await response.json() as { location?: GeocodedLocation | null };
         if (response.ok && !controller.signal.aborted) {
-          setPickedLabel(payload.location?.formattedLabel || payload.location?.label || null);
+          setPickedSuggestion(payload.location ?? null);
         }
       } catch {
         // The selected coordinates remain usable if reverse geocoding is unavailable.
@@ -105,7 +112,7 @@ function LocationPickerContent({
     const next = { lat, lng };
     setPicked(next);
     setCenter(next);
-    setPickedLabel(null);
+    setPickedSuggestion(null);
     setIsLookingUpLabel(true);
     setStatus(null);
   };
@@ -121,7 +128,7 @@ function LocationPickerContent({
         const next = { lat: coords.latitude, lng: coords.longitude };
         setPicked(next);
         setCenter(next);
-        setPickedLabel(null);
+        setPickedSuggestion(null);
         setIsLookingUpLabel(true);
         setStatus("Using your current location.");
       },
@@ -182,10 +189,19 @@ function LocationPickerContent({
               <div className="space-y-1">
                 {picked ? (
                   <>
-                    <p className="max-w-[min(80vw,32rem)] truncate text-sm font-medium" title={pickedLabel || undefined}>
-                      {isLookingUpLabel ? "Looking up location…" : pickedLabel || `Selected: ${formatCoords(picked.lat, picked.lng)}`}
-                    </p>
-                    {pickedLabel && <p className="text-xs text-muted-foreground">{formatCoords(picked.lat, picked.lng)}</p>}
+                    <p className="text-sm font-medium">Selected pin · {formatCoords(picked.lat, picked.lng)}</p>
+                    {isLookingUpLabel && <p className="text-xs text-muted-foreground">Looking up address suggestions…</p>}
+                    {pickedSuggestion && (
+                      <div className="max-w-[min(80vw,36rem)] space-y-0.5 text-xs text-muted-foreground">
+                        <p className="font-medium text-foreground">Suggested address · editable after confirming</p>
+                        {pickedSuggestion.houseNumber && <p>House number: {pickedSuggestion.houseNumber}</p>}
+                        {pickedSuggestion.street && <p>Street: {pickedSuggestion.street}</p>}
+                        {suggestedArea(pickedSuggestion) && <p>Area: {suggestedArea(pickedSuggestion)}</p>}
+                        {pickedSuggestion.city && <p>City: {pickedSuggestion.city}</p>}
+                        {pickedSuggestion.postcode && <p>PIN: {pickedSuggestion.postcode}</p>}
+                        {pickedSuggestion.landmark && <p>Nearby: {pickedSuggestion.landmark}</p>}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">Tap or click the map to set the location</p>
@@ -204,7 +220,7 @@ function LocationPickerContent({
                   type="button"
                   onClick={() => {
                     if (!picked) return;
-                    onConfirm(picked);
+                    onConfirm(picked, pickedSuggestion);
                     onOpenChange(false);
                   }}
                   disabled={!picked || isLookingUpLabel}
