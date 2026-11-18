@@ -226,7 +226,7 @@ export function PrivateProfileAddress({
       const response = await fetch(`/api/geocode/reverse?lat=${encodeURIComponent(String(point.lat))}&lng=${encodeURIComponent(String(point.lng))}`);
       const payload = await response.json() as { location?: GeocodedLocation | null; error?: string };
       if (payload.location) {
-        selectGeocodedLocation(payload.location);
+        selectGeocodedLocation(payload.location, point);
       } else {
         setFields(emptyFields);
         setAddressQuery("");
@@ -265,8 +265,12 @@ export function PrivateProfileAddress({
     event.preventDefault();
     setError(null);
     const pincode = fields.pincode.trim();
-    if (pincode && !/^\d{6}$/.test(pincode)) {
-      setError("Enter a 6-digit PIN code, or leave it blank.");
+    if (/^0/.test(pincode)) {
+      setError("PIN code must start with a digit from 1 to 9.");
+      return;
+    }
+    if (pincode && !/^[1-9]\d{5}$/.test(pincode)) {
+      setError("Enter a 6-digit PIN code starting with 1 to 9, or leave it blank.");
       return;
     }
     if (![fields.street, fields.houseNumber, fields.area, fields.city, pincode].some((value) => value.trim())) {
@@ -359,7 +363,7 @@ export function PrivateProfileAddress({
         )}
 
         {address?.lat !== null && address?.lat !== undefined && address.lng !== null && address.lng !== undefined ? (
-          <div ref={mapContainerRef} className="mt-5 aspect-[16/9] overflow-hidden rounded-xl border border-border bg-muted" aria-label="Map showing your saved location">
+          <div ref={mapContainerRef} className="mt-5 h-[240px] overflow-hidden rounded-xl border border-border bg-muted" aria-label="Map showing your saved location">
             {mapVisible ? (
               <SavedLocationMap center={{ lat: address.lat, lng: address.lng }} marker={{ lat: address.lat, lng: address.lng }} zoom={17} interactive="static" height="100%" />
             ) : (
@@ -460,7 +464,7 @@ export function PrivateProfileAddress({
                 </div>
                 <div>
                   <label htmlFor="profile-address-pincode" className="mb-1 block text-sm font-medium">PIN code</label>
-                  <Input id="profile-address-pincode" value={fields.pincode} type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} onChange={(event) => setFields((current) => ({ ...current, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) }))} />
+                  <Input id="profile-address-pincode" value={fields.pincode} type="text" inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} onChange={(event) => setFields((current) => ({ ...current, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) }))} />
                   {!fields.pincode && <p className="mt-1 text-xs text-muted-foreground">Not found for this spot, please add it</p>}
                 </div>
               </div>
@@ -473,7 +477,7 @@ export function PrivateProfileAddress({
             <Button type="button" variant="outline" className="min-h-11" onClick={cancelAddressEdit} disabled={isSaving}>Cancel</Button>
             <Button type="submit" form="private-address-form" className="min-h-11" disabled={isSaving || isLookingUp}>{isSaving ? "Saving…" : "Save address"}</Button>
           </footer>
-          <LocationPicker open={isLocationPickerOpen} onOpenChange={setIsLocationPickerOpen} title="Choose your address on the map" confirmLabel="Use this location" onConfirm={(point, suggestion) => void fillFromCoordinates(point, suggestion)} />
+          <LocationPicker open={isLocationPickerOpen} onOpenChange={setIsLocationPickerOpen} initial={coordinates} title="Choose your address on the map" confirmLabel="Use this location" onConfirm={(point, suggestion) => void fillFromCoordinates(point, suggestion)} />
         </DialogContent>
       </Dialog>
     </>

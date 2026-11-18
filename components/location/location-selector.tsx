@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, MapPin, Search, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { DEFAULT_LOCATION } from "@/lib/location/default";
 import { useLocation } from "@/lib/location/provider";
 import type { GeocodedLocation, SelectedLocation } from "@/lib/location/types";
 
@@ -376,7 +375,6 @@ export default function LocationSelector() {
         open={mapOpen}
         onOpenChange={setMapOpen}
         initial={mapInitial}
-        fallbackCenter={{ lat: DEFAULT_LOCATION.lat ?? 11.3993, lng: DEFAULT_LOCATION.lng ?? 79.6914 }}
         title="Choose a location on the map"
         onConfirm={handleMapConfirm}
       />

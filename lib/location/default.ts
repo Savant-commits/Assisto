@@ -1,5 +1,5 @@
 import type { SelectedLocation } from "@/lib/location/types";
-import { isValidCoords } from "@/lib/maps";
+import { isValidCoords } from "@/lib/location/types";
 
 export const LOCATION_COOKIE_NAME = "assisto-location";
 export const RECENT_LOCATIONS_KEY = "assisto-recent-locations";

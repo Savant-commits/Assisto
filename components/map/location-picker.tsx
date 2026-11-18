@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { useLocation } from "@/lib/location/provider";
 import { DEFAULT_MAP_CENTER, formatCoords } from "@/lib/maps";
 import type { MapPoint } from "@/components/map/leaflet-map-inner";
 import type { GeocodedLocation } from "@/lib/location/types";
@@ -44,10 +45,14 @@ type LocationPickerProps = {
 export function LocationPicker({
   ...props
 }: LocationPickerProps) {
-  const { initial = null, fallbackCenter = DEFAULT_MAP_CENTER } = props;
+  const { location } = useLocation();
+  const { initial = null } = props;
+  const fallbackCenter = location.lat !== null && location.lng !== null
+    ? { lat: location.lat, lng: location.lng }
+    : DEFAULT_MAP_CENTER;
   const pickerKey = [initial?.lat ?? "", initial?.lng ?? "", fallbackCenter.lat, fallbackCenter.lng].join(":");
 
-  return <LocationPickerContent key={pickerKey} {...props} />;
+  return <LocationPickerContent key={pickerKey} {...props} fallbackCenter={fallbackCenter} />;
 }
 
 function LocationPickerContent({
@@ -176,7 +181,7 @@ function LocationPickerContent({
           <div className="relative flex-1">
             <MapPreview
               center={center}
-              zoom={15}
+              zoom={initial ? 15 : 14}
               marker={picked}
               onPick={handlePick}
               interactive="full"

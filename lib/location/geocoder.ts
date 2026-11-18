@@ -3,6 +3,8 @@ import type { GeocodedLocation } from "@/lib/location/types";
 const rateLimitWindowMs = 60_000;
 const rateLimitLimit = 30;
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
+const pointOfInterestKeys = new Set(["amenity", "shop", "tourism", "leisure", "historic", "office", "craft"]);
+
 export function allowGeocodeRequest(ip: string): boolean {
   const now = Date.now();
   const current = requestCounts.get(ip);
@@ -119,7 +121,8 @@ export function normalizePhotonReverseFeatures(
   const streetCandidate = nearestRoad ?? byDistance.find(({ feature }) => text(feature.properties?.street));
   const street = streetCandidate?.location.street ?? null;
   const nearestNamedPlace = byDistance.find(({ feature, location }) =>
-    text(feature.properties?.osm_key) !== "highway" && Boolean(location.name) && location.name !== location.city,
+    pointOfInterestKeys.has(text(feature.properties?.osm_key) ?? "") &&
+    Boolean(location.name) && location.name !== location.city,
   );
   const suburb = byDistance.map(({ feature }) => text(feature.properties?.suburb)).find(Boolean) ?? null;
   const district = byDistance.map(({ feature }) => text(feature.properties?.district)).find(Boolean) ?? null;
@@ -137,7 +140,7 @@ export function normalizePhotonReverseFeatures(
     city,
     postcode,
   ].filter((part, index, parts): part is string => Boolean(part) && parts.indexOf(part) === index);
-  const formattedLabel = labelParts.join(", ") || byDistance[0].location.formattedLabel || byDistance[0].location.label;
+  const formattedLabel = labelParts.join(", ");
   const base = streetCandidate?.location ?? byDistance[0].location;
 
   return {

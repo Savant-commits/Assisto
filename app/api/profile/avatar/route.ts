@@ -32,7 +32,9 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("profiles")
       .update({ avatar_url: avatarUrl })
-      .eq("id", userData.user.id);
+      .eq("id", userData.user.id)
+      .select("avatar_url")
+      .maybeSingle();
 
     if (error) {
       console.error("/api/profile/avatar — update error:", {
@@ -44,7 +46,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message, observedUser: userData.user.id }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, observedUser: userData.user.id, data });
+    if (!data) {
+      return NextResponse.json({ error: "Profile not found", observedUser: userData.user.id }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true, observedUser: userData.user.id, avatar_url: data.avatar_url });
   } catch (err: unknown) {
     console.error("/api/profile/avatar — unexpected error");
     const message = typeof err === "object" && err !== null && "message" in err && typeof err.message === "string"

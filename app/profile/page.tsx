@@ -112,6 +112,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -398,6 +399,8 @@ export default function ProfilePage() {
     }
 
     setAvatarError(null);
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreviewUrl(previewUrl);
     setIsUploading(true);
 
     try {
@@ -428,7 +431,9 @@ export default function ProfilePage() {
 
       // Get public URL
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-      const publicUrl = data.publicUrl;
+      const versionedUrl = new URL(data.publicUrl);
+      versionedUrl.searchParams.set("v", String(Date.now()));
+      const publicUrl = versionedUrl.toString();
 
       // Update profile with avatar URL via server-side route to ensure
       // row-level security (RLS) context is preserved for the current user.
@@ -438,16 +443,19 @@ export default function ProfilePage() {
         body: JSON.stringify({ avatar_url: publicUrl }),
       });
 
-      const payload = await res.json().catch(() => ({}));
+      const payload = await res.json().catch(() => ({})) as { error?: string; avatar_url?: string };
       if (!res.ok) {
         setAvatarError(payload?.error || "Failed to update profile avatar");
       } else {
-        setAvatarUrl(publicUrl);
+        setAvatarUrl(payload.avatar_url ?? publicUrl);
+        router.refresh();
       }
     } catch (err: unknown) {
       setAvatarError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setIsUploading(false);
+      URL.revokeObjectURL(previewUrl);
+      setAvatarPreviewUrl((current) => current === previewUrl ? null : current);
     }
   }
 
@@ -487,7 +495,7 @@ export default function ProfilePage() {
 
           <div className="mb-5 flex items-center gap-4">
             <Avatar
-              src={avatarUrl}
+              src={avatarPreviewUrl ?? avatarUrl}
               name={profile?.full_name || savedFormValues.full_name || "Profile"}
               size={80}
               className="size-20 rounded-full border border-border bg-muted object-cover text-2xl text-muted-foreground"

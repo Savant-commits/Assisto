@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_LOCATION } from "@/lib/location/default";
 import { allowGeocodeRequest, geocodeResponseHeaders, normalizePhotonFeature, photonBaseUrl, type PhotonFeature } from "@/lib/location/geocoder";
 
 const photonUserAgent = "Assisto/1.0 (Tamil Nadu location search)";
@@ -21,8 +22,8 @@ export async function GET(request: NextRequest) {
   photonUrl.searchParams.set("limit", "8");
   photonUrl.searchParams.set("lang", "en");
   photonUrl.searchParams.set("bbox", "76.2,8.0,80.4,13.6");
-  photonUrl.searchParams.set("lat", "11.3993");
-  photonUrl.searchParams.set("lon", "79.6914");
+  photonUrl.searchParams.set("lat", String(DEFAULT_LOCATION.lat));
+  photonUrl.searchParams.set("lon", String(DEFAULT_LOCATION.lng));
 
   try {
     const response = await fetch(photonUrl, {
