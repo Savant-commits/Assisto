@@ -101,9 +101,11 @@ export function HeroCarousel({ banners }: { banners: HeroBanner[] }) {
               />
             )}
             <div aria-hidden="true" className="image-scrim absolute inset-0 -z-0" />
-            <div className="relative z-10 flex h-full max-w-3xl flex-col justify-end p-6 text-white sm:p-10 md:p-14">
-              <h2 className="font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl md:text-6xl">{banner.headline}</h2>
-              <p className="mt-4 max-w-2xl text-base leading-relaxed text-white sm:text-lg">{banner.support}</p>
+            <div className="relative z-10 flex h-full max-w-3xl flex-col items-start justify-end p-6 text-white sm:p-10 md:p-14">
+              <div className="image-copy-backdrop max-w-2xl rounded-xl px-4 py-3">
+                <h2 className="font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl md:text-6xl">{banner.headline}</h2>
+                <p className="mt-4 text-base leading-relaxed sm:text-lg">{banner.support}</p>
+              </div>
               <Link href={banner.href} className="mt-6 inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-full bg-background px-5 font-semibold text-foreground shadow-soft transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-forest">
                 {banner.cta}<span aria-hidden="true">→</span>
               </Link>

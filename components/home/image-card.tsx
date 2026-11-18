@@ -32,7 +32,7 @@ export function HomeImageCard({
         />
       )}
       <span className="image-scrim absolute inset-0" aria-hidden="true" />
-      <span className="absolute inset-x-0 bottom-0 z-10 p-4">
+      <span className="image-copy-backdrop absolute inset-x-0 bottom-0 z-10 rounded-b-2xl p-4">
         <span className="block font-display text-xl leading-tight md:text-2xl">{title}</span>
         {caption && <span className="mt-1 block text-sm text-white/95">{caption}</span>}
       </span>

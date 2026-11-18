@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, MapPin, Search, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { DEFAULT_LOCATION } from "@/lib/location/default";
 import { useLocation } from "@/lib/location/provider";
 import type { GeocodedLocation, SelectedLocation } from "@/lib/location/types";
 
@@ -13,27 +14,18 @@ const LocationPicker = dynamic(
 );
 
 function selectedFromGeocoded(result: GeocodedLocation, source: SelectedLocation["source"]): SelectedLocation {
+  const cityKinds = new Set(["city", "town", "village", "suburb", "district"]);
+  const kind = result.kind.trim().toLocaleLowerCase();
+  const city = result.city ?? (cityKinds.has(kind) ? result.name || result.district : null);
   return {
-    label: result.formattedLabel || result.label,
+    label: result.label,
     locality: result.locality,
-    city: result.city,
+    city,
     state: result.state,
     lat: result.lat,
     lng: result.lng,
     source,
-    formattedLabel: result.formattedLabel || result.label,
-    street: result.street,
-    houseNumber: result.houseNumber,
-    neighbourhood: result.neighbourhood,
-    suburb: result.suburb,
-    district: result.district,
-    landmark: result.landmark,
-    name: result.name,
   };
-}
-
-function locationDisplayLabel(location: SelectedLocation) {
-  return location.formattedLabel || location.label;
 }
 
 export default function LocationSelector() {
@@ -156,11 +148,7 @@ export default function LocationSelector() {
     );
   }
 
-  function handleMapConfirm(point: { lat: number; lng: number }, suggestion?: GeocodedLocation | null) {
-    if (suggestion) {
-      chooseLocation(selectedFromGeocoded({ ...suggestion, lat: point.lat, lng: point.lng }, "map"));
-      return;
-    }
+  function handleMapConfirm(point: { lat: number; lng: number }) {
     void reverseGeocode(point.lat, point.lng, "map").catch((error: unknown) => {
       setStatus(error instanceof Error ? error.message : "We couldn’t identify that map location. Try another point.");
       setMapOpen(false);
@@ -233,7 +221,7 @@ export default function LocationSelector() {
             <div>
               <DialogTitle id="location-dialog-title" className="mb-1">Choose your location</DialogTitle>
               <p className="text-xs text-muted-foreground">
-                {location.source === "default" ? "Showing Chidambaram. Change location" : `Showing ${locationDisplayLabel(location)}`}
+                {location.source === "default" ? "Showing Chidambaram. Change location" : `Showing ${location.label}`}
               </p>
             </div>
             <button type="button" aria-label="Close location dialog" onClick={closeDialog} className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -301,12 +289,7 @@ export default function LocationSelector() {
                     <li key={`${recent.label}-${index}`}>
                       <button type="button" onClick={() => chooseLocation(recent)} className="flex min-h-12 w-full items-center gap-3 px-3 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                         <MapPin aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium" title={locationDisplayLabel(recent)}>{locationDisplayLabel(recent)}</span>
-                          {recent.locality && !locationDisplayLabel(recent).toLocaleLowerCase().includes(recent.locality.toLocaleLowerCase()) && (
-                            <span className="block truncate text-xs text-muted-foreground">{recent.locality}</span>
-                          )}
-                        </span>
+                        <span className="truncate">{recent.label}</span>
                       </button>
                     </li>
                   ))}
@@ -330,8 +313,8 @@ export default function LocationSelector() {
                     >
                       <MapPin aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium" title={locationDisplayLabel(result)}>{locationDisplayLabel(result)}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{[result.locality, result.state].filter(Boolean).join(" · ")}</span>
+                        <span className="block truncate text-sm font-medium">{result.label}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{[result.locality, result.district, result.state].filter(Boolean).join(" · ")}</span>
                       </span>
                     </button>
                   </li>
@@ -375,6 +358,7 @@ export default function LocationSelector() {
         open={mapOpen}
         onOpenChange={setMapOpen}
         initial={mapInitial}
+        fallbackCenter={{ lat: DEFAULT_LOCATION.lat ?? 11.3993, lng: DEFAULT_LOCATION.lng ?? 79.6914 }}
         title="Choose a location on the map"
         onConfirm={handleMapConfirm}
       />
