@@ -389,12 +389,18 @@ export default function ProfilePage() {
     if (!file) return;
 
     e.target.value = "";
+    const reportFailure = (step: "auth" | "validate" | "storage" | "profile-update", message: string) => {
+      const formattedMessage = `Upload failed (${step}): ${message}`;
+      console.error(formattedMessage);
+      setAvatarError(formattedMessage);
+    };
+
     if (!AVATAR_MIME_TYPES.includes(file.type)) {
-      setAvatarError("Choose a JPEG, PNG, or WebP image.");
+      reportFailure("validate", "Choose a JPEG, PNG, or WebP image.");
       return;
     }
-    if (file.size > MAX_AVATAR_BYTES) {
-      setAvatarError("Profile pictures must be 5 MB or smaller.");
+    if (file.size === 0 || file.size > MAX_AVATAR_BYTES) {
+      reportFailure("validate", "Choose an image that is larger than 0 bytes and no more than 5 MB.");
       return;
     }
 
@@ -402,56 +408,38 @@ export default function ProfilePage() {
     const previewUrl = URL.createObjectURL(file);
     setAvatarPreviewUrl(previewUrl);
     setIsUploading(true);
+    let failureStep: "validate" | "storage" = "validate";
 
     try {
-      const supabase = createClient();
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("avatar upload auth lookup failed", userError);
-      if (!userData.user) {
-        setAvatarError("Not signed in");
-        return;
-      }
-
       const resizedAvatar = await resizeAvatar(file);
-      const ext = resizedAvatar.type === "image/webp" ? "webp" : "jpg";
-      // Upload into a folder named with the user's id so RLS/storage policies
-      // that restrict by folder (storage.foldername(name))[1] = auth.uid()
-      // will work. Example path: <user-id>/avatar.png
-      const path = `${userData.user.id}/avatar.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(path, resizedAvatar, { upsert: true, contentType: resizedAvatar.type });
-
-      if (uploadError) {
-        logSupabaseError("avatar upload failed", uploadError);
-        setAvatarError(uploadError.message);
+      if (resizedAvatar.size > 4 * 1024 * 1024) {
+        reportFailure("validate", "The resized image is too large to upload. Choose a simpler image.");
         return;
       }
 
-      // Get public URL
-      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-      const versionedUrl = new URL(data.publicUrl);
-      versionedUrl.searchParams.set("v", String(Date.now()));
-      const publicUrl = versionedUrl.toString();
-
-      // Update profile with avatar URL via server-side route to ensure
-      // row-level security (RLS) context is preserved for the current user.
+      const formData = new FormData();
+      formData.append("file", resizedAvatar, resizedAvatar.type === "image/webp" ? "avatar.webp" : "avatar.jpg");
+      failureStep = "storage";
       const res = await fetch("/api/profile/avatar", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatar_url: publicUrl }),
+        body: formData,
       });
 
-      const payload = await res.json().catch(() => ({})) as { error?: string; avatar_url?: string };
+      const payload = await res.json().catch(() => null) as { error?: string; step?: "auth" | "validate" | "storage" | "profile-update"; code?: string | number | null; url?: string } | null;
       if (!res.ok) {
-        setAvatarError(payload?.error || "Failed to update profile avatar");
-      } else {
-        setAvatarUrl(payload.avatar_url ?? publicUrl);
-        router.refresh();
+        reportFailure(payload?.step ?? "storage", payload?.error ?? `The server returned status ${res.status}.`);
+        return;
       }
+
+      if (typeof payload?.url !== "string" || payload.url.length === 0) {
+        reportFailure("profile-update", "The server did not return the saved avatar URL.");
+        return;
+      }
+
+      setAvatarUrl(payload.url);
+      router.refresh();
     } catch (err: unknown) {
-      setAvatarError(err instanceof Error ? err.message : "Upload failed");
+      reportFailure(failureStep, err instanceof Error ? err.message : "An unexpected error occurred.");
     } finally {
       setIsUploading(false);
       URL.revokeObjectURL(previewUrl);
@@ -504,7 +492,7 @@ export default function ProfilePage() {
               <p className="truncate text-lg font-semibold text-foreground">{profile?.full_name || savedFormValues.full_name || "Name not provided"}</p>
               {profile?.user_code && <span className="mt-1 inline-flex min-h-7 items-center rounded-full border border-border bg-muted/50 px-3 text-xs font-medium text-muted-foreground">ID · {profile.user_code}</span>}
               <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadAvatar} disabled={isUploading} className="sr-only" aria-label="Choose a profile photo" />
-              <Button type="button" variant="outline" className="mt-2 min-h-11" disabled={isUploading || activeEditor !== null} onClick={() => avatarInputRef.current?.click()}>
+              <Button type="button" variant="outline" className="mt-2 min-h-11" disabled={isUploading} onClick={() => avatarInputRef.current?.click()}>
                 {isUploading ? "Uploading…" : "Change photo"}
               </Button>
               {avatarError && <p role="alert" className="mt-2 text-xs text-destructive">{avatarError}</p>}
