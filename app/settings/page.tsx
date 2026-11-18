@@ -31,18 +31,23 @@ async function getSettingsAccount(): Promise<SettingsAccountState> {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("full_name, email, avatar_url")
+      .select("full_name, avatar_url")
       .eq("id", userData.user.id)
       .maybeSingle();
     if (profileError) {
-      console.error("settings profile lookup failed", { message: profileError.message, code: profileError.code });
+      console.error("settings profile lookup failed", {
+        message: profileError.message,
+        code: profileError.code,
+        details: profileError.details,
+        hint: profileError.hint,
+      });
     }
 
     return {
       status: "signed-in",
       account: {
         fullName: profile?.full_name ?? (typeof userData.user.user_metadata?.full_name === "string" ? userData.user.user_metadata.full_name : null),
-        email: profile?.email ?? userData.user.email ?? "",
+        email: userData.user.email ?? "",
         avatarUrl: profile?.avatar_url ?? null,
       },
     };

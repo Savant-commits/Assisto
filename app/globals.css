@@ -138,6 +138,10 @@
   --sidebar-ring: oklch(0.78 0.07 150);
 }
 
+.dark .leaflet-tile-pane {
+  filter: invert(0.88) hue-rotate(155deg) brightness(0.82) contrast(0.9) saturate(0.7);
+}
+
 @media (min-width: 768px) {
   :root {
     --section-gap: 4.25rem;

@@ -20,8 +20,8 @@ Do not commit `.env` or `.env.local`. Values prefixed with `NEXT_PUBLIC_` are co
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase project URL; required by Supabase clients. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Supabase anon/publishable key; RLS must protect data. |
 | `NEXT_PUBLIC_SITE_URL` | Public | Site origin used to construct signup confirmation URLs; locally defaults to `http://localhost:3000`. |
-| `NEXT_PUBLIC_MAP_TILE_URL` | Public, optional | Leaflet tile URL template; defaults to OpenStreetMap. |
-| `NEXT_PUBLIC_MAP_ATTRIBUTION` | Public, optional | Map attribution markup. |
+| `NEXT_PUBLIC_MAP_TILE_URL` | Public, optional | Leaflet tile URL template used in both themes; defaults to `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. For production, configure a keyed tile provider here if required, using only a browser-safe/public key; never commit provider keys. |
+| `NEXT_PUBLIC_MAP_ATTRIBUTION` | Public, optional | Map attribution markup; defaults to OpenStreetMap attribution. Configure the matching attribution when using another provider. |
 | `GEOCODER_BASE_URL` | Server-only, optional | Photon-compatible geocoder origin; defaults to `https://photon.komoot.io`. Treat as trusted deployment configuration, never request input. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only secret | Admin-only database client; bypasses RLS. Never expose or log. |
 | `RESEND_API_KEY` | Server-only secret | Outbound email API key. |

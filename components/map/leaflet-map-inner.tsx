@@ -2,10 +2,9 @@
 
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo } from "react";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { MAP_ATTRIBUTION, MAP_TILE_URL } from "@/lib/maps";
-import { subscribeToTheme } from "@/lib/theme";
 
 export type MapPoint = { lat: number; lng: number };
 
@@ -73,14 +72,6 @@ function MapClickHandler({ onPick }: { onPick?: (lat: number, lng: number) => vo
   return null;
 }
 
-function getDarkThemeSnapshot() {
-  return document.documentElement.classList.contains("dark");
-}
-
-function getLightThemeSnapshot() {
-  return false;
-}
-
 export function LeafletMapInner({
   center,
   zoom,
@@ -90,14 +81,7 @@ export function LeafletMapInner({
   height = 320,
 }: LeafletMapInnerProps) {
   const pinIcon = useMemo(() => createPinIcon(), []);
-  const isDark = useSyncExternalStore(subscribeToTheme, getDarkThemeSnapshot, getLightThemeSnapshot);
   const visibleMarker = marker === undefined ? center : marker;
-  const tileUrl = isDark
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : MAP_TILE_URL;
-  const tileAttribution = isDark
-    ? `${MAP_ATTRIBUTION} · © CARTO`
-    : MAP_ATTRIBUTION;
 
   return (
     <div role={interactive === "static" ? "img" : undefined} aria-label={interactive === "static" ? "Map showing your saved location" : undefined} style={{ height, width: "100%" }} className="relative isolate z-0 overflow-hidden rounded-lg border bg-muted/40">
@@ -108,12 +92,12 @@ export function LeafletMapInner({
         zoomControl={interactive !== "static"}
         dragging={interactive !== "static"}
         keyboard={interactive !== "static"}
-        attributionControl={interactive !== "static"}
+        attributionControl
         style={{ height: "100%", width: "100%" }}
       >
         <MapResizer />
         {onPick && <MapClickHandler onPick={onPick} />}
-        <TileLayer url={tileUrl} attribution={tileAttribution} />
+        <TileLayer url={MAP_TILE_URL} attribution={MAP_ATTRIBUTION} />
         {visibleMarker && (
           <Marker
             position={[visibleMarker.lat, visibleMarker.lng]}
