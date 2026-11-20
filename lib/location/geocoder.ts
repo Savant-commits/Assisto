@@ -26,8 +26,91 @@ export type PhotonFeature = {
   geometry?: { coordinates?: unknown };
 };
 
+type ReversePoint = { lat: number; lng: number };
+
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function featureDistance(feature: PhotonFeature, point: ReversePoint): number {
+  const coordinates = feature.geometry?.coordinates;
+  if (
+    !Array.isArray(coordinates) ||
+    typeof coordinates[0] !== "number" ||
+    typeof coordinates[1] !== "number" ||
+    !Number.isFinite(coordinates[0]) ||
+    !Number.isFinite(coordinates[1])
+  ) return Number.POSITIVE_INFINITY;
+
+  const latitude = coordinates[1] * Math.PI / 180;
+  const pointLatitude = point.lat * Math.PI / 180;
+  const latitudeDelta = latitude - pointLatitude;
+  const longitudeDelta = (coordinates[0] - point.lng) * Math.PI / 180;
+  const haversine = Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(pointLatitude) * Math.cos(latitude) * Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+export function normalizePhotonReverseFeatures(features: PhotonFeature[], point: ReversePoint): GeocodedLocation {
+  const nearestFirst = features
+    .map((feature, index) => ({ feature, index, properties: feature.properties ?? {}, distance: featureDistance(feature, point) }))
+    .sort((left, right) => left.distance - right.distance || left.index - right.index);
+  const road = nearestFirst.find(({ properties }) =>
+    text(properties.osm_key)?.toLocaleLowerCase() === "highway" && text(properties.name),
+  );
+  const streetFeature = road ?? nearestFirst.find(({ properties }) => text(properties.street));
+  const street = text(road?.properties.name) ?? text(streetFeature?.properties.street);
+  const houseNumber = text(road?.properties.housenumber) ?? text(road?.properties.house_number) ??
+    nearestFirst.map(({ properties }) => text(properties.housenumber) ?? text(properties.house_number)).find(Boolean) ?? null;
+  const area = (["suburb", "district", "locality", "neighbourhood"] as const)
+    .map((key) => nearestFirst.map(({ properties }) => text(properties[key])).find(Boolean))
+    .find(Boolean) ?? null;
+  const city = (["city", "town", "village"] as const)
+    .map((key) => nearestFirst.map(({ properties }) => text(properties[key])).find(Boolean))
+    .find(Boolean) ?? null;
+  const postcode = text(road?.properties.postcode);
+  const landmark = nearestFirst.find(({ properties }) => {
+    const key = text(properties.osm_key)?.toLocaleLowerCase();
+    const name = text(properties.name);
+    return Boolean(name && key !== "highway" && name !== street && name !== area && name !== city);
+  });
+  const landmarkName = text(landmark?.properties.name);
+  const uniqueParts = (parts: Array<string | null>) =>
+    parts.filter((part, index, all): part is string => Boolean(part) && all.indexOf(part) === index);
+  const formattedLabel = uniqueParts([
+    [houseNumber, street].filter(Boolean).join(" ") || null,
+    area,
+    city,
+    postcode,
+  ]).join(", ");
+  const selectedFeature = road ?? nearestFirst[0];
+  const osmType = text(selectedFeature?.properties.osm_type) ?? "point";
+  const osmId = selectedFeature?.properties.osm_id == null
+    ? `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`
+    : String(selectedFeature.properties.osm_id);
+  const name = street ?? area ?? city ?? "Selected location";
+
+  return {
+    id: `${osmType}/${osmId}`,
+    label: formattedLabel || area || city || "Selected location",
+    name,
+    locality: area ?? city ?? street ?? "Selected location",
+    city,
+    area,
+    district: text(nearestFirst.map(({ properties }) => text(properties.district)).find(Boolean)),
+    suburb: text(nearestFirst.map(({ properties }) => text(properties.suburb)).find(Boolean)),
+    neighbourhood: text(nearestFirst.map(({ properties }) => text(properties.neighbourhood)).find(Boolean)),
+    street,
+    houseNumber,
+    postcode,
+    landmark: landmarkName,
+    formattedLabel,
+    state: "Tamil Nadu",
+    lat: point.lat,
+    lng: point.lng,
+    kind: text(road?.properties.osm_value) ?? "address",
+    source: "map",
+  };
 }
 
 export function normalizePhotonFeature(feature: PhotonFeature): GeocodedLocation | null {

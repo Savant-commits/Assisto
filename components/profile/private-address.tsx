@@ -53,7 +53,7 @@ function fieldsFromAddress(address: PrivateAddress | null): AddressFields {
 
 function fieldsFromGeocoded(location: GeocodedLocation): AddressFields {
   const city = location.city ?? "";
-  const mostSpecificArea = location.suburb ?? location.district ??
+  const mostSpecificArea = location.area ?? location.suburb ?? location.district ??
     (location.locality && location.locality !== city && location.locality !== location.street ? location.locality : null) ??
     location.neighbourhood ?? "";
   return {

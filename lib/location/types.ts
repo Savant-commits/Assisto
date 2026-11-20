@@ -11,6 +11,7 @@ export type SelectedLocation = {
   formattedLabel?: string;
   street?: string | null;
   houseNumber?: string | null;
+  area?: string | null;
   neighbourhood?: string | null;
   suburb?: string | null;
   district?: string | null;

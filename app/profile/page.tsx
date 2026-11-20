@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
@@ -77,32 +77,57 @@ function logSupabaseError(context: string, error: { message: string; details?: s
   });
 }
 
-async function resizeAvatar(file: File): Promise<Blob> {
-  const objectUrl = URL.createObjectURL(file);
+async function resizeAvatar(file: File): Promise<Blob | null> {
+  let bitmap: ImageBitmap | null = null;
+  let image: HTMLImageElement | null = null;
+  let objectUrl: string | null = null;
+
   try {
-    const image = new Image();
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error("The selected image could not be read."));
-      image.src = objectUrl;
-    });
+    let width: number;
+    let height: number;
+    try {
+      bitmap = await createImageBitmap(file);
+      width = bitmap.width;
+      height = bitmap.height;
+    } catch {
+      objectUrl = URL.createObjectURL(file);
+      image = new Image();
+      await new Promise<void>((resolve, reject) => {
+        image!.onload = () => resolve();
+        image!.onerror = () => reject(new Error("The selected image could not be read."));
+        image!.src = objectUrl!;
+      });
+      width = image.naturalWidth;
+      height = image.naturalHeight;
+    }
 
-    const scale = Math.min(1, 512 / Math.max(image.naturalWidth, image.naturalHeight));
+    if (!width || !height) return null;
+    const scale = Math.min(1, 512 / Math.max(width, height));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
     const context = canvas.getContext("2d");
-    if (!context) throw new Error("Could not process the selected image.");
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    if (!context) return null;
+    if (bitmap) context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    else if (image) context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    else return null;
 
-    const webpBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.85));
+    const toBlob = (type: string) => new Promise<Blob | null>((resolve) => {
+      try {
+        canvas.toBlob(resolve, type, 0.85);
+      } catch {
+        resolve(null);
+      }
+    });
+    const webpBlob = await toBlob("image/webp");
     if (webpBlob?.type === "image/webp") return webpBlob;
-
-    const jpegBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
-    if (!jpegBlob) throw new Error("Could not process the selected image.");
-    return jpegBlob;
+    const jpegBlob = await toBlob("image/jpeg");
+    return jpegBlob?.type === "image/jpeg" ? jpegBlob : null;
+  } catch {
+    return null;
   } finally {
-    URL.revokeObjectURL(objectUrl);
+    bitmap?.close();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
 }
 
@@ -114,6 +139,7 @@ export default function ProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarStatus, setAvatarStatus] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isProvider, setIsProvider] = useState(false);
@@ -131,7 +157,6 @@ export default function ProfilePage() {
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
   const [activeEditor, setActiveEditor] = useState<"identity" | "address" | "provider" | null>(null);
   const [savedFormValues, setSavedFormValues] = useState<FormValues>(emptyFormValues);
-  const avatarInputRef = useRef<HTMLInputElement>(null);
   const isEditing = activeEditor === "identity";
 
   const form = useForm<FormValues>({
@@ -384,66 +409,81 @@ export default function ProfilePage() {
     setActiveEditor(null);
   }
 
-  async function uploadAvatar(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function uploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    let previewUrl: string | null = null;
+    let failureStep: "validate" | "storage" = "validate";
 
-    e.target.value = "";
     const reportFailure = (step: "auth" | "validate" | "storage" | "profile-update", message: string) => {
       const formattedMessage = `Upload failed (${step}): ${message}`;
       console.error(formattedMessage);
       setAvatarError(formattedMessage);
+      setAvatarStatus(null);
     };
 
-    if (!AVATAR_MIME_TYPES.includes(file.type)) {
-      reportFailure("validate", "Choose a JPEG, PNG, or WebP image.");
-      return;
-    }
-    if (file.size === 0 || file.size > MAX_AVATAR_BYTES) {
-      reportFailure("validate", "Choose an image that is larger than 0 bytes and no more than 5 MB.");
-      return;
-    }
-
     setAvatarError(null);
-    const previewUrl = URL.createObjectURL(file);
-    setAvatarPreviewUrl(previewUrl);
-    setIsUploading(true);
-    let failureStep: "validate" | "storage" = "validate";
-
     try {
-      const resizedAvatar = await resizeAvatar(file);
-      if (resizedAvatar.size > 4 * 1024 * 1024) {
-        reportFailure("validate", "The resized image is too large to upload. Choose a simpler image.");
+      if (!file) {
+        reportFailure("validate", "No image was selected. Please choose a photo.");
+        return;
+      }
+      if (!AVATAR_MIME_TYPES.includes(file.type)) {
+        reportFailure("validate", "Choose a JPEG, PNG, or WebP image.");
+        return;
+      }
+      if (file.size === 0 || file.size > MAX_AVATAR_BYTES) {
+        reportFailure("validate", "Choose an image that is larger than 0 bytes and no more than 5 MB.");
         return;
       }
 
-      const formData = new FormData();
-      formData.append("file", resizedAvatar, resizedAvatar.type === "image/webp" ? "avatar.webp" : "avatar.jpg");
-      failureStep = "storage";
-      const res = await fetch("/api/profile/avatar", {
-        method: "POST",
-        body: formData,
-      });
+      previewUrl = URL.createObjectURL(file);
+      setAvatarPreviewUrl(previewUrl);
+      const fileSizeKb = Math.max(1, Math.round(file.size / 1024));
+      const selectedStatus = `Selected: ${file.name} (${fileSizeKb} KB, ${file.type})`;
+      setAvatarStatus(`${selectedStatus} — Preparing`);
+      setIsUploading(true);
 
+      const resizedAvatar = await resizeAvatar(file);
+      let uploadBlob = resizedAvatar;
+      if (!uploadBlob || uploadBlob.size > 4 * 1024 * 1024) {
+        if (file.size <= 4 * 1024 * 1024) {
+          uploadBlob = file;
+        } else {
+          reportFailure("validate", "Could not process this image. Try a smaller JPEG or PNG.");
+          return;
+        }
+      }
+
+      const extension = uploadBlob.type === "image/webp" ? "webp" : uploadBlob.type === "image/png" ? "png" : "jpg";
+      const formData = new FormData();
+      formData.append("file", uploadBlob, `avatar.${extension}`);
+      failureStep = "storage";
+      setAvatarStatus(`${selectedStatus} — Uploading`);
+      const res = await fetch("/api/profile/avatar", { method: "POST", body: formData });
       const payload = await res.json().catch(() => null) as { error?: string; step?: "auth" | "validate" | "storage" | "profile-update"; code?: string | number | null; url?: string } | null;
       if (!res.ok) {
         reportFailure(payload?.step ?? "storage", payload?.error ?? `The server returned status ${res.status}.`);
         return;
       }
-
       if (typeof payload?.url !== "string" || payload.url.length === 0) {
         reportFailure("profile-update", "The server did not return the saved avatar URL.");
         return;
       }
 
       setAvatarUrl(payload.url);
+      setAvatarPreviewUrl(null);
+      setAvatarStatus(`${selectedStatus} — Done`);
       router.refresh();
     } catch (err: unknown) {
       reportFailure(failureStep, err instanceof Error ? err.message : "An unexpected error occurred.");
     } finally {
       setIsUploading(false);
-      URL.revokeObjectURL(previewUrl);
-      setAvatarPreviewUrl((current) => current === previewUrl ? null : current);
+      input.value = "";
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setAvatarPreviewUrl((current) => current === previewUrl ? null : current);
+      }
     }
   }
 
@@ -491,11 +531,12 @@ export default function ProfilePage() {
             <div className="min-w-0">
               <p className="truncate text-lg font-semibold text-foreground">{profile?.full_name || savedFormValues.full_name || "Name not provided"}</p>
               {profile?.user_code && <span className="mt-1 inline-flex min-h-7 items-center rounded-full border border-border bg-muted/50 px-3 text-xs font-medium text-muted-foreground">ID · {profile.user_code}</span>}
-              <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadAvatar} disabled={isUploading} className="sr-only" aria-label="Choose a profile photo" />
-              <Button type="button" variant="outline" className="mt-2 min-h-11" disabled={isUploading} onClick={() => avatarInputRef.current?.click()}>
+              <input key="profile-avatar-file" id="profile-avatar-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadAvatar} disabled={isUploading} className="sr-only" aria-label="Choose a profile photo" />
+              <label htmlFor="profile-avatar-file" aria-disabled={isUploading} className={`mt-2 inline-flex min-h-11 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors ${isUploading ? "pointer-events-none opacity-50" : "cursor-pointer hover:bg-accent hover:text-accent-foreground"}`}>
                 {isUploading ? "Uploading…" : "Change photo"}
-              </Button>
+              </label>
               {avatarError && <p role="alert" className="mt-2 text-xs text-destructive">{avatarError}</p>}
+              {avatarStatus && <p role="status" aria-live="polite" className="mt-2 text-xs text-muted-foreground">{avatarStatus}</p>}
             </div>
           </div>
 
