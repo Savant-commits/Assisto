@@ -1,5 +1,9 @@
+"use client";
+
 import { Play } from "lucide-react";
+import * as React from "react";
 import type { ProviderPortfolioItem } from "@/lib/types";
+import MediaViewer from "@/components/media-viewer";
 
 type Props = {
   items: ProviderPortfolioItem[];
@@ -10,26 +14,38 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
   const usableItems = items
     .filter((item) => typeof item.image_url === "string" && item.image_url.trim().length > 0)
     .slice(0, 6);
+  const [viewerOpen, setViewerOpen] = React.useState(false);
+  const [initialIndex, setInitialIndex] = React.useState(0);
+  const [trigger, setTrigger] = React.useState<HTMLElement | null>(null);
 
   if (usableItems.length === 0) return null;
 
+  function openViewer(index: number, element: HTMLElement) {
+    if (!window.matchMedia("(max-width: 639px)").matches) return;
+    setInitialIndex(index);
+    setTrigger(element);
+    setViewerOpen(true);
+  }
+
   return (
-    <>
+    <> 
       <div className="px-4 sm:hidden">
         <div className="scrollbar-none flex snap-x snap-mandatory gap-2 overflow-x-auto">
-          {usableItems.map((item) => {
+          {usableItems.map((item, index) => {
             const alt = item.description?.trim() || `Work by ${providerName}`;
             const isVideo = item.media_type === "video";
 
             return (
-              <div
+              <button
                 key={item.id}
-                aria-label={isVideo ? `Video by ${providerName}` : undefined}
-                className="relative z-10 aspect-[4/3] shrink-0 snap-start overflow-hidden rounded-lg bg-stone"
+                type="button"
+                aria-label={isVideo ? `Video by ${providerName}` : alt}
+                onClick={(event) => openViewer(index, event.currentTarget)}
+                className="relative z-10 aspect-[4/3] shrink-0 snap-start overflow-hidden rounded-lg bg-stone text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 style={{ width: "calc((100% - 1rem) / 2.2)" }}
               >
                 {isVideo ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-foreground">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
                     <span className="flex size-10 items-center justify-center rounded-full bg-background/90 text-primary shadow-soft">
                       <Play aria-hidden="true" className="size-5 fill-current" />
                     </span>
@@ -44,7 +60,7 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
                     className="h-full w-full object-cover"
                   />
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -83,6 +99,16 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
           })}
         </div>
       </div>
+
+      <MediaViewer
+        key={`${viewerOpen ? "open" : "closed"}-${initialIndex}`}
+        open={viewerOpen}
+        items={usableItems}
+        providerName={providerName}
+        initialIndex={initialIndex}
+        trigger={trigger}
+        onClose={() => setViewerOpen(false)}
+      />
     </>
   );
 }

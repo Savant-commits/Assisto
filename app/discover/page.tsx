@@ -176,6 +176,16 @@ export default async function DiscoverPage({
     ...row,
     profiles: one(row.profiles),
   })).sort((a, b) => {
+    if (selectedSort === "recommended") {
+      const usableMedia = (provider: ProviderListItem) =>
+        (provider.provider_portfolio_items ?? []).some(
+          (item) => typeof item.image_url === "string" && item.image_url.trim().length > 0
+        );
+      const score = (provider: ProviderListItem) =>
+        (provider.is_verified === true ? 1 : 0) + (usableMedia(provider) ? 1 : 0);
+      return score(b) - score(a);
+    }
+
     if (selectedSort !== "top-rated") return 0;
 
     const aCount = Number(a.review_count ?? 0);
