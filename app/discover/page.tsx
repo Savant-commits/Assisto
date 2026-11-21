@@ -3,6 +3,8 @@ import { ProviderCard } from "@/components/provider-card";
 import ServicePicker from "@/components/service-picker";
 import type { ProviderListItem, ProviderPortfolioItem, ProviderProfile, ServiceCategory } from "@/lib/types";
 import { one } from "@/lib/relations";
+import DiscoverSearchToggle from "@/components/discover/discover-search-toggle";
+import DiscoverFilterStrip from "@/components/discover/discover-filter-strip";
 
 type ProviderListRow = Omit<ProviderListItem, "profiles"> & {
   profiles?: ProviderProfile | ProviderProfile[] | null;
@@ -186,41 +188,66 @@ export default async function DiscoverPage({
     return bCount - aCount;
   });
 
+  const cityFilterItems = CITIES.map((c) => {
+    const isActive = city === c;
+    return {
+      slug: c,
+      name: c,
+      active: isActive,
+      href: buildDiscoverUrl({ city: isActive ? undefined : c, category, service, requirement, sort: selectedSort }),
+    };
+  });
+
+  const categoryFilterItems = ((categories as ServiceCategory[] | null) ?? []).map((cat) => {
+    const isActive = category === cat.slug;
+    return {
+      slug: cat.slug,
+      name: cat.name,
+      active: isActive,
+      href: buildDiscoverUrl({ city, category: isActive ? undefined : cat.slug, service, requirement, sort: selectedSort }),
+    };
+  });
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="mb-1 text-2xl font-semibold">Find a professional</h1>
-      <p className="mb-6 text-muted-foreground">
+      <div className="sm:hidden">
+        <DiscoverSearchToggle city={city} category={category} requirement={requirement} />
+      </div>
+
+      <h1 className="mb-1 hidden text-2xl font-semibold sm:block">Find a professional</h1>
+      <p className="mb-6 hidden text-muted-foreground sm:block">
         Browse verified professionals in Cuddalore and Chidambaram.
       </p>
 
-      <div className="mb-6 flex flex-wrap gap-2 items-center">
-        <div className="w-full sm:w-auto mb-2 sm:mb-0">
+      <DiscoverFilterStrip
+        cities={cityFilterItems}
+        categories={categoryFilterItems}
+        sort={selectedSort}
+        sortHref={buildDiscoverUrl({ city, category, service, requirement, sort: selectedSort === "top-rated" ? undefined : "top-rated" })}
+      />
+
+      <div className="mb-6 hidden flex-wrap items-center gap-2 sm:flex">
+        <div className="mb-2 w-full sm:mb-0 sm:w-auto">
           <ServicePicker initialSlug={service} category={category} city={city} requirement={requirement} />
         </div>
-        {CITIES.map((c) => {
-          const isActive = city === c;
-          return (
-            <a
-              key={c}
-              href={buildDiscoverUrl({ city: isActive ? undefined : c, category, service, requirement, sort: selectedSort })}
-              className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
-            >
-              {c}
-            </a>
-          );
-        })}
-        {(categories as ServiceCategory[] | null)?.map((cat) => {
-          const isActive = category === cat.slug;
-          return (
-            <a
-              key={cat.id}
-              href={buildDiscoverUrl({ city, category: isActive ? undefined : cat.slug, service, requirement, sort: selectedSort })}
-              className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
-            >
-              {cat.name}
-            </a>
-          );
-        })}
+        {cityFilterItems.map((item) => (
+          <a
+            key={item.slug}
+            href={item.href}
+            className={`rounded-full border px-3 py-1 text-sm ${item.active ? "bg-foreground text-background" : ""}`}
+          >
+            {item.name}
+          </a>
+        ))}
+        {categoryFilterItems.map((item) => (
+          <a
+            key={item.slug}
+            href={item.href}
+            className={`rounded-full border px-3 py-1 text-sm ${item.active ? "bg-foreground text-background" : ""}`}
+          >
+            {item.name}
+          </a>
+        ))}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Sort:</span>
           {[
