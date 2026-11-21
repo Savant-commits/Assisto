@@ -124,12 +124,13 @@ export default function DiscoverSearchToggle({
       <div
         id={panelId}
         ref={panelRef}
-        className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 motion-reduce:transition-none sm:hidden ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+        inert={!open}
         aria-hidden={!open}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 motion-reduce:transition-none sm:hidden ${open ? "visible grid-rows-[1fr] overflow-visible opacity-100" : "invisible grid-rows-[0fr] overflow-hidden opacity-0"}`}
       >
         <div className="min-h-0">
           <div
-            className="mb-6 flex items-end gap-2"
+            className="relative z-[60] mb-6 flex items-end gap-2 px-0.5 py-1 [&_ul]:z-[70] [&_ul]:mt-2 [&_ul]:max-h-[min(16rem,calc(100dvh-var(--bottom-nav-height)-2rem))] [&_ul]:overflow-y-auto [&_ul]:rounded-xl [&_ul]:border [&_ul]:border-border [&_ul]:bg-card [&_ul]:text-card-foreground [&_ul]:shadow-lifted"
             onKeyDownCapture={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -151,7 +152,7 @@ export default function DiscoverSearchToggle({
                 onSelect={(service) => {
                   setSelected(service);
                   setMessage(null);
-                  if (service) setQuery(service.slug);
+                  if (service) setQuery(service.name);
                 }}
               />
             </div>
@@ -164,11 +165,8 @@ export default function DiscoverSearchToggle({
               <Search aria-hidden="true" className="size-5" />
             </button>
           </div>
-          {message && (
-            <p role="status" className="mb-6 text-sm text-destructive">
-              {message}
-            </p>
-          )}
+
+          {message && <p role="status" className="mb-6 text-sm text-destructive">{message}</p>}
         </div>
       </div>
     </div>
