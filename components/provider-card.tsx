@@ -3,21 +3,19 @@ import * as React from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { cn } from "@/lib/utils";
-import type { ProviderListItem } from "@/lib/types";
+import type { ProviderListItem, ProviderPortfolioItem } from "@/lib/types";
 import { Avatar } from "@/components/avatar";
+import ProviderMediaStrip from "@/components/provider-media-strip";
 
 export function ProviderCard({ provider, requirement }: { provider: ProviderListItem; requirement?: string }) {
   const name = provider.profiles?.full_name ?? provider.business_name ?? "Provider";
-  const portfolioItems = (provider.provider_portfolio_items ?? []) as Array<{
-    id: string | number;
-    image_url?: string | null;
-    description?: string | null;
-    media_type?: string | null;
-  }>;
-  const hasPortfolio = portfolioItems.length > 0;
+  const profileHref = requirement ? `/providers/${provider.id}?requirement=${requirement}` : `/providers/${provider.id}`;
+  const portfolioItems = ((provider.provider_portfolio_items ?? []) as ProviderPortfolioItem[]).filter(
+    (item) => typeof item.image_url === "string" && item.image_url.trim().length > 0
+  );
 
   return (
-    <Card className="overflow-hidden hover:shadow-md transition-shadow">
+    <Card className="relative max-sm:active:bg-muted/50 overflow-hidden hover:shadow-md transition-shadow">
       <CardHeader>
         <div className="flex items-center gap-3">
           <Avatar
@@ -29,7 +27,13 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
           <div className="flex-1 min-w-0">
             <CardTitle className="truncate">
               <div className="flex items-center gap-2">
-                <span className="truncate">{name}</span>
+                <Link
+                  href={profileHref}
+                  className="truncate rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-sm:after:absolute max-sm:after:inset-0 max-sm:after:content-[''] sm:hidden"
+                >
+                  {name}
+                </Link>
+                <span className="truncate max-sm:hidden">{name}</span>
                 {provider.is_verified && <Badge variant="secondary">Credential verified</Badge>}
               </div>
             </CardTitle>
@@ -48,42 +52,18 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
         </div>
       </CardHeader>
 
-      {hasPortfolio && (
-        <div className="px-4 pb-3">
-          <p className="text-xs text-muted-foreground mb-2">Work samples</p>
-          <div className="grid grid-cols-3 gap-1">
-            {portfolioItems.slice(0, 3).map((item) => (
-              <div key={item.id} className="relative aspect-square rounded overflow-hidden bg-muted">
-                {item.media_type === "video" ? (
-                  <video
-                    src={item.image_url ?? undefined}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <img
-                    src={item.image_url ?? undefined}
-                    alt="Work sample"
-                    className="w-full h-full object-cover"
-                  />
-                )}
-                {item.media_type === "video" && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <div className="text-white text-xs">▶</div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+      {portfolioItems.length > 0 && (
+        <ProviderMediaStrip items={portfolioItems} providerName={name} />
       )}
 
       <CardFooter>
         <div className="flex w-full flex-col gap-1 text-sm text-muted-foreground">
           <div>{provider.city}</div>
-          {provider.locality && <div>Based at {provider.locality}</div>}
+          {provider.locality && <div>Based at {provider.locality}</div>
+          }
           <Link
-            href={requirement ? `/providers/${provider.id}?requirement=${requirement}` : `/providers/${provider.id}`}
-            className={cn("mt-1 text-sm font-medium underline")}
+            href={profileHref}
+            className={cn("mt-1 text-sm font-medium underline max-sm:hidden")}
           >
             View profile
           </Link>

@@ -114,7 +114,7 @@ export default async function DiscoverPage({
     `id, business_name, headline, city, locality, avg_rating, review_count, is_verified,
          profiles ( full_name, avatar_url ),
          ${providerCategoriesSelect},
-         provider_portfolio_items ( id, image_url, description, media_type, created_at )`;
+         provider_portfolio_items ( id, image_url, description, media_type, sort_order, created_at )`;
 
   // Matched service ids from requirement auto-matching
   let matchedServiceIds: number[] = [];
@@ -144,6 +144,8 @@ export default async function DiscoverPage({
   const finalSelect = includeProviderServices ? querySelect + ", provider_services!inner ( service_id )" : querySelect;
 
   let query = supabase.from("providers").select(finalSelect).eq("is_active", true);
+  query = query.order("sort_order", { foreignTable: "provider_portfolio_items", ascending: true });
+  query = query.order("created_at", { foreignTable: "provider_portfolio_items", ascending: true });
 
   // Apply city filter: explicit param or requirement's city (explicit city wins)
   if (city) query = query.eq("city", city);
