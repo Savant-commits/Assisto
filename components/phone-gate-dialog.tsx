@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { createClient } from "@/lib/supabase/client";
 import { PhoneVerification } from "@/components/phone-verification";
@@ -70,9 +70,15 @@ export function PhoneGateDialog({
 }: Props) {
   useEscapeKey(isOpen, onClose);
   const phoneVerificationRequired = usePhoneVerificationRequired();
+  const bypassCalledForOpen = useRef(false);
 
   useEffect(() => {
-    if (!isOpen || phoneVerificationRequired || !bypassWhenVerificationDisabled) return;
+    if (!isOpen) {
+      bypassCalledForOpen.current = false;
+      return;
+    }
+    if (phoneVerificationRequired || !bypassWhenVerificationDisabled || bypassCalledForOpen.current) return;
+    bypassCalledForOpen.current = true;
     onVerified();
   }, [bypassWhenVerificationDisabled, isOpen, onVerified, phoneVerificationRequired]);
 

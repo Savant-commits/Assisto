@@ -52,7 +52,7 @@ function logLookupError(label: string, error: { message: string; code?: string; 
 export default function ApplyForm() {
   const phoneVerificationRequired = usePhoneVerificationRequired();
   const router = useRouter();
-  const { requireAuth } = useAuthGate();
+  const { isAuthenticated, requireAuth } = useAuthGate();
   const form = useForm<FormInput, unknown, FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -139,6 +139,7 @@ export default function ApplyForm() {
   }, []);
 
   async function submitApplication(values: FormValues) {
+    if (isSubmitting) return;
     setSubmitError(null);
     setIsSubmitting(true);
     try {
@@ -151,15 +152,19 @@ export default function ApplyForm() {
       }
 
       const userId = userData.user.id;
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("phone_verified_at")
-        .eq("id", userId)
-        .single();
-      if (!profile?.phone_verified_at) {
-        setPendingValues(values);
-        setIsPhoneGateOpen(true);
-        return;
+      let phoneVerified = false;
+      if (phoneVerificationRequired) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("phone_verified_at")
+          .eq("id", userId)
+          .single();
+        phoneVerified = !!profile?.phone_verified_at;
+        if (!phoneVerified) {
+          setPendingValues(values);
+          setIsPhoneGateOpen(true);
+          return;
+        }
       }
 
       // Prevent duplicates: check existing application or provider
@@ -188,7 +193,7 @@ export default function ApplyForm() {
         .single();
 
       if (error) {
-        if (error.message === "PHONE_NOT_VERIFIED") {
+        if (error.message === "PHONE_NOT_VERIFIED" && phoneVerificationRequired && !phoneVerified) {
           setPendingValues(values);
           setIsPhoneGateOpen(true);
           return;
@@ -203,12 +208,20 @@ export default function ApplyForm() {
       } else {
         router.push("/apply/submitted");
       }
+    } catch (error) {
+      console.error("apply: submission failed", error);
+      const friendlyError = error instanceof Error ? error : { message: String(error) };
+      setSubmitError(friendlyDbError(friendlyError, "An unexpected error occurred"));
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  function onSubmit(values: FormValues) {
+  async function onSubmit(values: FormValues) {
+    if (isAuthenticated) {
+      await submitApplication(values);
+      return;
+    }
     requireAuth(() => void submitApplication(values), "to apply as a professional");
   }
 
