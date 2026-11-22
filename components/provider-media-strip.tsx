@@ -25,6 +25,8 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
 	const openRef = React.useRef(false);
 	const enteredByViewerRef = React.useRef(false);
 	const pendingRequestRef = React.useRef<Promise<boolean> | null>(null);
+	const pointerStartsRef = React.useRef(new Map<number, { x: number; y: number }>());
+	const pointerDraggedRef = React.useRef(false);
 
 	const requestFullscreen = React.useCallback((): Promise<boolean> => {
 		const doc = document as FullscreenDoc;
@@ -60,7 +62,10 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
 	}, []);
 
 	function openViewer(index: number, event: React.MouseEvent<HTMLButtonElement>) {
-		if (!mobile || openRef.current) return;
+		const pointerDragged = pointerDraggedRef.current && event.detail !== 0;
+		pointerDraggedRef.current = false;
+		pointerStartsRef.current.clear();
+		if (!mobile || openRef.current || pointerDragged) return;
 		openRef.current = true;
 		enteredByViewerRef.current = false;
 		setTrigger(event.currentTarget);
@@ -70,6 +75,26 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
 			void requestFullscreen();
 		}
 		setOpen(true);
+	}
+
+	function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+		if (pointerStartsRef.current.size === 0) pointerDraggedRef.current = false;
+		pointerStartsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+	}
+
+	function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+		const start = pointerStartsRef.current.get(event.pointerId);
+		if (!start || pointerDraggedRef.current) return;
+		if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) pointerDraggedRef.current = true;
+	}
+
+	function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+		pointerStartsRef.current.delete(event.pointerId);
+	}
+
+	function handlePointerCancel() {
+		pointerStartsRef.current.clear();
+		pointerDraggedRef.current = false;
 	}
 
 	const closeViewer = React.useCallback(async () => {
@@ -91,20 +116,27 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
 
 	return (
 		<>
-			<div className="grid grid-cols-3 gap-1.5 px-4 pb-4">
-				{items.map((item, index) => (
+			<div
+				className="relative z-10 flex touch-pan-x flex-nowrap gap-2 overflow-x-auto snap-x snap-mandatory px-4 pb-4 scrollbar-none sm:grid sm:grid-cols-3 sm:gap-1.5 sm:overflow-visible sm:snap-none"
+				style={{ touchAction: mobile ? "pan-x pan-y" : "auto" }}
+				onPointerDown={handlePointerDown}
+				onPointerMove={handlePointerMove}
+				onPointerUp={handlePointerUp}
+				onPointerCancel={handlePointerCancel}
+			>
+				{items.slice(0, 6).map((item, index) => (
 					<button
 						key={item.id}
 						type="button"
 						disabled={!mobile}
 						aria-label={mobile ? `View ${item.media_type === "video" ? "video" : "photo"} ${index + 1}` : undefined}
 						onClick={(event) => openViewer(index, event)}
-						className="relative aspect-[4/3] min-w-0 overflow-hidden rounded-md bg-neutral-900 text-white disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:focus-visible:ring-0"
+						className={`relative z-10 aspect-[4/3] w-[calc((100%_-_1rem)_/_2.2)] shrink-0 snap-start overflow-hidden rounded-lg bg-neutral-900 text-white disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:w-auto sm:aspect-square sm:snap-none sm:rounded-md sm:focus-visible:ring-0 ${index >= 3 ? "sm:hidden" : ""}`}
 					>
 						{item.media_type === "video" ? (
 							<span className="absolute inset-0 grid place-items-center bg-neutral-900" aria-hidden="true"><Play className="size-7 fill-current text-white/90" /></span>
 						) : (
-							<img src={item.image_url ?? undefined} alt="" decoding="async" className="h-full w-full object-cover" />
+							<img src={item.image_url ?? undefined} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
 						)}
 					</button>
 				))}
