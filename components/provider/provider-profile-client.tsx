@@ -3,17 +3,15 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ContactUnlock } from "@/components/contact-unlock";
-import { Avatar } from "@/components/avatar";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { ReportDialog } from "@/components/report-dialog";
 import { ReviewModal } from "@/components/review-modal";
@@ -22,6 +20,8 @@ import { LocationMap } from "@/components/map/location-map";
 import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib/reviews";
 import { useAuthGate } from "@/components/auth/auth-sheet";
 import ProviderProfileSkeleton from "@/components/provider/provider-profile-skeleton";
+import ProviderProfileHeader from "@/components/provider/provider-profile-header";
+import ProviderActionBar from "@/components/provider/provider-action-bar";
 
 type Props = { id: string };
 
@@ -88,6 +88,51 @@ function formatDateTime(dateStr: string | null | undefined): string {
   return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
+function ProviderBio({ bio }: { bio: string }) {
+  const measurementRef = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    const paragraph = measurementRef.current;
+    if (!paragraph) return;
+    const measure = () => setHasOverflow(paragraph.scrollHeight > paragraph.clientHeight + 1);
+    const frame = window.requestAnimationFrame(measure);
+    let observer: ResizeObserver | null = null;
+    try {
+      if (typeof ResizeObserver !== "undefined") {
+        observer = new ResizeObserver(measure);
+        observer.observe(paragraph);
+      }
+    } catch {
+      observer?.disconnect();
+      observer = null;
+    }
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [bio]);
+
+  return (
+    <section className="relative mb-8">
+      <h2 className="mb-1 font-medium">About</h2>
+      <p className={`whitespace-pre-line text-muted-foreground ${expanded ? "" : "line-clamp-4"} sm:line-clamp-none`}>{bio}</p>
+      <p ref={measurementRef} aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-6 -z-10 line-clamp-4 whitespace-pre-line opacity-0">{bio}</p>
+      {hasOverflow && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+    </section>
+  );
+}
+
 function EnquiryWidget({
   providerId,
   providerName,
@@ -108,6 +153,8 @@ function EnquiryWidget({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
   const [pendingValues, setPendingValues] = useState<EnquiryFormValues | null>(null);
+  const messageTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const focusMessageWhenOpenRef = useRef(false);
 
   const form = useForm<EnquiryFormValues>({
     resolver: zodResolver(enquirySchema),
@@ -119,6 +166,31 @@ function EnquiryWidget({
       form.reset({ message: initialMessage });
     }
   }, [form, initialMessage]);
+
+  useEffect(() => {
+    const handleActionBarEnquiry = () => {
+      const enquiry = document.getElementById("provider-enquiry");
+      const textarea = enquiry?.querySelector<HTMLTextAreaElement>("textarea");
+      if (textarea) {
+        focusMessageWhenOpenRef.current = false;
+        textarea.focus();
+        return;
+      }
+      focusMessageWhenOpenRef.current = true;
+      enquiry?.querySelector<HTMLButtonElement>("[data-enquiry-start]")?.click();
+    };
+    window.addEventListener("provider-profile:enquiry", handleActionBarEnquiry);
+    return () => window.removeEventListener("provider-profile:enquiry", handleActionBarEnquiry);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !focusMessageWhenOpenRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      messageTextareaRef.current?.focus();
+      focusMessageWhenOpenRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isOpen]);
 
   async function handleStart() {
     setErrorMessage(null);
@@ -261,7 +333,7 @@ function EnquiryWidget({
 
   if (!isOpen) {
     return (
-      <Button className="w-full" onClick={startEnquiry}>
+      <Button data-enquiry-start="true" className="w-full" onClick={startEnquiry}>
         Send enquiry
       </Button>
     );
@@ -283,6 +355,10 @@ function EnquiryWidget({
                   maxLength={2000}
                   placeholder="Tell the provider what you need and what you&apos;re looking for."
                   {...field}
+                  ref={(element) => {
+                    field.ref(element);
+                    messageTextareaRef.current = element;
+                  }}
                 />
               </FormControl>
               {(field.value?.length ?? 0) > 1600 && (
@@ -489,50 +565,36 @@ export default function ProviderProfileClient({ id }: Props) {
   const profile = Array.isArray(provider.profiles) ? provider.profiles[0] : provider.profiles;
   const name = provider.business_name || profile?.full_name || "Provider";
   const hasPin = provider.lat !== null && provider.lat !== undefined && provider.lng !== null && provider.lng !== undefined;
+  const categories = (provider.provider_categories ?? []).flatMap((providerCategory) => {
+    const category = Array.isArray(providerCategory.service_categories)
+      ? providerCategory.service_categories[0]
+      : providerCategory.service_categories;
+    return category ? [category.name] : [];
+  });
+  const showMobileActionBar = currentUserId !== provider.id;
+
+  function activateMobileEnquiry() {
+    const enquiry = document.getElementById("provider-enquiry");
+    if (!enquiry) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    enquiry.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+    window.dispatchEvent(new Event("provider-profile:enquiry"));
+  }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <div className="mb-6 flex items-start gap-4">
-        <Avatar
-          src={profile?.avatar_url}
-          name={name}
-          size={64}
-          className="h-16 w-16 shrink-0 rounded-full object-cover bg-muted"
-        />
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{name}</h1>
-            {provider.is_verified && <Badge variant="secondary">Credential verified</Badge>}
-          </div>
-          <p className="text-muted-foreground">
-            {provider.city} · {provider.years_experience ?? 0} yrs experience
-          </p>
-          {provider.review_count && provider.review_count > 0 ? (
-            <p className="mt-1 text-sm">
-              ★ {(provider.avg_rating ?? 0).toFixed(1)}{" "}
-              <span className="text-muted-foreground">({provider.review_count} reviews)</span>
-            </p>
-          ) : (
-            <p className="mt-1 text-sm text-muted-foreground">New on Assisto — no reviews yet</p>
-          )}
-        </div>
-      </div>
-
-      <div className="mb-6 flex flex-wrap gap-1">
-        {(provider.provider_categories ?? []).map((pc) => {
-          const category = Array.isArray(pc.service_categories)
-            ? pc.service_categories[0]
-            : pc.service_categories;
-
-          if (!category) return null;
-
-          return (
-            <Badge key={category.id} variant="outline">
-              {category.name}
-            </Badge>
-          );
-        })}
-      </div>
+    <div className={`mx-auto max-w-2xl px-4 pt-6 sm:py-10 ${showMobileActionBar ? "pb-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom)+5rem)]" : "pb-10"}`}>
+      <ProviderProfileHeader
+        name={name}
+        avatarUrl={profile?.avatar_url}
+        isVerified={provider.is_verified}
+        locality={provider.locality}
+        city={provider.city}
+        yearsExperience={provider.years_experience}
+        headline={provider.headline}
+        categories={categories}
+        avgRating={provider.avg_rating}
+        reviewCount={provider.review_count}
+      />
 
       {verifiedCredentials.length > 0 && (
         <section className="mb-8 rounded-lg border p-4">
@@ -549,12 +611,7 @@ export default function ProviderProfileClient({ id }: Props) {
         </section>
       )}
 
-      {provider.bio && (
-        <div className="mb-8">
-          <h2 className="mb-1 font-medium">About</h2>
-          <p className="whitespace-pre-line text-muted-foreground">{provider.bio}</p>
-        </div>
-      )}
+      {provider.bio && <ProviderBio bio={provider.bio} />}
 
       {(provider.city || provider.locality) && (
         <section className="mb-8 rounded-lg border p-4">
@@ -767,7 +824,7 @@ export default function ProviderProfileClient({ id }: Props) {
         )}
       </div>
 
-      <div className="rounded-lg border p-4">
+      <div id="provider-enquiry" className="rounded-lg border p-4">
         <p className="mb-3 text-sm text-muted-foreground">
           Contact details unlock once you send an enquiry and the provider confirms.
         </p>
@@ -862,6 +919,7 @@ export default function ProviderProfileClient({ id }: Props) {
 
       {/* Your history with this provider (only for authenticated users) */}
       <ProviderEnquiryHistory providerId={provider.id} />
+      {showMobileActionBar && <ProviderActionBar onActivate={activateMobileEnquiry} />}
     </div>
   );
 }
