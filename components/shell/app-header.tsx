@@ -9,6 +9,7 @@ import { useScrollDirection } from "@/hooks/use-scroll-direction";
 import HomeSearchBar from "@/components/search/home-search-bar";
 import AuthGatedLink from "@/components/auth/auth-gated-link";
 import { useAuthGate } from "@/components/auth/auth-sheet";
+import AdminLink from "@/components/shell/admin-link";
 
 type AppHeaderProps = {
   fullName?: string | null;
@@ -91,6 +92,7 @@ export default function AppHeader({ fullName, isLoggedIn }: AppHeaderProps) {
           </nav>}
 
           <div className="flex items-center gap-2">
+            <AdminLink />
             {isLoggedIn ? (
               <button
                 type="button"
