@@ -7,7 +7,7 @@ import type { ProviderListItem, ProviderPortfolioItem } from "@/lib/types";
 import { Avatar } from "@/components/avatar";
 import ProviderMediaStrip from "@/components/provider-media-strip";
 
-export function ProviderCard({ provider, requirement }: { provider: ProviderListItem; requirement?: string }) {
+export function ProviderCard({ provider, requirement, nearbyDistanceKm }: { provider: ProviderListItem; requirement?: string; nearbyDistanceKm?: number }) {
   const name = provider.profiles?.full_name ?? provider.business_name ?? "Provider";
   const profileHref = requirement ? `/providers/${provider.id}?requirement=${requirement}` : `/providers/${provider.id}`;
   const portfolioItems = ((provider.provider_portfolio_items ?? []) as ProviderPortfolioItem[]).filter(
@@ -58,9 +58,17 @@ export function ProviderCard({ provider, requirement }: { provider: ProviderList
 
       <CardFooter>
         <div className="flex w-full flex-col gap-1 text-sm text-muted-foreground">
-          <div>{provider.city}</div>
-          {provider.locality && <div>Based at {provider.locality}</div>
-          }
+          {nearbyDistanceKm === undefined ? (
+            <>
+              <div>{provider.city}</div>
+              {provider.locality && <div>Based at {provider.locality}</div>}
+            </>
+          ) : (
+            <>
+              {(provider.locality || provider.city) && <div>Based at {[provider.locality, provider.city].filter(Boolean).join(", ")}</div>}
+              <div>{nearbyDistanceKm < 1 ? "under 1 km away" : `about ${Math.round(nearbyDistanceKm)} km away`}</div>
+            </>
+          )}
           <Link
             href={profileHref}
             className={cn("mt-1 text-sm font-medium underline max-sm:hidden")}

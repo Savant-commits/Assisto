@@ -1,262 +1,233 @@
+import type { Metadata } from "next";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ProviderCard } from "@/components/provider-card";
 import ServicePicker from "@/components/service-picker";
 import type { ProviderListItem, ProviderPortfolioItem, ProviderProfile, ServiceCategory } from "@/lib/types";
 import { one } from "@/lib/relations";
+import { getSelectedLocation } from "@/lib/location/server";
 import DiscoverSearchToggle from "@/components/discover/discover-search-toggle";
 import DiscoverFilterStrip from "@/components/discover/discover-filter-strip";
+import DiscoverLocationChip from "@/components/discover/discover-location-chip";
+import { groupProviders, sameCity, type GeolocatedProvider } from "@/lib/discover/group-providers";
 
-type ProviderListRow = Omit<ProviderListItem, "profiles"> & {
+type ProviderListRow = GeolocatedProvider & {
   profiles?: ProviderProfile | ProviderProfile[] | null;
 };
+type SearchParams = { category?: string; city?: string; requirement?: string; service?: string; sort?: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 function isNullableString(value: unknown): boolean {
   return value === undefined || value === null || typeof value === "string";
 }
-
 function isNullableNumber(value: unknown): boolean {
   return value === undefined || value === null || typeof value === "number";
 }
-
 function isNullableBoolean(value: unknown): boolean {
   return value === undefined || value === null || typeof value === "boolean";
 }
-
 function isProviderProfile(value: unknown): value is ProviderProfile {
   return isRecord(value) &&
     (value.full_name === undefined || value.full_name === null || typeof value.full_name === "string") &&
     (value.avatar_url === undefined || value.avatar_url === null || typeof value.avatar_url === "string");
 }
-
 function isProviderPortfolioItem(value: unknown): value is ProviderPortfolioItem {
-  return isRecord(value) &&
-    typeof value.id === "string" &&
-    isNullableString(value.image_url) &&
-    isNullableString(value.caption) &&
-    isNullableString(value.description) &&
-    isNullableString(value.media_type) &&
-    isNullableNumber(value.sort_order) &&
-    isNullableString(value.created_at);
+  return isRecord(value) && typeof value.id === "string" && isNullableString(value.image_url) &&
+    isNullableString(value.caption) && isNullableString(value.description) && isNullableString(value.media_type) &&
+    isNullableNumber(value.sort_order) && isNullableString(value.created_at);
 }
-
 function isProviderListRow(value: unknown): value is ProviderListRow {
-  if (
-    !isRecord(value) ||
-    typeof value.id !== "string" ||
-    !isNullableString(value.business_name) ||
-    !isNullableString(value.headline) ||
-    !isNullableString(value.city) ||
-    !isNullableNumber(value.avg_rating) ||
-    !isNullableNumber(value.review_count) ||
-    !isNullableBoolean(value.is_verified)
-  ) return false;
-
+  if (!isRecord(value) || typeof value.id !== "string" ||
+    !isNullableString(value.business_name) || !isNullableString(value.headline) || !isNullableString(value.city) ||
+    !isNullableString(value.locality) || !isNullableNumber(value.lat) || !isNullableNumber(value.lng) ||
+    !isNullableNumber(value.avg_rating) || !isNullableNumber(value.review_count) || !isNullableBoolean(value.is_verified)) return false;
   const profiles = value.profiles;
   if (profiles != null && !(Array.isArray(profiles) ? profiles.every(isProviderProfile) : isProviderProfile(profiles))) return false;
-
   const portfolioItems = value.provider_portfolio_items;
   return portfolioItems == null || (Array.isArray(portfolioItems) && portfolioItems.every(isProviderPortfolioItem));
 }
-
 function isProviderListRows(value: unknown): value is ProviderListRow[] {
   return Array.isArray(value) && value.every(isProviderListRow);
 }
 
-const CITIES = ["Cuddalore", "Chidambaram"];
-
-function buildDiscoverUrl({ city, category, service, requirement, sort }: { city?: string; category?: string; service?: string; requirement?: string; sort?: string }) {
+function buildDiscoverUrl({ city, category, service, requirement, sort }: SearchParams) {
   const params = new URLSearchParams();
   if (city) params.set("city", city);
   if (category) params.set("category", category);
   if (service) params.set("service", service);
   if (requirement) params.set("requirement", requirement);
   if (sort && sort !== "recommended") params.set("sort", sort);
-  return `/discover?${params.toString()}`;
+  const query = params.toString();
+  return `/discover${query ? `?${query}` : ""}`;
 }
 
-export default async function DiscoverPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ category?: string; city?: string; requirement?: string; service?: string; sort?: string }>;
-}) {
-  const { category, city, requirement, service, sort } = await searchParams;
-  const selectedSort = sort === "top-rated" ? "top-rated" : "recommended";
+async function getMetadataNames(params: SearchParams) {
   const supabase = await createClient();
+  let categoryName: string | null = null;
+  let serviceName: string | null = null;
+  if (params.category) {
+    const { data } = await supabase.from("service_categories").select("slug, name").eq("slug", params.category).maybeSingle();
+    categoryName = typeof data?.name === "string" ? data.name : null;
+  }
+  if (params.service) {
+    const { data } = await supabase.from("services").select("slug, name").eq("slug", params.service).maybeSingle();
+    serviceName = typeof data?.name === "string" ? data.name : null;
+  }
+  return { categoryName, serviceName };
+}
 
-  const { data: categories } = await supabase
+export async function generateMetadata({ searchParams }: { searchParams: Promise<SearchParams> }): Promise<Metadata> {
+  const params = await searchParams;
+  const [location, names] = await Promise.all([getSelectedLocation(), getMetadataNames(params)]);
+  const city = params.city?.trim() || location.city?.trim() || location.locality || location.label;
+  const categoryName = params.category ? names.categoryName : null;
+  const filterName = params.category ? categoryName : (params.service ? names.serviceName : null);
+  const title = filterName
+    ? `${filterName} professionals in ${city} | Assisto`
+    : `Find a professional in ${city} | Assisto`;
+  const description = `Browse verified ${filterName ?? "home-service"} professionals near ${city}.`;
+  return { title, description };
+}
+
+export default async function DiscoverPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const params = await searchParams;
+  const { category, city, requirement, service, sort } = params;
+  const selectedSort = sort === "top-rated" ? "top-rated" : "recommended";
+  const [selectedLocation, supabase] = await Promise.all([getSelectedLocation(), createClient()]);
+  const effectiveCity = city?.trim() || selectedLocation.city?.trim() || selectedLocation.locality || selectedLocation.label;
+  const coordinatesMatchCity = !city || sameCity(city, selectedLocation.city);
+  const browsingCoordinates = coordinatesMatchCity && selectedLocation.lat !== null && selectedLocation.lng !== null
+    ? { lat: selectedLocation.lat, lng: selectedLocation.lng }
+    : null;
+
+  const { data: categoriesData, error: categoriesError } = await supabase
     .from("service_categories")
     .select("id, slug, name")
     .order("sort_order");
+  if (categoriesError) console.error("discover categories query failed", categoriesError);
+  const categories = (categoriesData ?? []) as ServiceCategory[];
 
-  // Resolve any explicit service filter to an id
-  let serviceRecord: { id?: number; slug?: string; name?: string; category_id?: number } | null = null;
+  let serviceRecord: { id: number; slug: string; name: string; category_id: number } | null = null;
   if (service) {
-    const { data: svc } = await supabase
+    const { data: serviceData, error: serviceError } = await supabase
       .from("services")
       .select("id,slug,name,category_id")
       .eq("slug", service)
       .maybeSingle();
-    if (svc) serviceRecord = svc;
+    if (serviceError) console.error("discover service lookup failed", serviceError);
+    if (serviceData) serviceRecord = serviceData;
   }
 
-  // If we will filter by service (explicit or via auto-matching), include a provider_services inner join in the select
   let includeProviderServices = Boolean(serviceRecord);
-
   const providerCategoriesSelect = category
     ? "provider_categories!inner ( service_categories ( id, slug, name ) )"
     : "provider_categories ( service_categories ( id, slug, name ) )";
-
   const querySelect =
-    `id, business_name, headline, city, locality, avg_rating, review_count, is_verified,
-         profiles ( full_name, avatar_url ),
-         ${providerCategoriesSelect},
-         provider_portfolio_items ( id, image_url, description, media_type, sort_order, created_at )`;
+    `id, business_name, headline, city, locality, lat, lng, avg_rating, review_count, is_verified,
+     profiles ( full_name, avatar_url ), ${providerCategoriesSelect},
+     provider_portfolio_items ( id, image_url, description, media_type, sort_order, created_at )`;
 
-  // Matched service ids from requirement auto-matching
   let matchedServiceIds: number[] = [];
-
-  // If a requirement id is present, attempt to match providers by the
-  // requirement's city and by any service names mentioned in the description.
-  // Only run auto-matching when there is a requirement param AND no explicit service param.
-  let reqData: { id?: string | number; title?: string | null; description?: string | null; city?: string | null } | null = null;
   if (requirement && !service) {
-    const { data: req } = await supabase
+    const { data: req, error: requirementError } = await supabase
       .from("customer_requirements")
-      .select("id, title, description, city")
+      .select("id, title, description")
       .eq("id", requirement)
       .single();
-    reqData = req;
+    if (requirementError) console.error("discover requirement lookup failed", requirementError);
     if (req?.description) {
-      const { data: allServices } = await supabase.from("services").select("id,slug,name").eq("is_active", true);
-      const matchedServices = (allServices || []).filter((s: { id: number; name?: string | null }) =>
-        req.description.toLowerCase().includes((s.name || "").toLowerCase())
-      );
-      matchedServiceIds = matchedServices.map((m: { id: number }) => m.id).filter(Boolean);
+      const { data: allServices, error: allServicesError } = await supabase
+        .from("services")
+        .select("id,slug,name")
+        .eq("is_active", true);
+      if (allServicesError) console.error("discover service matching query failed", allServicesError);
+      const normalizedDescription = req.description.toLocaleLowerCase();
+      matchedServiceIds = (allServices ?? [])
+        .filter((entry: { id: number; name?: string | null }) => Boolean(entry.name) && normalizedDescription.includes(entry.name!.toLocaleLowerCase()))
+        .map((entry: { id: number }) => entry.id)
+        .filter(Boolean);
       if (matchedServiceIds.length) includeProviderServices = true;
     }
   }
 
-  // Build final select including provider_services join when required
-  const finalSelect = includeProviderServices ? querySelect + ", provider_services!inner ( service_id )" : querySelect;
+  const finalSelect = includeProviderServices ? `${querySelect}, provider_services!inner ( service_id )` : querySelect;
+  let providerQuery = supabase.from("providers").select(finalSelect).eq("is_active", true);
+  providerQuery = providerQuery.order("sort_order", { foreignTable: "provider_portfolio_items", ascending: true });
+  providerQuery = providerQuery.order("created_at", { foreignTable: "provider_portfolio_items", ascending: true });
+  providerQuery = providerQuery.limit(60);
 
-  let query = supabase.from("providers").select(finalSelect).eq("is_active", true);
-  query = query.order("sort_order", { foreignTable: "provider_portfolio_items", ascending: true });
-  query = query.order("created_at", { foreignTable: "provider_portfolio_items", ascending: true });
-
-  // Apply city filter: explicit param or requirement's city (explicit city wins)
-  if (city) query = query.eq("city", city);
-  else if (reqData?.city) query = query.eq("city", reqData.city);
-
-  // Category filter
   if (category) {
-    const selectedCategory = (categories as ServiceCategory[] | null | undefined)?.find((c) => c.slug === category);
-    if (selectedCategory) {
-      query = query.eq("provider_categories.category_id", selectedCategory.id);
-    }
+    const selectedCategory = categories.find((entry) => entry.slug === category);
+    if (selectedCategory) providerQuery = providerQuery.eq("provider_categories.category_id", selectedCategory.id);
   }
+  if (serviceRecord) providerQuery = providerQuery.eq("provider_services.service_id", serviceRecord.id);
+  if (matchedServiceIds.length) providerQuery = providerQuery.in("provider_services.service_id", matchedServiceIds);
 
-  // Apply explicit service filter
-  if (serviceRecord) {
-    query = query.eq("provider_services.service_id", serviceRecord.id);
-  }
-
-  // Apply matched service ids from requirement auto-matching
-  if (matchedServiceIds.length) {
-    query = query.in("provider_services.service_id", matchedServiceIds as number[]);
-  }
-
-  const { data: providers } = await query;
-  const providerResult: unknown = providers;
-  const providerRows = isProviderListRows(providerResult) ? providerResult : [];
-  const sortedProviders: ProviderListItem[] = providerRows.map((row) => ({
-    ...row,
-    profiles: one(row.profiles),
-  })).sort((a, b) => {
+  const { data: providerData, error: providerError } = await providerQuery;
+  if (providerError) console.error("discover providers query failed", providerError);
+  const providerRows: ProviderListRow[] = isProviderListRows(providerData)
+    ? providerData as unknown as ProviderListRow[]
+    : [];
+  const normalizedProviders = providerRows.map((row) => ({ ...row, profiles: one(row.profiles) }));
+  const { local, nearby } = groupProviders(normalizedProviders, effectiveCity, browsingCoordinates);
+  const sortedLocal: GeolocatedProvider[] = [...local].sort((a, b) => {
     if (selectedSort === "recommended") {
-      const usableMedia = (provider: ProviderListItem) =>
-        (provider.provider_portfolio_items ?? []).some(
-          (item) => typeof item.image_url === "string" && item.image_url.trim().length > 0
-        );
-      const score = (provider: ProviderListItem) =>
-        (provider.is_verified === true ? 1 : 0) + (usableMedia(provider) ? 1 : 0);
+      const usableMedia = (provider: ProviderListItem) => (provider.provider_portfolio_items ?? []).some(
+        (item) => typeof item.image_url === "string" && item.image_url.trim().length > 0,
+      );
+      const score = (provider: ProviderListItem) => (provider.is_verified === true ? 1 : 0) + (usableMedia(provider) ? 1 : 0);
       return score(b) - score(a);
     }
-
-    if (selectedSort !== "top-rated") return 0;
-
     const aCount = Number(a.review_count ?? 0);
     const bCount = Number(b.review_count ?? 0);
     const aRating = Number(a.avg_rating ?? 0);
     const bRating = Number(b.avg_rating ?? 0);
-
-    if (aCount === 0 && bCount === 0) return (bRating ?? 0) - (aRating ?? 0);
+    if (aCount === 0 && bCount === 0) return bRating - aRating;
     if (aCount === 0) return 1;
     if (bCount === 0) return -1;
-    if (bRating !== aRating) return (bRating ?? 0) - (aRating ?? 0);
+    if (bRating !== aRating) return bRating - aRating;
     return bCount - aCount;
   });
 
-  const cityFilterItems = CITIES.map((c) => {
-    const isActive = city === c;
+  const categoryFilterItems = categories.map((entry) => {
+    const active = category === entry.slug;
     return {
-      slug: c,
-      name: c,
-      active: isActive,
-      href: buildDiscoverUrl({ city: isActive ? undefined : c, category, service, requirement, sort: selectedSort }),
+      slug: entry.slug,
+      name: entry.name,
+      active,
+      href: buildDiscoverUrl({ ...params, category: active ? undefined : entry.slug, sort: selectedSort }),
     };
   });
-
-  const categoryFilterItems = ((categories as ServiceCategory[] | null) ?? []).map((cat) => {
-    const isActive = category === cat.slug;
-    return {
-      slug: cat.slug,
-      name: cat.name,
-      active: isActive,
-      href: buildDiscoverUrl({ city, category: isActive ? undefined : cat.slug, service, requirement, sort: selectedSort }),
-    };
-  });
+  const sortHref = buildDiscoverUrl({ ...params, sort: selectedSort === "top-rated" ? undefined : "top-rated" });
+  const clearFiltersHref = buildDiscoverUrl({ city, requirement, sort: selectedSort });
+  const queryError = Boolean(categoriesError || providerError);
+  const retryHref = buildDiscoverUrl({ ...params, sort: selectedSort });
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="sm:hidden">
+      <div className="sm:hidden [&>div>p]:hidden">
         <DiscoverSearchToggle city={city} category={category} requirement={requirement} />
+        <p className="mb-3 text-sm text-muted-foreground">Browse verified professionals near {effectiveCity}.</p>
       </div>
-
       <h1 className="mb-1 hidden text-2xl font-semibold sm:block">Find a professional</h1>
-      <p className="mb-6 hidden text-muted-foreground sm:block">
-        Browse verified professionals in Cuddalore and Chidambaram.
-      </p>
+      <p className="mb-6 hidden text-muted-foreground sm:block">Browse verified professionals near {effectiveCity}.</p>
 
       <DiscoverFilterStrip
-        cities={cityFilterItems}
+        locationChip={<DiscoverLocationChip variant="mobile" />}
         categories={categoryFilterItems}
         sort={selectedSort}
-        sortHref={buildDiscoverUrl({ city, category, service, requirement, sort: selectedSort === "top-rated" ? undefined : "top-rated" })}
+        sortHref={sortHref}
       />
 
       <div className="mb-6 hidden flex-wrap items-center gap-2 sm:flex">
+        <DiscoverLocationChip variant="desktop" />
         <div className="mb-2 w-full sm:mb-0 sm:w-auto">
           <ServicePicker initialSlug={service} category={category} city={city} requirement={requirement} />
         </div>
-        {cityFilterItems.map((item) => (
-          <a
-            key={item.slug}
-            href={item.href}
-            className={`rounded-full border px-3 py-1 text-sm ${item.active ? "bg-foreground text-background" : ""}`}
-          >
-            {item.name}
-          </a>
-        ))}
         {categoryFilterItems.map((item) => (
-          <a
-            key={item.slug}
-            href={item.href}
-            className={`rounded-full border px-3 py-1 text-sm ${item.active ? "bg-foreground text-background" : ""}`}
-          >
+          <a key={item.slug} href={item.href} className={`rounded-full border px-3 py-1 text-sm ${item.active ? "bg-foreground text-background" : ""}`}>
             {item.name}
           </a>
         ))}
@@ -266,13 +237,9 @@ export default async function DiscoverPage({
             { value: "recommended", label: "Recommended" },
             { value: "top-rated", label: "Top rated" },
           ].map((option) => {
-            const isActive = selectedSort === option.value;
+            const active = selectedSort === option.value;
             return (
-              <a
-                key={option.value}
-                href={buildDiscoverUrl({ city, category, service, requirement, sort: isActive ? undefined : option.value })}
-                className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
-              >
+              <a key={option.value} href={buildDiscoverUrl({ ...params, sort: active ? undefined : option.value })} className={`rounded-full border px-3 py-1 text-sm ${active ? "bg-foreground text-background" : ""}`}>
                 {option.label}
               </a>
             );
@@ -280,20 +247,41 @@ export default async function DiscoverPage({
         </div>
       </div>
 
-      {!sortedProviders.length ? (
-        <p className="text-muted-foreground">
-          No professionals match yet. Try a different filter, or{" "}
-          <a href="/requirements/new" className="underline">
-            post what you need
-          </a>{" "}
-          and we&apos;ll help you find someone.
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sortedProviders.map((p) => (
-            <ProviderCard key={p.id} provider={p} requirement={requirement} />
-          ))}
+      {queryError ? (
+        <div role="alert" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-soft">
+          <p className="font-medium">We couldn&apos;t load professionals right now.</p>
+          <Link href={retryHref} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Try again</Link>
         </div>
+      ) : local.length === 0 && nearby.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-card px-5 py-8 text-card-foreground">
+          <p>No professionals match yet in {effectiveCity} or nearby.</p>
+          <Link href="/requirements/new" className="mt-3 inline-flex min-h-11 items-center rounded-full px-1 font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Post what you need and we&apos;ll help you find someone
+          </Link>
+          {(category || service) && <Link href={clearFiltersHref} className="ml-4 inline-flex min-h-11 items-center rounded-full px-1 text-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Clear filters</Link>}
+        </div>
+      ) : (
+        <>
+          {local.length > 0 && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {sortedLocal.map((provider) => <ProviderCard key={provider.id} provider={provider} requirement={requirement} />)}
+            </div>
+          )}
+          {local.length === 0 && nearby.length > 0 && (
+            <div className="mb-5 rounded-2xl border border-border bg-muted/60 p-4 text-sm text-foreground">
+              No professionals in {effectiveCity} match yet. Here are professionals from nearby areas.
+            </div>
+          )}
+          {nearby.length > 0 && (
+            <section aria-labelledby="nearby-areas-heading" className={local.length > 0 ? "mt-10" : ""}>
+              <h2 id="nearby-areas-heading" className="text-xl font-semibold">Nearby areas</h2>
+              <p className="mt-1 mb-4 text-sm text-muted-foreground">Professionals from surrounding areas. Distances are approximate.</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {nearby.map(({ provider, distanceKm }) => <ProviderCard key={provider.id} provider={provider} requirement={requirement} nearbyDistanceKm={distanceKm} />)}
+              </div>
+            </section>
+          )}
+        </>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 type FilterItem = {
   slug: string;
@@ -10,12 +10,12 @@ type FilterItem = {
 };
 
 export default function DiscoverFilterStrip({
-  cities,
+  locationChip,
   categories,
   sort,
   sortHref,
 }: {
-  cities: FilterItem[];
+  locationChip: ReactNode;
   categories: FilterItem[];
   sort: "recommended" | "top-rated";
   sortHref: string;
@@ -37,23 +37,9 @@ export default function DiscoverFilterStrip({
   return (
     <div className="mb-6 flex min-w-0 items-center gap-2 sm:hidden">
       <div className="relative min-w-0 flex-1">
-        <div
-          ref={stripRef}
-          className="scrollbar-none flex snap-x snap-mandatory flex-nowrap items-center gap-2 overflow-x-auto pr-5"
-        >
-          {cities.map((item) => (
-            <a
-              key={item.slug}
-              href={item.href}
-              data-active={item.active ? "true" : "false"}
-              className={`shrink-0 snap-start rounded-full border px-3 py-1 text-sm ${item.active ? "bg-foreground text-background" : ""}`}
-            >
-              {item.name}
-            </a>
-          ))}
-          {categories.length > 0 && (
-            <span aria-hidden="true" className="mx-1 h-5 shrink-0 border-l border-border" />
-          )}
+        <div ref={stripRef} className="scrollbar-none flex snap-x snap-mandatory flex-nowrap items-center gap-2 overflow-x-auto pr-5">
+          {locationChip}
+          {categories.length > 0 && <span aria-hidden="true" className="mx-1 h-5 shrink-0 border-l border-border" />}
           {categories.map((item) => (
             <a
               key={item.slug}
