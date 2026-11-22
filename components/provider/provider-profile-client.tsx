@@ -7,7 +7,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { BadgeCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -23,6 +25,7 @@ import ProviderProfileHeader from "@/components/provider/provider-profile-header
 import ProviderActionBar from "@/components/provider/provider-action-bar";
 import ProviderWorkSection from "@/components/provider/provider-work-section";
 import ProviderLocationSection from "@/components/provider/provider-location-section";
+import ProviderReviewsSection from "@/components/provider/provider-reviews-section";
 
 type Props = { id: string };
 
@@ -77,6 +80,27 @@ type VerifiedCredential = {
   issuing_body: string;
   verified_at: string;
 };
+
+function VerifiedCredentialsSection({ credentials, className }: { credentials: VerifiedCredential[]; className?: string }) {
+  if (credentials.length === 0) return null;
+  return (
+    <section className={`mb-[var(--section-gap)] rounded-2xl border border-border bg-card p-4 text-card-foreground ${className ?? ""}`}>
+      <h2 className="mb-4 flex items-center gap-2 font-display text-xl text-foreground">
+        <BadgeCheck aria-hidden="true" className="size-5 text-primary" />
+        Verified credentials
+      </h2>
+      <ul className="space-y-3">
+        {credentials.map((credential, index) => (
+          <li key={`${credential.type_label}-${credential.verified_at}-${index}`} className="rounded-xl border border-border bg-background/70 p-3 text-sm">
+            <p className="font-medium">{credential.type_label} — {credential.issuing_body}</p>
+            <p className="text-xs text-muted-foreground">Document checked by Assisto on {formatDateTime(credential.verified_at)}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-muted-foreground">Assisto checks that a document was issued to this person. It does not guarantee the quality of their work.</p>
+    </section>
+  );
+}
 
 function logSupabaseError(context: string, error: { message: string; details?: string; hint?: string; code?: string }) {
   console.error(context, error.message, error.details, error.hint, error.code);
@@ -390,6 +414,7 @@ function EnquiryWidget({
 }
 
 export default function ProviderProfileClient({ id }: Props) {
+  const { isAuthenticated, requireAuth } = useAuthGate();
   const searchParams = useSearchParams();
   const requirementId = searchParams.get("requirement") || undefined;
   const supabase = useMemo(() => createClient(), []);
@@ -579,6 +604,66 @@ export default function ProviderProfileClient({ id }: Props) {
     window.dispatchEvent(new Event("provider-profile:enquiry"));
   }
 
+  function renderReviewReport(review: ProviderReview) {
+    return (
+      <span
+        onClickCapture={(event) => {
+          if (isAuthenticated) return;
+          const target = event.target;
+          const reportButton = target instanceof Element ? target.closest<HTMLButtonElement>("button") : null;
+          if (!reportButton) return;
+          event.preventDefault();
+          event.stopPropagation();
+          requireAuth(() => reportButton.click(), "to report a review");
+        }}
+      >
+        <ReportDialog
+          reportableType="review"
+          reportableId={review.id}
+          triggerLabel="Report"
+          onSuccess={() => setReportedReviews((previous) => new Set([...previous, review.id]))}
+        />
+      </span>
+    );
+  }
+
+  const reviewAction = currentUserId && !isCurrentUserProvider && eligibleReviewEnquiries.length > 0 ? (
+    <div className="w-full max-w-xs">
+      {eligibleReviewEnquiries.length === 1 ? (
+        <Button type="button" className="w-full" onClick={() => setReviewModalEnquiryId(eligibleReviewEnquiries[0].id)}>
+          Leave a review
+        </Button>
+      ) : (
+        <div className="space-y-2">
+          <Button type="button" className="w-full" onClick={() => setReviewPickerOpen((current) => !current)}>
+            Leave a review
+          </Button>
+          {reviewPickerOpen && (
+            <div className="rounded-md border border-border bg-background p-3 text-left shadow-soft">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Choose the completed job</p>
+              <div className="space-y-2">
+                {eligibleReviewEnquiries.map((enquiry) => (
+                  <button
+                    key={enquiry.id}
+                    type="button"
+                    onClick={() => {
+                      setReviewPickerOpen(false);
+                      setReviewModalEnquiryId(enquiry.id);
+                    }}
+                    className="w-full rounded-md border border-border bg-muted/30 p-2 text-left transition hover:bg-muted/50"
+                  >
+                    <div className="text-sm font-medium">{enquiry.customer_requirements?.description || "Completed project"}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Completed {formatDateTime(enquiry.customer_completed_at ?? enquiry.updated_at)}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className={`mx-auto max-w-2xl px-4 pt-6 ${showMobileActionBar ? "pb-[calc(5rem+env(safe-area-inset-bottom))]" : "pb-10"} sm:py-10`}>
       <ProviderProfileHeader
@@ -594,24 +679,9 @@ export default function ProviderProfileClient({ id }: Props) {
         reviewCount={provider.review_count}
       />
 
-      {verifiedCredentials.length > 0 && (
-        <section className="mb-8 rounded-lg border p-4">
-          <h2 className="mb-3 font-medium">Verified credentials</h2>
-          <ul className="space-y-3">
-            {verifiedCredentials.map((credential, index) => (
-              <li key={`${credential.type_label}-${credential.verified_at}-${index}`} className="text-sm">
-                <p className="font-medium">{credential.type_label} — {credential.issuing_body}</p>
-                <p className="text-xs text-muted-foreground">Document checked by Assisto on {formatDateTime(credential.verified_at)}</p>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-muted-foreground">Assisto checks that a document was issued to this person. It does not guarantee the quality of their work.</p>
-        </section>
-      )}
+      <VerifiedCredentialsSection credentials={verifiedCredentials} className="hidden sm:block" />
 
       {provider.bio && <ProviderBio bio={provider.bio} />}
-
-      <ProviderLocationSection locality={provider.locality} city={provider.city} businessName={name} />
 
       <ProviderWorkSection
         items={provider.provider_portfolio_items ?? []}
@@ -621,6 +691,9 @@ export default function ProviderProfileClient({ id }: Props) {
         sortDirection={sortDirection}
         isOwner={currentUserId === provider.id}
       />
+
+      <ProviderLocationSection locality={provider.locality} city={provider.city} businessName={name} />
+      <VerifiedCredentialsSection credentials={verifiedCredentials} className="sm:hidden" />
 
       <div className="max-sm:hidden">
       {(provider.provider_portfolio_items ?? []).length > 0 && (
@@ -731,7 +804,7 @@ export default function ProviderProfileClient({ id }: Props) {
                         </div>
 
                         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-foreground">
-                          <span className="rounded-full bg-background/80 p-2 shadow-sm backdrop-blur-sm">
+                          <span className="rounded-full bg-background/80 p-2 shadow-soft backdrop-blur-sm">
                             <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-[2]" aria-hidden="true">
                               <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
@@ -774,12 +847,20 @@ export default function ProviderProfileClient({ id }: Props) {
       )}
       </div>
 
-      <div className="mb-8">
+      <ProviderReviewsSection
+        reviews={reviews}
+        avgRating={provider.avg_rating}
+        reviewCount={provider.review_count}
+        reviewAction={reviewAction}
+        renderReport={renderReviewReport}
+      />
+
+      <div className="mb-8 max-sm:hidden">
         <h2 className="mb-2 font-medium">Reviews</h2>
         {provider.review_count && provider.review_count > 0 ? (
           <>
             <div className="mb-4 text-sm">
-              <span className="text-yellow-500">★</span>
+              <span className="text-primary">★</span>
               <span className="ml-1 font-medium">{(provider.avg_rating ?? 0).toFixed(1)}</span>
               <span className="ml-2 text-muted-foreground">({provider.review_count} {provider.review_count === 1 ? "review" : "reviews"})</span>
             </div>
@@ -791,7 +872,7 @@ export default function ProviderProfileClient({ id }: Props) {
                 return (
                   <div key={review.id} className="rounded-md border border-muted p-3">
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <div className="text-yellow-500">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
+                      <div className="text-primary">{"★".repeat(review.rating)}<span className="text-muted-foreground/50">{"☆".repeat(5 - review.rating)}</span></div>
                       <div className="flex items-center gap-2">
                         <div className="text-xs text-muted-foreground">{formatDateTime(review.created_at)}</div>
                         {isReported ? (
@@ -799,12 +880,7 @@ export default function ProviderProfileClient({ id }: Props) {
                             Reported
                           </button>
                         ) : (
-                          <ReportDialog
-                            reportableType="review"
-                            reportableId={review.id}
-                            triggerLabel="Report"
-                            onSuccess={() => setReportedReviews((prev) => new Set([...prev, review.id]))}
-                          />
+                          renderReviewReport(review)
                         )}
                       </div>
                     </div>
@@ -838,54 +914,8 @@ export default function ProviderProfileClient({ id }: Props) {
         )}
       </div>
 
-      <div className="mt-4 flex flex-col items-center gap-3">
-        {currentUserId && !isCurrentUserProvider && eligibleReviewEnquiries.length > 0 && (
-          <div className="w-full max-w-xs">
-            {eligibleReviewEnquiries.length === 1 ? (
-              <Button
-                type="button"
-                className="w-full"
-                onClick={() => setReviewModalEnquiryId(eligibleReviewEnquiries[0].id)}
-              >
-                Leave a review
-              </Button>
-            ) : (
-              <div className="space-y-2">
-                <Button type="button" className="w-full" onClick={() => setReviewPickerOpen((current) => !current)}>
-                  Leave a review
-                </Button>
-                {reviewPickerOpen && (
-                  <div className="rounded-md border border-muted bg-background p-3 text-left shadow-sm">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Choose the completed job
-                    </p>
-                    <div className="space-y-2">
-                      {eligibleReviewEnquiries.map((enquiry) => (
-                        <button
-                          key={enquiry.id}
-                          type="button"
-                          onClick={() => {
-                            setReviewPickerOpen(false);
-                            setReviewModalEnquiryId(enquiry.id);
-                          }}
-                          className="w-full rounded-md border border-muted bg-muted/30 p-2 text-left transition hover:bg-muted/50"
-                        >
-                          <div className="text-sm font-medium">
-                            {enquiry.customer_requirements?.description || "Completed project"}
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            Completed {formatDateTime(enquiry.customer_completed_at ?? enquiry.updated_at)}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
+      <div className="mt-4 flex flex-col items-center gap-3 max-sm:hidden">
+        {reviewAction}
         {profileReported ? (
           <button disabled className="text-xs text-muted-foreground">
             Reported
@@ -999,15 +1029,15 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
               <div className="text-muted-foreground">{h.created_at ? new Date(h.created_at).toLocaleDateString() : ""}</div>
               <div className="mx-4 flex-1 truncate">{h.message}</div>
               <div>
-                <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                <Badge variant={
                   h.status === "accepted" || h.status === "confirmed"
-                    ? "bg-green-100 text-green-800"
+                    ? "secondary"
                     : h.status === "declined" || h.status === "cancelled"
-                    ? "bg-red-100 text-red-800"
+                    ? "destructive"
                     : h.status === "completed"
-                    ? "bg-blue-100 text-blue-800"
-                    : "bg-gray-100 text-gray-800"
-                }`}>{h.status}</span>
+                    ? "default"
+                    : "outline"
+                }>{h.status}</Badge>
               </div>
             </div>
             {h.status === "accepted" && (
@@ -1015,7 +1045,7 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
                 <button
                   onClick={() => updateStatus(h.id, "confirmed")}
                   disabled={!!pendingMap[h.id]}
-                  className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                  className="rounded-md bg-primary px-3 py-1 text-sm text-primary-foreground disabled:opacity-60"
                 >
                   {pendingMap[h.id] ? "Confirming…" : "Confirm"}
                 </button>
@@ -1029,7 +1059,7 @@ function ProviderEnquiryHistory({ providerId }: { providerId: string }) {
         ))}
       </div>
       <div className="mt-3">
-        <Link href="/enquiries" className="text-sm text-blue-600 underline">
+        <Link href="/enquiries" className="text-sm text-primary underline">
           View all my enquiries
         </Link>
       </div>
