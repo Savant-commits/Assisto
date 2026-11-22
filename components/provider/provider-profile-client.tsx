@@ -16,13 +16,13 @@ import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { ReportDialog } from "@/components/report-dialog";
 import { ReviewModal } from "@/components/review-modal";
 import { friendlyDbError } from "@/lib/db-errors";
-import { LocationMap } from "@/components/map/location-map";
 import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib/reviews";
 import { useAuthGate } from "@/components/auth/auth-sheet";
 import ProviderProfileSkeleton from "@/components/provider/provider-profile-skeleton";
 import ProviderProfileHeader from "@/components/provider/provider-profile-header";
 import ProviderActionBar from "@/components/provider/provider-action-bar";
 import ProviderWorkSection from "@/components/provider/provider-work-section";
+import ProviderLocationSection from "@/components/provider/provider-location-section";
 
 type Props = { id: string };
 
@@ -40,8 +40,6 @@ type ProviderRecord = {
   years_experience: number | null;
   city: string | null;
   locality: string | null;
-  lat: number | null;
-  lng: number | null;
   is_verified: boolean | null;
   avg_rating: number | null;
   review_count: number | null;
@@ -449,7 +447,7 @@ export default function ProviderProfileClient({ id }: Props) {
       const { data: providerData, error: providerError } = await supabase
         .from("providers")
         .select(
-          `id, business_name, headline, bio, years_experience, city, locality, lat, lng, is_verified,
+          `id, business_name, headline, bio, years_experience, city, locality, is_verified,
            avg_rating, review_count,
            profiles!providers_id_fkey ( full_name, avatar_url ),
            provider_categories ( service_categories ( id, name ) ),
@@ -565,7 +563,6 @@ export default function ProviderProfileClient({ id }: Props) {
 
   const profile = Array.isArray(provider.profiles) ? provider.profiles[0] : provider.profiles;
   const name = provider.business_name || profile?.full_name || "Provider";
-  const hasPin = provider.lat !== null && provider.lat !== undefined && provider.lng !== null && provider.lng !== undefined;
   const categories = (provider.provider_categories ?? []).flatMap((providerCategory) => {
     const category = Array.isArray(providerCategory.service_categories)
       ? providerCategory.service_categories[0]
@@ -614,20 +611,7 @@ export default function ProviderProfileClient({ id }: Props) {
 
       {provider.bio && <ProviderBio bio={provider.bio} />}
 
-      {(provider.city || provider.locality) && (
-        <section className="mb-8 rounded-lg border p-4">
-          <h2 className="mb-2 font-medium">Where they work</h2>
-          <div className="space-y-1 text-sm text-muted-foreground">
-            {provider.city && <p>City: {provider.city}</p>}
-            {provider.locality && <p>Based at {provider.locality}</p>}
-          </div>
-          {hasPin && provider.lat !== null && provider.lng !== null && (
-            <div className="mt-3">
-              <LocationMap lat={provider.lat} lng={provider.lng} height={220} />
-            </div>
-          )}
-        </section>
-      )}
+      <ProviderLocationSection locality={provider.locality} city={provider.city} businessName={name} />
 
       <ProviderWorkSection
         items={provider.provider_portfolio_items ?? []}
