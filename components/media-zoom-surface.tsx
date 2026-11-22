@@ -18,19 +18,19 @@ export default function MediaZoomSurface({ children, rotated = false, onZoomChan
   const gestureRef = React.useRef<{ distance: number; zoom: number; panX: number; panY: number; pointX: number; pointY: number } | null>(null);
   const lastTapRef = React.useRef(0);
   const singleTapTimerRef = React.useRef<number | null>(null);
-  const [zoom, setZoom] = React.useState(1);
-  const [pan, setPan] = React.useState({ x: 0, y: 0 });
+  const [transform, setTransform] = React.useState({ resetKey, zoom: 1, pan: { x: 0, y: 0 } });
+  const stateMatchesKey = transform.resetKey === resetKey;
+  const zoom = externalZoom ?? (stateMatchesKey ? transform.zoom : 1);
+  const pan = zoom === 1 || !stateMatchesKey ? { x: 0, y: 0 } : transform.pan;
 
   const clearSingleTap = React.useCallback(() => {
     if (singleTapTimerRef.current !== null) window.clearTimeout(singleTapTimerRef.current);
   }, []);
 
   React.useEffect(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
     pointersRef.current.clear();
-    onZoomChange?.(1);
-  }, [resetKey, onZoomChange]);
+    gestureRef.current = null;
+  }, [resetKey]);
 
   React.useEffect(() => () => clearSingleTap(), [clearSingleTap]);
 
@@ -44,12 +44,6 @@ export default function MediaZoomSurface({ children, rotated = false, onZoomChan
       y: Math.max(-overflowY, Math.min(overflowY, nextPan.y)),
     };
   }, []);
-
-  React.useEffect(() => {
-    if (externalZoom === undefined) return;
-    setZoom(externalZoom);
-    setPan((current) => clampPan(externalZoom, externalZoom === 1 ? { x: 0, y: 0 } : current));
-  }, [externalZoom, clampPan]);
 
   function mapPoint(clientX: number, clientY: number) {
     if (!rotated) return { x: clientX, y: clientY };
@@ -67,8 +61,12 @@ export default function MediaZoomSurface({ children, rotated = false, onZoomChan
     if (bounded > 1 && point && rect) {
       nextPan = { x: -(point.x - rect.left) * (bounded - 1), y: -(point.y - rect.top) * (bounded - 1) };
     }
-    setZoom(bounded);
-    setPan(clampPan(bounded, nextPan));
+    const nextTransform = {
+      resetKey,
+      zoom: bounded,
+      pan: clampPan(bounded, nextPan),
+    };
+    setTransform(nextTransform);
     onZoomChange?.(bounded);
   }
 
@@ -95,13 +93,20 @@ export default function MediaZoomSurface({ children, rotated = false, onZoomChan
       const values = [...pointersRef.current.values()];
       const distance = Math.hypot(values[1].x - values[0].x, values[1].y - values[0].y);
       const nextZoom = Math.max(1, Math.min(4, gestureRef.current.zoom * distance / Math.max(gestureRef.current.distance, 1)));
-      setZoom(nextZoom);
-      setPan(clampPan(nextZoom, gestureRef.current.panX === 0 ? { x: 0, y: 0 } : { x: gestureRef.current.panX, y: gestureRef.current.panY }));
+      setTransform({
+        resetKey,
+        zoom: nextZoom,
+        pan: clampPan(nextZoom, gestureRef.current.panX === 0 ? { x: 0, y: 0 } : { x: gestureRef.current.panX, y: gestureRef.current.panY }),
+      });
       onZoomChange?.(nextZoom);
     } else if (pointersRef.current.size === 1 && zoom > 1 && gestureRef.current) {
       const deltaX = point.x - gestureRef.current.pointX;
       const deltaY = point.y - gestureRef.current.pointY;
-      setPan(clampPan(zoom, { x: gestureRef.current.panX + deltaX, y: gestureRef.current.panY + deltaY }));
+      setTransform({
+        resetKey,
+        zoom,
+        pan: clampPan(zoom, { x: gestureRef.current.panX + deltaX, y: gestureRef.current.panY + deltaY }),
+      });
     }
   }
 
