@@ -22,6 +22,7 @@ import { useAuthGate } from "@/components/auth/auth-sheet";
 import ProviderProfileSkeleton from "@/components/provider/provider-profile-skeleton";
 import ProviderProfileHeader from "@/components/provider/provider-profile-header";
 import ProviderActionBar from "@/components/provider/provider-action-bar";
+import ProviderWorkSection from "@/components/provider/provider-work-section";
 
 type Props = { id: string };
 
@@ -582,7 +583,7 @@ export default function ProviderProfileClient({ id }: Props) {
   }
 
   return (
-    <div className={`mx-auto max-w-2xl px-4 pt-6 sm:py-10 ${showMobileActionBar ? "pb-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom)+5rem)]" : "pb-10"}`}>
+    <div className={`mx-auto max-w-2xl px-4 pt-6 ${showMobileActionBar ? "pb-[calc(5rem+env(safe-area-inset-bottom))]" : "pb-10"} sm:py-10`}>
       <ProviderProfileHeader
         name={name}
         avatarUrl={profile?.avatar_url}
@@ -628,6 +629,16 @@ export default function ProviderProfileClient({ id }: Props) {
         </section>
       )}
 
+      <ProviderWorkSection
+        items={provider.provider_portfolio_items ?? []}
+        providerName={name}
+        mediaFilter={mediaFilter}
+        setMediaFilter={setMediaFilter}
+        sortDirection={sortDirection}
+        isOwner={currentUserId === provider.id}
+      />
+
+      <div className="max-sm:hidden">
       {(provider.provider_portfolio_items ?? []).length > 0 && (
         <div className="mb-8">
           <h2 className="mb-2 font-medium">Work</h2>
@@ -777,6 +788,7 @@ export default function ProviderProfileClient({ id }: Props) {
           })()}
         </div>
       )}
+      </div>
 
       <div className="mb-8">
         <h2 className="mb-2 font-medium">Reviews</h2>

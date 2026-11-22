@@ -6,7 +6,7 @@ type Props = {
 
 export default function ProviderActionBar({ onActivate }: Props) {
   return (
-    <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] z-40 border-t border-border bg-background/95 p-3 shadow-lifted backdrop-blur sm:hidden">
+    <div className="fixed inset-x-0 bottom-[env(safe-area-inset-bottom)] z-40 border-t border-border bg-background/95 p-3 shadow-lifted backdrop-blur sm:hidden">
       <div className="mx-auto max-w-2xl">
         <button
           type="button"
