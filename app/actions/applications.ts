@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getPhoneVerificationRequired } from "@/lib/phone-verification-required";
 
 // Confirms the *current session's* user has role='admin' in profiles,
 // using the normal (RLS-respecting) server client — so this check can't
@@ -45,7 +46,8 @@ export async function approveApplication(applicationId: string) {
     .eq("id", application.user_id)
     .single();
   if (applicantProfileError) throw applicantProfileError;
-  if (!applicantProfile?.phone_verified_at) {
+  const phoneVerificationRequired = await getPhoneVerificationRequired();
+  if (phoneVerificationRequired && !applicantProfile?.phone_verified_at) {
     throw new Error("Applicant's phone number is not verified.");
   }
   if (application.call_status !== "verified") {
