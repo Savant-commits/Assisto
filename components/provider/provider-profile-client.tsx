@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
+import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 import { ReportDialog } from "@/components/report-dialog";
 import { ReviewModal } from "@/components/review-modal";
 import { friendlyDbError } from "@/lib/db-errors";
@@ -169,13 +170,18 @@ function EnquiryWidget({
 }) {
   const router = useRouter();
   const { requireAuth } = useAuthGate();
-  const supabase = createClient();
+  const phoneVerificationRequired = usePhoneVerificationRequired();
+  const supabase = useMemo(() => createClient(), []);
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
-  const [pendingValues, setPendingValues] = useState<EnquiryFormValues | null>(null);
+  const submitInFlightRef = useRef(false);
+  const phoneStatusRef = useRef<{ userId: string; verified: boolean } | null>(null);
+  const pendingPhoneUserIdRef = useRef<string | null>(null);
+  const pendingValuesRef = useRef<EnquiryFormValues | null>(null);
   const messageTextareaRef = useRef<HTMLTextAreaElement>(null);
   const focusMessageWhenOpenRef = useRef(false);
 
@@ -183,12 +189,13 @@ function EnquiryWidget({
     resolver: zodResolver(enquirySchema),
     defaultValues: { message: initialMessage ?? "" },
   });
+  const resetForm = form.reset;
 
   useEffect(() => {
     if (initialMessage) {
-      form.reset({ message: initialMessage });
+      resetForm({ message: initialMessage });
     }
-  }, [form, initialMessage]);
+  }, [initialMessage, resetForm]);
 
   useEffect(() => {
     const handleActionBarEnquiry = () => {
@@ -248,91 +255,126 @@ function EnquiryWidget({
     setIsOpen(true);
   }
 
-  async function onSubmit(values: EnquiryFormValues) {
+  const onSubmit = useCallback(async (values: EnquiryFormValues) => {
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setIsSubmitting(true);
     setErrorMessage(null);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-    if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider enquiry submit auth lookup failed:", userError);
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("provider enquiry submit auth lookup failed:", userError);
 
-    if (!user) {
-      router.push(`/login?redirect=${encodeURIComponent(requirementId ? `/providers/${providerId}?requirement=${requirementId}` : `/providers/${providerId}`)}`);
-      return;
-    }
+      if (!user) {
+        router.push(`/login?redirect=${encodeURIComponent(requirementId ? `/providers/${providerId}?requirement=${requirementId}` : `/providers/${providerId}`)}`);
+        return;
+      }
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("phone_verified_at")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (profileError) logSupabaseError("provider enquiry phone verification lookup failed:", profileError);
-    if (!profile?.phone_verified_at) {
-      setPendingValues(values);
-      setIsPhoneGateOpen(true);
-      return;
-    }
+      if (phoneVerificationRequired) {
+        let phoneVerified = phoneStatusRef.current?.userId === user.id
+          ? phoneStatusRef.current.verified
+          : null;
+        if (phoneVerified === null) {
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("phone_verified_at")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (profileError) logSupabaseError("provider enquiry phone verification lookup failed:", profileError);
+          phoneVerified = Boolean(profile?.phone_verified_at);
+          phoneStatusRef.current = { userId: user.id, verified: phoneVerified };
+        }
+        if (!phoneVerified) {
+          pendingPhoneUserIdRef.current = user.id;
+          pendingValuesRef.current = values;
+          setIsPhoneGateOpen(true);
+          return;
+        }
+      }
 
-    const { data: existing, error: existingError } = await supabase
-      .from("enquiries")
-      .select("id")
-      .eq("customer_id", user.id)
-      .eq("provider_id", providerId)
-      .eq("status", "sent")
-      .limit(1);
+      const { data: existing, error: existingError } = await supabase
+        .from("enquiries")
+        .select("id")
+        .eq("customer_id", user.id)
+        .eq("provider_id", providerId)
+        .eq("status", "sent")
+        .limit(1);
 
-    if (existingError) logSupabaseError("existing provider enquiry lookup failed:", existingError);
+      if (existingError) logSupabaseError("existing provider enquiry lookup failed:", existingError);
 
-    if (existing && existing.length > 0) {
-      setIsPending(true);
-      setIsOpen(false);
-      return;
-    }
-
-    const { error } = await supabase.from("enquiries").insert({
-      customer_id: user.id,
-      provider_id: providerId,
-      requirement_id: requirementId || null,
-      message: values.message,
-      status: "sent",
-    });
-
-    if (error) {
-      logSupabaseError("provider enquiry insert failed:", error);
-      if (error.code === "23505") {
+      if (existing && existing.length > 0) {
         setIsPending(true);
         setIsOpen(false);
         return;
       }
 
-      if (error.message === "PHONE_NOT_VERIFIED") {
-        setPendingValues(values);
-        setIsPhoneGateOpen(true);
+      const { error } = await supabase.from("enquiries").insert({
+        customer_id: user.id,
+        provider_id: providerId,
+        requirement_id: requirementId || null,
+        message: values.message,
+        status: "sent",
+      });
+
+      if (error) {
+        logSupabaseError("provider enquiry insert failed:", error);
+        if (error.code === "23505") {
+          setIsPending(true);
+          setIsOpen(false);
+          return;
+        }
+
+        if (error.message === "PHONE_NOT_VERIFIED" && phoneVerificationRequired) {
+          phoneStatusRef.current = { userId: user.id, verified: false };
+          pendingPhoneUserIdRef.current = user.id;
+          pendingValuesRef.current = values;
+          setIsPhoneGateOpen(true);
+          return;
+        }
+
+        setErrorMessage(friendlyDbError(error, "Unable to send your enquiry right now."));
         return;
       }
 
-      setErrorMessage(friendlyDbError(error, "Unable to send your enquiry right now."));
-      return;
+      setIsSuccess(true);
+      setIsOpen(false);
+    } catch (error) {
+      logSupabaseError("provider enquiry submit failed:", { message: error instanceof Error ? error.message : String(error) });
+      setErrorMessage("Unable to send your enquiry right now. Please try again.");
+    } finally {
+      submitInFlightRef.current = false;
+      setIsSubmitting(false);
     }
+  }, [phoneVerificationRequired, providerId, requirementId, router, supabase]);
 
-    setIsSuccess(true);
-    setIsOpen(false);
-  }
-
-  function handlePhoneVerified() {
+  const handlePhoneVerified = useCallback(() => {
     setIsPhoneGateOpen(false);
-    const values = pendingValues;
-    setPendingValues(null);
+    if (pendingPhoneUserIdRef.current) {
+      phoneStatusRef.current = { userId: pendingPhoneUserIdRef.current, verified: true };
+    }
+    pendingPhoneUserIdRef.current = null;
+    const values = pendingValuesRef.current;
+    pendingValuesRef.current = null;
     if (values) void onSubmit(values);
-  }
+  }, [onSubmit]);
+
+  const closePhoneGate = useCallback(() => setIsPhoneGateOpen(false), []);
 
   function startEnquiry() {
     requireAuth(() => void handleStart(), "to send an enquiry");
   }
 
-  function submitEnquiry(values: EnquiryFormValues) {
+  const submitEnquiry = useCallback((values: EnquiryFormValues) => {
     requireAuth(() => void onSubmit(values), "to send an enquiry");
+  }, [onSubmit, requireAuth]);
+
+  async function handleFormSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const valid = await form.trigger();
+    if (valid) await submitEnquiry(form.getValues());
   }
 
   if (isSuccess) {
@@ -365,7 +407,7 @@ function EnquiryWidget({
   return (
     <>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(submitEnquiry)} className="space-y-4">
+        <form onSubmit={handleFormSubmit} className="space-y-4">
         <FormField
           control={form.control}
           name="message"
@@ -398,16 +440,17 @@ function EnquiryWidget({
           <Button type="button" variant="outline" className="flex-1" onClick={() => setIsOpen(false)}>
             Cancel
           </Button>
-          <Button type="submit" className="flex-1" disabled={form.formState.isSubmitting}>
-            Send enquiry
+          <Button type="submit" className="flex-1" disabled={isSubmitting}>
+            {isSubmitting ? "Submitting…" : "Send enquiry"}
           </Button>
         </div>
         </form>
       </Form>
       <PhoneGateDialog
         isOpen={isPhoneGateOpen}
-        onClose={() => setIsPhoneGateOpen(false)}
+        onClose={closePhoneGate}
         onVerified={handlePhoneVerified}
+        bypassWhenVerificationDisabled={false}
       />
     </>
   );
