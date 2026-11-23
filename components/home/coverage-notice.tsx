@@ -2,6 +2,7 @@ import Link from "next/link";
 import AuthGatedLink from "@/components/auth/auth-gated-link";
 import { buttonVariants } from "@/components/ui/button";
 import { SectionError } from "@/components/home/section-error";
+import { CoverageNoticeDismiss } from "@/components/home/coverage-notice-dismiss";
 import { getCityProviders, getGeolocatedProviders } from "@/lib/home/queries";
 import { distanceKm } from "@/lib/geo";
 import type { SelectedLocation } from "@/lib/location/types";
@@ -40,17 +41,18 @@ async function loadCoverageData(location: SelectedLocation): Promise<CoverageDat
   }
 }
 
-export async function CoverageNotice({ location }: { location: SelectedLocation }) {
+export async function CoverageNotice({ location, locationKey }: { location: SelectedLocation; locationKey: string }) {
   const data = await loadCoverageData(location);
   if (data === null) return null;
   if (data === "error") return <SectionError label="Local coverage" />;
 
   return (
+    <CoverageNoticeDismiss locationKey={locationKey}>
       <section aria-labelledby="coverage-heading" className="rounded-2xl border border-border bg-muted/60 p-5 text-foreground sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <h2 id="coverage-heading" className="font-display text-2xl">{data.unknownLocation ? "A note about your selected area" : "Local coverage update"}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-foreground">
+            <h2 id="coverage-heading" className="pr-12 font-display text-2xl">{data.unknownLocation ? "A note about your selected area" : "Local coverage update"}</h2>
+            <p className="mt-2 pr-12 text-sm leading-relaxed text-foreground">
               {data.unknownLocation
                 ? "We couldn’t place this location. Showing Tamil Nadu-wide results."
                 : `Local coverage is limited in ${data.areaName ?? location.label}. Showing Tamil Nadu-wide results.`}
@@ -76,5 +78,6 @@ export async function CoverageNotice({ location }: { location: SelectedLocation 
           </div>
         </div>
       </section>
+    </CoverageNoticeDismiss>
   );
 }
