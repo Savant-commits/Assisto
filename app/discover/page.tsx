@@ -156,7 +156,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   let providerQuery = supabase.from("providers").select(finalSelect).eq("is_active", true);
   providerQuery = providerQuery.order("sort_order", { foreignTable: "provider_portfolio_items", ascending: true });
   providerQuery = providerQuery.order("created_at", { foreignTable: "provider_portfolio_items", ascending: true });
-  providerQuery = providerQuery.limit(60);
+  providerQuery = providerQuery.order("id");
 
   if (category) {
     const selectedCategory = categories.find((entry) => entry.slug === category);
@@ -165,11 +165,22 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   if (serviceRecord) providerQuery = providerQuery.eq("provider_services.service_id", serviceRecord.id);
   if (matchedServiceIds.length) providerQuery = providerQuery.in("provider_services.service_id", matchedServiceIds);
 
-  const { data: providerData, error: providerError } = await providerQuery;
-  if (providerError) console.error("discover providers query failed", providerError);
-  const providerRows: ProviderListRow[] = isProviderListRows(providerData)
-    ? providerData as unknown as ProviderListRow[]
-    : [];
+  const providerRows: ProviderListRow[] = [];
+  let providerError: Error | null = null;
+  for (let offset = 0; ; offset += 1000) {
+    const { data: providerBatch, error } = await providerQuery.range(offset, offset + 999);
+    if (error) {
+      providerError = error;
+      console.error("discover providers query failed", error);
+      break;
+    }
+    if (!isProviderListRows(providerBatch)) {
+      providerError = new Error("Discover returned invalid provider data.");
+      break;
+    }
+    providerRows.push(...providerBatch as unknown as ProviderListRow[]);
+    if (providerBatch.length < 1000) break;
+  }
   const normalizedProviders = providerRows.map((row) => ({ ...row, profiles: one(row.profiles) }));
   const { local, nearby } = groupProviders(normalizedProviders, effectiveCity, browsingCoordinates);
   const sortedLocal: GeolocatedProvider[] = [...local].sort((a, b) => {

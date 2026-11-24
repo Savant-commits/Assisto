@@ -26,6 +26,7 @@ import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
 import { Avatar } from "@/components/avatar";
 import { PrivateProfileAddress } from "@/components/profile/private-address";
+import { ProviderSummaryCard } from "@/components/profile/provider-summary-card";
 import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 
 const schema = z.object({
@@ -50,6 +51,8 @@ type ProviderListing = {
   locality: string;
   lat: number | null;
   lng: number | null;
+  years_experience: number | null;
+  categories: string[];
 };
 
 const emptyProviderListing: ProviderListing = {
@@ -58,6 +61,8 @@ const emptyProviderListing: ProviderListing = {
   locality: "",
   lat: null,
   lng: null,
+  years_experience: null,
+  categories: [],
 };
 
 const emptyFormValues: FormValues = {
@@ -214,7 +219,7 @@ export default function ProfilePage() {
       if (phoneError) logSupabaseError("profile phone lookup failed", phoneError);
       const { data: providerData, error: providerError } = await supabase
         .from("providers")
-        .select("id, headline, bio, locality, lat, lng")
+        .select("id, headline, bio, locality, lat, lng, years_experience, provider_categories ( service_categories ( name ) )")
         .eq("id", userData.user.id)
         .maybeSingle();
       if (providerError) logSupabaseError("profile provider lookup failed", providerError);
@@ -240,6 +245,13 @@ export default function ProfilePage() {
             locality: providerData.locality ?? "",
             lat: providerData.lat ?? null,
             lng: providerData.lng ?? null,
+            years_experience: providerData.years_experience ?? null,
+            categories: (providerData.provider_categories ?? []).flatMap((providerCategory) => {
+              const serviceCategory = Array.isArray(providerCategory.service_categories)
+                ? providerCategory.service_categories[0]
+                : providerCategory.service_categories;
+              return serviceCategory?.name ? [serviceCategory.name] : [];
+            }),
           };
           setProviderListing(listing);
           setSavedProviderListing(listing);
@@ -605,6 +617,15 @@ export default function ProfilePage() {
             onSaved={() => setActiveEditor(null)}
           />
         </div>}
+
+        {isProvider && profileId && (
+          <ProviderSummaryCard
+            providerId={profileId}
+            categories={providerListing.categories}
+            yearsExperience={providerListing.years_experience}
+            about={providerListing.bio}
+          />
+        )}
 
         {isProvider && (() => {
           const providerCity = profile?.city || savedFormValues.city || "Cuddalore";
