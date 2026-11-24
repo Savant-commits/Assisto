@@ -18,6 +18,8 @@ import { one } from "@/lib/relations";
 import { useLocation } from "@/lib/location/provider";
 import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiries/customer-summary-sheet";
 import { ConfirmationStep } from "@/components/enquiries/confirmation-step";
+import type { EnquiryDetailsValue } from "@/components/enquiries/enquiry-details-fields";
+import { RequestDetailsEditor } from "@/components/enquiries/request-details-editor";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -158,10 +160,9 @@ export default function EnquiriesPage() {
   const [lastSeenHistory, setLastSeenHistory] = useState<{ sent: string; received: string }>({ sent: "", received: "" });
   const [historyFilter, setHistoryFilter] = useState<"all" | "completed" | "declined" | "cancelled">("all");
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
+  const [requestEditorOpen, setRequestEditorOpen] = useState<Record<number, boolean>>({});
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Record<number, boolean>>({});
   const [confirmingDecline, setConfirmingDecline] = useState<Record<number, { open: boolean; reason: string }>>({});
-  const [confirmationStepOpen, setConfirmationStepOpen] = useState<Record<number, boolean>>({});
-  const [locationErrors, setLocationErrors] = useState<Record<number, string | null>>({});
   const [customerCity, setCustomerCity] = useState<string | null>(null);
   const [customerHomeAddress, setCustomerHomeAddress] = useState<SavedHomeAddress | null>(null);
   const [customerSummary, setCustomerSummary] = useState<CustomerSummary | null>(null);
@@ -505,75 +506,64 @@ export default function EnquiriesPage() {
     }
   }
 
-  async function confirmAcceptedEnquiry(
-    id: number,
-    schedule: { isAsap: boolean; scheduledStartAt: string | null },
-    location: { addressText: string; lat: number | null; lng: number | null }
-  ) {
+  async function saveAcceptedEnquiryDetails(id: number, details: EnquiryDetailsValue) {
     const key = `sent-${id}`;
     setPending(key, true);
     setCardError(key, null);
-    setLocationErrors((current) => ({ ...current, [id]: null }));
-    let locationWriteFailed = false;
     try {
       const supabase = createClient();
-      const addressText = location.addressText.trim();
-      if (!addressText) {
-        setLocationErrors((current) => ({ ...current, [id]: "Please enter the job site address." }));
-        return;
-      }
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
-      if (!userData.user) throw new Error("Please sign in again to confirm this enquiry.");
+      if (!userData.user) throw new Error("Please sign in again to edit this enquiry.");
 
       const locationPayload = {
         enquiry_id: id,
         customer_id: userData.user.id,
-        address_text: addressText,
-        lat: location.lat,
-        lng: location.lng,
+        address_text: details.addressText,
+        lat: details.lat,
+        lng: details.lng,
       };
       const { error: locationSaveError } = await supabase
         .from("enquiry_locations")
         .upsert(locationPayload, { onConflict: "enquiry_id" });
-      if (locationSaveError) {
-        locationWriteFailed = true;
-        throw locationSaveError;
-      }
-
-      locationWriteFailed = false;
-      const payload = {
-        status: "confirmed",
-        is_asap: schedule.isAsap,
-        scheduled_start_at: schedule.isAsap ? null : schedule.scheduledStartAt,
-      };
-      const { error } = await supabase.from("enquiries").update(payload).eq("id", id);
+      if (locationSaveError) throw locationSaveError;
+      const { error } = await supabase.from("enquiries").update({
+        is_asap: details.isAsap,
+        scheduled_start_at: details.isAsap ? null : details.scheduledStartAt,
+      }).eq("id", id);
       if (error) throw error;
       setSent((prev) =>
         prev.map((p) =>
           p.id === id
             ? {
                 ...p,
-                status: "confirmed",
-                is_asap: schedule.isAsap,
-                scheduled_start_at: schedule.isAsap ? null : schedule.scheduledStartAt,
+                is_asap: details.isAsap,
+                scheduled_start_at: details.isAsap ? null : details.scheduledStartAt,
               }
             : p
         )
       );
-      setConfirmationStepOpen((current) => ({ ...current, [id]: false }));
+      return true;
+    } catch (err: unknown) {
+      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Unable to save the job details."));
+      return false;
+    } finally {
+      setPending(key, false);
+    }
+  }
+
+  async function confirmAcceptedEnquiry(id: number) {
+    const key = `sent-${id}`;
+    setPending(key, true);
+    setCardError(key, null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("enquiries").update({ status: "confirmed" }).eq("id", id);
+      if (error) throw error;
+      setSent((prev) => prev.map((enquiry) => enquiry.id === id ? { ...enquiry, status: "confirmed" } : enquiry));
       showActionToast("Enquiry confirmed. Find it under Active.", "View Active", "sent", "active", id);
     } catch (err: unknown) {
-      if (locationWriteFailed) {
-          setLocationErrors((current) => ({
-            ...current,
-            [id]: err && typeof err === "object" && "message" in err && typeof err.message === "string"
-              ? err.message
-              : "Unable to save the job site location.",
-          }));
-      } else {
-        setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
-      }
+      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
     } finally {
       setPending(key, false);
     }
@@ -591,8 +581,8 @@ export default function EnquiriesPage() {
   }
 
   function scheduleLine(enq: { is_asap?: boolean | null; scheduled_start_at?: string | null }) {
-    if (enq.is_asap) return "Scheduled: Now (ASAP)";
-    if (enq.scheduled_start_at) return `Scheduled: ${formatDateTime(enq.scheduled_start_at)}`;
+    if (enq.is_asap) return "When: ASAP";
+    if (enq.scheduled_start_at) return `When: ${formatDateTime(enq.scheduled_start_at)}`;
     return null;
   }
 
@@ -883,6 +873,38 @@ export default function EnquiriesPage() {
                   )}
                   {scheduleLine(enq) && <div className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</div>}
 
+                  {sentTab === "pending" && enq.status === "sent" && (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() => setRequestEditorOpen((current) => ({ ...current, [enq.id]: !current[enq.id] }))}
+                        className="min-h-11 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {requestEditorOpen[enq.id] ? "Close details editor" : "Edit details"}
+                      </button>
+                      {requestEditorOpen[enq.id] && (
+                        <RequestDetailsEditor
+                          enquiryId={enq.id}
+                          isAsap={enq.is_asap ?? null}
+                          scheduledStartAt={enq.scheduled_start_at ?? null}
+                          homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
+                          homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
+                          homePin={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
+                            ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
+                            : null}
+                          fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
+                            ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
+                            : resolveLocationFallbackCenter(customerCity || customerHomeAddress?.city || selectedLocation.city, selectedLocation)}
+                          today={todayLocal}
+                          onClose={() => setRequestEditorOpen((current) => ({ ...current, [enq.id]: false }))}
+                          onSaved={(details) => setSent((current) => current.map((item) => item.id === enq.id
+                            ? { ...item, is_asap: details.isAsap, scheduled_start_at: details.isAsap ? null : details.scheduledStartAt }
+                            : item))}
+                        />
+                      )}
+                    </div>
+                  )}
+
                   {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && (
                     <Link
                       href={`/projects/${Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id}`}
@@ -927,40 +949,25 @@ export default function EnquiriesPage() {
 
                   {sentTab === "active" && enq.status === "accepted" && (
                     <div className="mt-4">
-                      {confirmationStepOpen[enq.id] ? (
-                        <ConfirmationStep
-                          key={enq.id}
-                          enquiryId={enq.id}
-                          homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
-                          hasSavedHomeAddress={Boolean(customerHomeAddress && [customerHomeAddress.street, customerHomeAddress.house_number, customerHomeAddress.area, customerHomeAddress.city, customerHomeAddress.pincode].some((value) => value?.trim()))}
-                          homePin={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
-                            ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
-                            : null}
-                          homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
-                          fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
-                            ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
-                            : resolveLocationFallbackCenter(customerCity || customerHomeAddress?.city || selectedLocation.city, selectedLocation)}
-                          today={todayLocal}
-                          saving={!!pendingMap[key]}
-                          error={errors[key] ?? null}
-                          locationError={locationErrors[enq.id] ?? null}
-                          onCancel={() => setConfirmationStepOpen((current) => ({ ...current, [enq.id]: false }))}
-                          onConfirm={(schedule, jobLocation) => void confirmAcceptedEnquiry(enq.id, schedule, jobLocation)}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCardError(key, null);
-                            setLocationErrors((current) => ({ ...current, [enq.id]: null }));
-                            setConfirmationStepOpen((current) => ({ ...current, [enq.id]: true }));
-                          }}
-                          disabled={!!pendingMap[key]}
-                          className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          Confirm
-                        </button>
-                      )}
+                      <ConfirmationStep
+                        key={enq.id}
+                        enquiryId={enq.id}
+                        isAsap={enq.is_asap ?? null}
+                        scheduledStartAt={enq.scheduled_start_at ?? null}
+                        homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
+                        homePin={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
+                          ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
+                          : null}
+                        homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
+                        fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
+                          ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
+                          : resolveLocationFallbackCenter(customerCity || customerHomeAddress?.city || selectedLocation.city, selectedLocation)}
+                        today={todayLocal}
+                        saving={!!pendingMap[key]}
+                        error={errors[key] ?? null}
+                        onConfirm={() => void confirmAcceptedEnquiry(enq.id)}
+                        onSaveDetails={(details: EnquiryDetailsValue) => saveAcceptedEnquiryDetails(enq.id, details)}
+                      />
                     </div>
                   )}
 
@@ -1062,6 +1069,7 @@ export default function EnquiriesPage() {
                 </div>
 
                 <p title={enq.message || undefined} className="mt-4 line-clamp-1 text-sm text-foreground">{enq.message || "No message provided."}</p>
+                {receivedTab === "pending" && enq.profiles?.city && <p className="mt-2 text-sm text-muted-foreground">Area: {enq.profiles.city}</p>}
                 <div className="mt-3 text-xs text-muted-foreground">
                   Sent {formatDateTime(enq.created_at)}
                   {receivedTab === "history" && enq.updated_at && (

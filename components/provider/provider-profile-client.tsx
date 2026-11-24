@@ -27,6 +27,9 @@ import ProviderActionBar from "@/components/provider/provider-action-bar";
 import ProviderWorkSection from "@/components/provider/provider-work-section";
 import ProviderLocationSection from "@/components/provider/provider-location-section";
 import ProviderReviewsSection from "@/components/provider/provider-reviews-section";
+import { EnquiryDetailsFields, type EnquiryDetailsValue } from "@/components/enquiries/enquiry-details-fields";
+import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
+import { useLocation } from "@/lib/location/provider";
 
 type Props = { id: string };
 
@@ -162,11 +165,17 @@ function EnquiryWidget({
   providerName,
   requirementId,
   initialMessage,
+  isSelf,
+  onFormOpenChange,
+  onActionBarDismiss,
 }: {
   providerId: string;
   providerName: string;
   requirementId?: string;
   initialMessage?: string;
+  isSelf: boolean;
+  onFormOpenChange: (open: boolean) => void;
+  onActionBarDismiss: () => void;
 }) {
   const router = useRouter();
   const { requireAuth } = useAuthGate();
@@ -184,6 +193,55 @@ function EnquiryWidget({
   const pendingValuesRef = useRef<EnquiryFormValues | null>(null);
   const messageTextareaRef = useRef<HTMLTextAreaElement>(null);
   const focusMessageWhenOpenRef = useRef(false);
+  const [details, setDetails] = useState<EnquiryDetailsValue>({
+    isAsap: true, scheduledStartAt: null, addressText: "", lat: null, lng: null, place: "home", isValid: false,
+  });
+  const [homeAddress, setHomeAddress] = useState("");
+  const [homeCity, setHomeCity] = useState<string | null>(null);
+  const [homePin, setHomePin] = useState<{ lat: number; lng: number } | null>(null);
+  const [today] = useState(() => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  });
+  const { location: selectedLocation } = useLocation();
+  const fallbackCenter = homePin ?? (homeCity && homeCity in CITY_CENTERS
+    ? CITY_CENTERS[homeCity as keyof typeof CITY_CENTERS]
+    : selectedLocation.lat !== null && selectedLocation.lng !== null
+      ? { lat: selectedLocation.lat, lng: selectedLocation.lng }
+      : DEFAULT_MAP_CENTER);
+  const onDetailsChange = useCallback((value: EnquiryDetailsValue) => setDetails(value), []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadHomeLocation() {
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData.user;
+      if (!user || !active) return;
+      const [addressResult, profileResult] = await Promise.all([
+        supabase.from("profile_private_addresses").select("street,house_number,area,city,pincode,lat,lng").eq("profile_id", user.id).maybeSingle(),
+        supabase.from("profiles").select("city").eq("id", user.id).maybeSingle(),
+      ]);
+      if (!active) return;
+      const address = addressResult.data;
+      const city = typeof address?.city === "string" && address.city.trim()
+        ? address.city.trim()
+        : typeof profileResult.data?.city === "string" && profileResult.data.city.trim()
+          ? profileResult.data.city.trim()
+          : selectedLocation.city || selectedLocation.locality || null;
+      const parts = [address?.house_number, address?.street, address?.area, address?.city || city, address?.pincode]
+        .map((part) => typeof part === "string" ? part.trim() : "")
+        .filter(Boolean);
+      setHomeAddress(parts.filter((part, index) => parts.findIndex((other) => other.toLocaleLowerCase() === part.toLocaleLowerCase()) === index).join(", "));
+      setHomeCity(city);
+      setHomePin(typeof address?.lat === "number" && typeof address.lng === "number" ? { lat: address.lat, lng: address.lng } : null);
+    }
+    void loadHomeLocation();
+    return () => { active = false; };
+  }, [selectedLocation.city, selectedLocation.locality, supabase]);
+
+  useEffect(() => {
+    onFormOpenChange(isOpen);
+  }, [isOpen, onFormOpenChange]);
 
   const form = useForm<EnquiryFormValues>({
     resolver: zodResolver(enquirySchema),
@@ -223,6 +281,7 @@ function EnquiryWidget({
   }, [isOpen]);
 
   async function handleStart() {
+    if (isSelf) return;
     setErrorMessage(null);
     const {
       data: { user },
@@ -256,6 +315,11 @@ function EnquiryWidget({
   }
 
   const onSubmit = useCallback(async (values: EnquiryFormValues) => {
+    if (isSelf) return;
+    if (!details.isValid) {
+      setErrorMessage("Choose a future time and enter a work location before sending.");
+      return;
+    }
     if (submitInFlightRef.current) return;
     submitInFlightRef.current = true;
     setIsSubmitting(true);
@@ -311,14 +375,15 @@ function EnquiryWidget({
         return;
       }
 
-      const { error } = await supabase.from("enquiries").insert({
+      const { data: inserted, error } = await supabase.from("enquiries").insert({
         customer_id: user.id,
         provider_id: providerId,
         requirement_id: requirementId || null,
         message: values.message,
         status: "sent",
-      });
-
+        is_asap: details.isAsap,
+        scheduled_start_at: details.isAsap ? null : details.scheduledStartAt,
+      }).select("id").single();
       if (error) {
         logSupabaseError("provider enquiry insert failed:", error);
         if (error.code === "23505") {
@@ -339,6 +404,23 @@ function EnquiryWidget({
         return;
       }
 
+      if (!inserted) {
+        setErrorMessage("Unable to send your enquiry right now. Please try again.");
+        return;
+      }
+
+      const { error: locationError } = await supabase.from("enquiry_locations").upsert({
+        enquiry_id: inserted.id,
+        customer_id: user.id,
+        address_text: details.addressText,
+        lat: details.lat,
+        lng: details.lng,
+      }, { onConflict: "enquiry_id" });
+      if (locationError) {
+        logSupabaseError("provider enquiry location insert failed:", locationError);
+        setErrorMessage("Enquiry sent, but the location couldn't be saved. Edit it from Requests.");
+      }
+
       setIsSuccess(true);
       setIsOpen(false);
     } catch (error) {
@@ -348,7 +430,7 @@ function EnquiryWidget({
       submitInFlightRef.current = false;
       setIsSubmitting(false);
     }
-  }, [phoneVerificationRequired, providerId, requirementId, router, supabase]);
+  }, [details, isSelf, phoneVerificationRequired, providerId, requirementId, router, supabase]);
 
   const handlePhoneVerified = useCallback(() => {
     setIsPhoneGateOpen(false);
@@ -364,12 +446,14 @@ function EnquiryWidget({
   const closePhoneGate = useCallback(() => setIsPhoneGateOpen(false), []);
 
   function startEnquiry() {
+    if (isSelf) return;
     requireAuth(() => void handleStart(), "to send an enquiry");
   }
 
   const submitEnquiry = useCallback((values: EnquiryFormValues) => {
+    if (isSelf) return;
     requireAuth(() => void onSubmit(values), "to send an enquiry");
-  }, [onSubmit, requireAuth]);
+  }, [isSelf, onSubmit, requireAuth]);
 
   async function handleFormSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -377,11 +461,14 @@ function EnquiryWidget({
     if (valid) await submitEnquiry(form.getValues());
   }
 
+  if (isSelf) return null;
+
   if (isSuccess) {
     return (
-      <p className="text-sm text-foreground">
-        Your enquiry has been sent to {providerName}. They&apos;ll respond soon.
-      </p>
+      <div className="space-y-2">
+        <p className="text-sm text-foreground">Your enquiry has been sent to {providerName}. They&apos;ll respond soon.</p>
+        {errorMessage && <p role="status" className="text-sm text-amber-700">{errorMessage}</p>}
+      </div>
     );
   }
 
@@ -434,10 +521,19 @@ function EnquiryWidget({
           )}
         />
 
+        <EnquiryDetailsFields
+          homeAddress={homeAddress}
+          homeCity={homeCity}
+          homePin={homePin}
+          fallbackCenter={fallbackCenter}
+          today={today}
+          onChange={onDetailsChange}
+        />
+
         {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
 
         <div className="flex gap-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={() => setIsOpen(false)}>
+          <Button type="button" variant="outline" className="flex-1" onClick={() => { setIsOpen(false); onActionBarDismiss(); }}>
             Cancel
           </Button>
           <Button type="submit" className="flex-1" disabled={isSubmitting}>
@@ -479,6 +575,8 @@ export default function ProviderProfileClient({ id }: Props) {
   const [reviewModalEnquiryId, setReviewModalEnquiryId] = useState<number | null>(null);
   const [isCurrentUserProvider, setIsCurrentUserProvider] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [enquiryFormOpen, setEnquiryFormOpen] = useState(false);
+  const [actionBarDismissed, setActionBarDismissed] = useState(false);
 
   const refreshProfileReviews = useCallback(async () => {
     const { data: reviewsData, error: reviewsError } = await supabase
@@ -637,9 +735,10 @@ export default function ProviderProfileClient({ id }: Props) {
       : providerCategory.service_categories;
     return category ? [category.name] : [];
   });
-  const showMobileActionBar = currentUserId !== provider.id;
+  const showMobileActionBar = currentUserId !== provider.id && !enquiryFormOpen && !actionBarDismissed;
 
   function activateMobileEnquiry() {
+    setActionBarDismissed(true);
     const enquiry = document.getElementById("provider-enquiry");
     if (!enquiry) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -953,6 +1052,12 @@ export default function ProviderProfileClient({ id }: Props) {
             providerName={name}
             requirementId={requirementId}
             initialMessage={initialRequirementMessage}
+            isSelf={currentUserId === provider.id}
+            onFormOpenChange={(open) => {
+              setEnquiryFormOpen(open);
+              if (open) setActionBarDismissed(true);
+            }}
+            onActionBarDismiss={() => setActionBarDismissed(false)}
           />
         )}
       </div>

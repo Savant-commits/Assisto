@@ -1,235 +1,131 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { MapPin } from "lucide-react";
-import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { LocationMap } from "@/components/map/location-map";
-import { LocationPicker } from "@/components/map/location-picker";
-import { CITY_CENTERS } from "@/lib/maps";
-import type { GeocodedLocation } from "@/lib/location/types";
+import { createClient } from "@/lib/supabase/client";
+import { EnquiryDetailsFields, type EnquiryDetailsValue } from "@/components/enquiries/enquiry-details-fields";
 
 type Pin = { lat: number; lng: number };
 type Props = {
   enquiryId: number;
+  isAsap: boolean | null;
+  scheduledStartAt: string | null;
   homeAddress: string;
-  hasSavedHomeAddress: boolean;
-  homePin: Pin | null;
   homeCity: string | null;
+  homePin: Pin | null;
   fallbackCenter: Pin;
   today: string;
   saving: boolean;
   error: string | null;
-  locationError: string | null;
-  onCancel: () => void;
-  onConfirm: (schedule: { isAsap: boolean; scheduledStartAt: string | null }, location: { addressText: string; lat: number | null; lng: number | null }) => void;
+  onConfirm: () => void;
+  onSaveDetails: (details: EnquiryDetailsValue) => Promise<boolean>;
 };
 
-function localFutureDateTime(date: string, time: string) {
-  if (!date || !time) return null;
-  const value = new Date(`${date}T${time}`);
-  return Number.isNaN(value.getTime()) ? null : value;
+function showSchedule(isAsap: boolean | null, scheduledStartAt: string | null) {
+  if (isAsap) return "ASAP";
+  if (scheduledStartAt) return new Date(scheduledStartAt).toLocaleString("en-US", {
+    year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+  return "Not set";
 }
 
 export function ConfirmationStep({
   enquiryId,
+  isAsap,
+  scheduledStartAt,
   homeAddress,
-  hasSavedHomeAddress,
-  homePin,
   homeCity,
+  homePin,
   fallbackCenter,
   today,
   saving,
   error,
-  locationError,
-  onCancel,
   onConfirm,
+  onSaveDetails,
 }: Props) {
-  const [when, setWhen] = useState<"now" | "schedule">("now");
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
-  const [place, setPlace] = useState<"home" | "different">("home");
-  const [addressText, setAddressText] = useState(homeAddress);
-  const [pin, setPin] = useState<Pin | null>(null);
-  const [mapsPin, setMapsPin] = useState<Pin | null>(homePin);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerCenter, setPickerCenter] = useState(fallbackCenter);
-  const [resolvingCenter, setResolvingCenter] = useState(false);
-  const [lookingUpAddress, setLookingUpAddress] = useState(false);
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [scheduleExpired, setScheduleExpired] = useState(false);
-  const addressRevisionRef = useRef(0);
-  const reverseRequestRef = useRef(0);
+  const [location, setLocation] = useState<{ addressText: string; lat: number | null; lng: number | null } | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [details, setDetails] = useState<EnquiryDetailsValue | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const updateDetails = useCallback((value: EnquiryDetailsValue) => setDetails(value), []);
 
-  const futureMinute = new Date(nowMs + 60_000);
-  const minTime = date === today ? `${String(futureMinute.getHours()).padStart(2, "0")}:${String(futureMinute.getMinutes()).padStart(2, "0")}` : undefined;
-  const scheduledAt = localFutureDateTime(date, time);
-  const scheduleIsInvalid = when === "schedule" && (!scheduledAt || scheduledAt.getTime() <= nowMs || scheduleExpired);
-  const addressIsInvalid = !addressText.trim();
-
-  async function openLocationPicker() {
-    setResolvingCenter(true);
-    let center = fallbackCenter;
-    const knownCenter = homeCity && homeCity in CITY_CENTERS
-      ? CITY_CENTERS[homeCity as keyof typeof CITY_CENTERS]
-      : null;
-    if (knownCenter) {
-      center = knownCenter;
-    } else if (homeCity?.trim() && homeCity.trim().length >= 3) {
-      try {
-        const response = await fetch(`/api/geocode/search?q=${encodeURIComponent(homeCity.trim())}`);
-        const payload = await response.json() as { results?: GeocodedLocation[] };
-        const result = payload.results?.find((item) => (item.city || item.locality).trim().toLocaleLowerCase() === homeCity.trim().toLocaleLowerCase());
-        if (response.ok && result && typeof result.lat === "number" && typeof result.lng === "number") {
-          center = { lat: result.lat, lng: result.lng };
-        }
-      } catch {
-        // Fall back to the currently selected Home location if the town lookup fails.
+  useEffect(() => {
+    let active = true;
+    async function loadLocation() {
+      setLoadingLocation(true);
+      const supabase = createClient();
+      const { data, error: locationError } = await supabase
+        .from("enquiry_locations")
+        .select("address_text,lat,lng")
+        .eq("enquiry_id", enquiryId)
+        .maybeSingle();
+      if (!active) return;
+      if (locationError) {
+        setLoadError("Unable to load the work location. You can edit and save it again.");
+      } else if (data) {
+        setLocation({ addressText: data.address_text, lat: data.lat, lng: data.lng });
       }
+      setLoadingLocation(false);
     }
-    setPickerCenter(center);
-    setPickerOpen(true);
-    setResolvingCenter(false);
-  }
+    void loadLocation();
+    return () => { active = false; };
+  }, [enquiryId]);
 
-  async function handlePin(point: Pin, suggestion?: GeocodedLocation | null) {
-    setPin(point);
-    setMapsPin(point);
-    const revision = addressRevisionRef.current;
-    const requestId = ++reverseRequestRef.current;
-    const suggestionText = suggestion?.formattedLabel?.trim() || suggestion?.label?.trim() || suggestion?.city?.trim();
-    if (suggestionText) {
-      if (revision === addressRevisionRef.current && requestId === reverseRequestRef.current) setAddressText(suggestionText);
-      setLookingUpAddress(false);
-      return;
-    }
-
-    setLookingUpAddress(true);
-    try {
-      const response = await fetch(`/api/geocode/reverse?lat=${encodeURIComponent(String(point.lat))}&lng=${encodeURIComponent(String(point.lng))}`);
-      const payload = await response.json() as { location?: GeocodedLocation | null };
-      const result = payload.location;
-      const resolvedText = result?.formattedLabel?.trim() || result?.label?.trim() || result?.city?.trim();
-      if (response.ok && resolvedText && revision === addressRevisionRef.current && requestId === reverseRequestRef.current) setAddressText(resolvedText);
-    } catch {
-      // A reverse-geocode failure never blocks address entry or confirmation.
-    } finally {
-      if (requestId === reverseRequestRef.current) setLookingUpAddress(false);
-    }
-  }
-
-  function confirm() {
-    if (when === "schedule" && scheduledAt && scheduledAt.getTime() <= Date.now()) {
-      setNowMs(Date.now());
-      setScheduleExpired(true);
-      return;
-    }
-    if (scheduleIsInvalid || addressIsInvalid || saving) return;
-    onConfirm(
-      { isAsap: when === "now", scheduledStartAt: when === "schedule" ? scheduledAt!.toISOString() : null },
-      { addressText: addressText.trim(), lat: mapsPin?.lat ?? null, lng: mapsPin?.lng ?? null },
-    );
+  async function saveDetails() {
+    if (!details?.isValid || saving) return;
+    const saved = await onSaveDetails(details);
+    if (!saved) return;
+    setLocation({ addressText: details.addressText, lat: details.lat, lng: details.lng });
+    setIsEditing(false);
   }
 
   return (
     <section aria-label="Confirm enquiry" className="mt-4 rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
-      <h3 className="font-display text-xl">Confirm the job details</h3>
-
-      <div className="mt-5 space-y-3">
-        <p className="text-sm font-semibold text-foreground">When</p>
-        <div role="group" aria-label="When should the work happen?" className="flex w-full rounded-full border border-border bg-background p-1">
-          {([['now', 'Now'], ['schedule', 'Schedule']] as const).map(([value, label]) => (
-            <button key={value} type="button" aria-pressed={when === value} onClick={() => setWhen(value)} className={`min-h-11 flex-1 rounded-full px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${when === value ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"}`}>
-              {label}
-            </button>
-          ))}
+      <h3 className="font-display text-xl">Job details</h3>
+      {isEditing ? (
+        <div className="mt-4 space-y-4">
+          <EnquiryDetailsFields
+            homeAddress={homeAddress}
+            homeCity={homeCity}
+            homePin={homePin}
+            fallbackCenter={fallbackCenter}
+            today={today}
+            initial={{
+              isAsap: isAsap ?? true,
+              scheduledStartAt,
+              addressText: location?.addressText ?? homeAddress,
+              lat: location?.lat ?? null,
+              lng: location?.lng ?? null,
+              place: location?.addressText === homeAddress ? "home" : "different",
+            }}
+            onChange={updateDetails}
+          />
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <div className="flex gap-2">
+            <Button type="button" onClick={() => void saveDetails()} disabled={saving || !details?.isValid} className="min-h-11 rounded-full px-5">{saving ? "Saving…" : "Save details"}</Button>
+            <Button type="button" variant="outline" onClick={() => setIsEditing(false)} disabled={saving} className="min-h-11 rounded-full px-5">Cancel</Button>
+          </div>
         </div>
-        {when === "schedule" && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-sm font-medium text-foreground">
-              <span>Date</span>
-              <Input type="date" min={today} value={date} onChange={(event) => { setNowMs(Date.now()); setScheduleExpired(false); setDate(event.target.value); }} className="min-h-12 rounded-xl bg-background text-foreground" />
-            </label>
-            <label className="space-y-1 text-sm font-medium text-foreground">
-              <span>Time</span>
-              <Input type="time" min={minTime} value={time} onChange={(event) => { setNowMs(Date.now()); setScheduleExpired(false); setTime(event.target.value); }} className="min-h-12 rounded-xl bg-background text-foreground" />
-            </label>
-            {scheduleIsInvalid && <p className="text-sm text-destructive sm:col-span-2">Choose a future date and time.</p>}
+      ) : (
+        <>
+          <dl className="mt-4 space-y-3 rounded-xl border border-border bg-background/70 p-3">
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">When</dt>
+              <dd className="mt-1 text-sm font-medium text-foreground">{showSchedule(isAsap, scheduledStartAt)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Where</dt>
+              <dd className="mt-1 text-sm font-medium text-foreground">{loadingLocation ? "Loading location…" : location?.addressText || homeAddress || homeCity || "Location not saved"}</dd>
+            </div>
+          </dl>
+          {(loadError || error) && <p role="alert" className="mt-3 text-sm text-destructive">{loadError || error}</p>}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button type="button" onClick={onConfirm} disabled={saving || loadingLocation} className="min-h-11 rounded-full px-5">{saving ? "Confirming…" : "Confirm"}</Button>
+            <button type="button" onClick={() => { setLoadError(null); setIsEditing(true); }} disabled={saving} className="min-h-11 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Edit details</button>
           </div>
-        )}
-      </div>
-
-      <div className="mt-6 space-y-3">
-        <p className="text-sm font-semibold text-foreground">Work location</p>
-        <div role="group" aria-label="Choose the work location" className="flex w-full rounded-full border border-border bg-background p-1">
-          {([['home', 'My home'], ['different', 'Different location']] as const).map(([value, label]) => (
-            <button key={value} type="button" aria-pressed={place === value} onClick={() => {
-              const next = value as "home" | "different";
-              setPlace(next);
-              if (next === "home") {
-                addressRevisionRef.current += 1;
-                setAddressText(homeAddress);
-                setPin(null);
-                setMapsPin(homePin);
-              } else {
-                addressRevisionRef.current += 1;
-                setAddressText("");
-                setPin(null);
-                setMapsPin(null);
-              }
-            }} className={`min-h-11 flex-1 rounded-full px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${place === value ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {place === "home" ? (
-          <div className="rounded-xl border border-border bg-muted/40 p-3">
-            <p className="text-sm text-foreground">{homeAddress || homeCity || "Home town not provided"}</p>
-            {!hasSavedHomeAddress && <Link href="/profile" className="mt-2 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Add your address</Link>}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <label htmlFor={`different-address-${enquiryId}`} className="block text-sm font-medium text-foreground">Address or area</label>
-            <textarea
-              id={`different-address-${enquiryId}`}
-              value={addressText}
-              onChange={(event) => {
-                addressRevisionRef.current += 1;
-                setAddressText(event.target.value);
-              }}
-              maxLength={300}
-              rows={3}
-              placeholder="House/street, landmark, area"
-              className="min-h-24 w-full rounded-xl border border-input bg-background px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            {addressIsInvalid && <p className="text-sm text-destructive">Enter an address or area to continue.</p>}
-            {lookingUpAddress && <p role="status" className="text-xs text-muted-foreground">Filling in the address suggestion… You can keep typing.</p>}
-            {pin && <LocationMap lat={pin.lat} lng={pin.lng} height={180} />}
-            <button type="button" onClick={() => void openLocationPicker()} disabled={resolvingCenter} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-wait disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <MapPin aria-hidden="true" className="size-4" />{resolvingCenter ? "Opening map…" : pin ? "Change pin (optional)" : "Add map pin (optional)"}
-            </button>
-            <LocationPicker
-              open={pickerOpen}
-              onOpenChange={setPickerOpen}
-              initial={pin}
-              fallbackCenter={pickerCenter}
-              title="Different work location"
-              confirmLabel="Use pin"
-              lookupSuggestion={false}
-              onConfirm={(nextPin, suggestion) => { void handlePin(nextPin, suggestion); }}
-            />
-          </div>
-        )}
-      </div>
-
-      {locationError && <p role="alert" className="mt-3 text-sm text-destructive">{locationError}</p>}
-      {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
-      <div className="mt-5 flex flex-wrap gap-2">
-        <Button type="button" onClick={confirm} disabled={saving || scheduleIsInvalid || addressIsInvalid} className="min-h-11 rounded-full px-5">{saving ? "Confirming…" : "Confirm"}</Button>
-        <Button type="button" variant="outline" onClick={onCancel} disabled={saving} className="min-h-11 rounded-full px-5">Cancel</Button>
-      </div>
+        </>
+      )}
     </section>
   );
 }

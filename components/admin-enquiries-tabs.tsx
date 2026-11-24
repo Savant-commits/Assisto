@@ -121,7 +121,7 @@ export default function AdminEnquiriesTabs({ enquiries, initialSearch = "" }: { 
                             <p className="mt-0.5 text-sm text-muted-foreground">Reason: {enq.decline_reason}</p>
                           )}
                           {enq.is_asap ? (
-                            <p className="mt-0.5 text-sm text-muted-foreground">Scheduled: Now (ASAP)</p>
+                            <p className="mt-0.5 text-sm text-muted-foreground">When: ASAP</p>
                           ) : enq.scheduled_start_at ? (
                             <p className="mt-0.5 text-sm text-muted-foreground">Scheduled: {formatDateTime(enq.scheduled_start_at)}</p>
                           ) : null}

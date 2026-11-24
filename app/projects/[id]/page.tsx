@@ -88,7 +88,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   }
 
   function scheduleLine(enq: { is_asap?: boolean | null; scheduled_start_at?: string | null }) {
-    if (enq.is_asap) return "Scheduled: Now (ASAP)";
+    if (enq.is_asap) return "When: ASAP";
     if (enq.scheduled_start_at) return `Scheduled: ${formatDateTime(enq.scheduled_start_at)}`;
     return null;
   }
