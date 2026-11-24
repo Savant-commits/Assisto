@@ -234,6 +234,14 @@ function NotificationsPanel({
   async function openNotification(notification: Notification) {
     if (!notification.is_read) await onMarkAsRead(notification.id);
     onClose();
+    if (notification.type === "project_message" && notification.related_id) {
+      router.push(`/enquiries?chat=${notification.related_id}`);
+      return;
+    }
+    if (notification.type?.startsWith("enquiry_")) {
+      router.push("/enquiries");
+      return;
+    }
     router.push(`/notifications/${notification.id}`);
   }
 
