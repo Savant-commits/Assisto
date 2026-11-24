@@ -39,6 +39,7 @@ type LocationPickerProps = {
   fallbackCenter?: { lat: number; lng: number };
   title?: string;
   confirmLabel?: string;
+  lookupSuggestion?: boolean;
   onConfirm: (value: { lat: number; lng: number }, suggestion?: GeocodedLocation | null) => void;
 };
 
@@ -47,9 +48,9 @@ export function LocationPicker({
 }: LocationPickerProps) {
   const { location } = useLocation();
   const { initial = null } = props;
-  const fallbackCenter = location.lat !== null && location.lng !== null
+  const fallbackCenter = props.fallbackCenter ?? (location.lat !== null && location.lng !== null
     ? { lat: location.lat, lng: location.lng }
-    : DEFAULT_MAP_CENTER;
+    : DEFAULT_MAP_CENTER);
   const pickerKey = [initial?.lat ?? "", initial?.lng ?? "", fallbackCenter.lat, fallbackCenter.lng].join(":");
 
   return <LocationPickerContent key={pickerKey} {...props} fallbackCenter={fallbackCenter} />;
@@ -62,12 +63,13 @@ function LocationPickerContent({
   fallbackCenter = DEFAULT_MAP_CENTER,
   title = "Choose a location",
   confirmLabel = "Confirm",
+  lookupSuggestion = true,
   onConfirm,
 }: LocationPickerProps) {
   const [center, setCenter] = useState<MapPoint>(initial ?? fallbackCenter);
   const [picked, setPicked] = useState<MapPoint | null>(initial ?? null);
   const [pickedSuggestion, setPickedSuggestion] = useState<GeocodedLocation | null>(null);
-  const [isLookingUpLabel, setIsLookingUpLabel] = useState(Boolean(initial));
+  const [isLookingUpLabel, setIsLookingUpLabel] = useState(Boolean(initial && lookupSuggestion));
   const [status, setStatus] = useState<string | null>(null);
   const mounted = useSyncExternalStore(subscribeToNothing, getClientSnapshot, getServerSnapshot);
 
@@ -88,7 +90,7 @@ function LocationPickerContent({
   }, [open, onOpenChange]);
 
   useEffect(() => {
-    if (!open || !picked) return;
+    if (!lookupSuggestion || !open || !picked) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setIsLookingUpLabel(true);
@@ -111,14 +113,14 @@ function LocationPickerContent({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [open, picked]);
+  }, [lookupSuggestion, open, picked]);
 
   const handlePick = (lat: number, lng: number) => {
     const next = { lat, lng };
     setPicked(next);
     setCenter(next);
     setPickedSuggestion(null);
-    setIsLookingUpLabel(true);
+    setIsLookingUpLabel(lookupSuggestion);
     setStatus(null);
   };
 
@@ -228,7 +230,7 @@ function LocationPickerContent({
                     onConfirm(picked, pickedSuggestion);
                     onOpenChange(false);
                   }}
-                  disabled={!picked || isLookingUpLabel}
+                  disabled={!picked || (lookupSuggestion && isLookingUpLabel)}
                   className="min-h-11 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {confirmLabel}

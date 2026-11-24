@@ -3,22 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, MessageCircle } from "lucide-react";
+import { ArrowRight, MessageCircle, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { EnquiryDirections } from "@/components/enquiry-directions";
 import { CompletionActions } from "@/components/completion-actions";
-import { LocationMap } from "@/components/map/location-map";
-import { LocationPicker } from "@/components/map/location-picker";
 import { ReviewModal } from "@/components/review-modal";
 import ProjectChat from "@/components/project-chat";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 import { friendlyDbError } from "@/lib/db-errors";
-import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
+import { CITY_CENTERS, coordsViewUrl, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { one } from "@/lib/relations";
+import { useLocation } from "@/lib/location/provider";
+import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiries/customer-summary-sheet";
+import { ConfirmationStep } from "@/components/enquiries/confirmation-step";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -68,13 +69,13 @@ type ReceivedEnquiry = {
   customer_id: string;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
-  profiles?: { full_name: string | null; avatar_url?: string | null } | null;
+  profiles?: { full_name: string | null; avatar_url?: string | null; city?: string | null; created_at?: string | null } | null;
   customer_requirements?: { description: string | null } | null;
   projects?: { id: string; project_code: string } | null;
 };
 
 type ReceivedEnquiryRow = Omit<ReceivedEnquiry, "profiles" | "customer_requirements" | "projects"> & {
-  profiles?: { full_name: string | null; avatar_url?: string | null } | { full_name: string | null; avatar_url?: string | null }[] | null;
+  profiles?: { full_name: string | null; avatar_url?: string | null; city?: string | null; created_at?: string | null } | { full_name: string | null; avatar_url?: string | null; city?: string | null; created_at?: string | null }[] | null;
   customer_requirements?: { description: string | null } | { description: string | null }[] | null;
   projects?: { id: string; project_code: string } | { id: string; project_code: string }[] | null;
 };
@@ -114,16 +115,41 @@ function getReviewDismissedKey(enquiryId: number) {
   return `reviews:dismissed:${enquiryId}`;
 }
 
-function resolveLocationFallbackCenter(providerCity?: string | null, requirementCity?: string | null) {
-  const cityName = requirementCity || providerCity;
+function resolveLocationFallbackCenter(cityName: string | null, selectedLocation: { lat: number | null; lng: number | null }) {
   if (cityName && cityName in CITY_CENTERS) {
     return CITY_CENTERS[cityName as keyof typeof CITY_CENTERS];
+  }
+  if (selectedLocation.lat !== null && selectedLocation.lng !== null) {
+    return { lat: selectedLocation.lat, lng: selectedLocation.lng };
   }
   return DEFAULT_MAP_CENTER;
 }
 
+type SavedHomeAddress = {
+  street: string | null;
+  house_number: string | null;
+  area: string | null;
+  city: string | null;
+  pincode: string | null;
+  lat?: number | null;
+  lng?: number | null;
+};
+
+function localDateValue(date: Date) {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function formatHomeAddress(address: SavedHomeAddress | null, profileCity: string | null, fallbackCity: string | null) {
+  const parts = [address?.house_number, address?.street, address?.area, address?.city || profileCity || fallbackCity, address?.pincode]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  return parts.filter((part, index) => parts.findIndex((other) => other.toLocaleLowerCase() === part.toLocaleLowerCase()) === index).join(", ");
+}
+
 export default function EnquiriesPage() {
   const router = useRouter();
+  const { location: selectedLocation } = useLocation();
   const [loading, setLoading] = useState(true);
   const [isProvider, setIsProvider] = useState(false);
   const [view, setView] = useState<"sent" | "received">("sent");
@@ -136,15 +162,17 @@ export default function EnquiriesPage() {
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Record<number, boolean>>({});
   const [confirmingDecline, setConfirmingDecline] = useState<Record<number, { open: boolean; reason: string }>>({});
-  const [confirmingSchedule, setConfirmingSchedule] = useState<Record<number, { mode: "now" | "specific" | null; scheduledStartAt: string }>>({});
-  const [confirmingLocation, setConfirmingLocation] = useState<Record<number, { addressText: string; lat: number | null; lng: number | null }>>({});
-  const [locationPickerOpen, setLocationPickerOpen] = useState<Record<number, boolean>>({});
+  const [confirmationStepOpen, setConfirmationStepOpen] = useState<Record<number, boolean>>({});
   const [locationErrors, setLocationErrors] = useState<Record<number, string | null>>({});
+  const [customerCity, setCustomerCity] = useState<string | null>(null);
+  const [customerHomeAddress, setCustomerHomeAddress] = useState<SavedHomeAddress | null>(null);
+  const [customerSummary, setCustomerSummary] = useState<CustomerSummary | null>(null);
+  const [isCustomerSummaryOpen, setIsCustomerSummaryOpen] = useState(false);
   const [reviewsByEnquiry, setReviewsByEnquiry] = useState<Record<string, ReviewRecord>>({});
   const [receivedReviewsByEnquiry, setReceivedReviewsByEnquiry] = useState<Record<string, ReviewRecord>>({});
   const [reviewPromptQueue, setReviewPromptQueue] = useState<ReviewPrompt[]>([]);
   const [activeReviewPrompt, setActiveReviewPrompt] = useState<ReviewPrompt | null>(null);
-  const [minFutureDateTime] = useState(() => new Date(Date.now() + 60000).toISOString().slice(0, 16));
+  const [todayLocal] = useState(() => localDateValue(new Date()));
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [openChatModal, setOpenChatModal] = useState<{ projectId: string; enquiryId: number; isCompleted: boolean } | null>(null);
@@ -229,6 +257,10 @@ export default function EnquiriesPage() {
 
     const { data: providerRow } = await supabase.from("providers").select("id").eq("id", userData.user.id).maybeSingle();
     const amProvider = !!providerRow;
+    const [ownProfileResult, homeAddressResult] = await Promise.all([
+      supabase.from("profiles").select("city").eq("id", userData.user.id).maybeSingle(),
+      supabase.from("profile_private_addresses").select("street,house_number,area,city,pincode,lat,lng").eq("profile_id", userData.user.id).maybeSingle(),
+    ]);
 
     const { data: sentData } = await supabase
       .from("enquiries")
@@ -285,7 +317,7 @@ export default function EnquiriesPage() {
       const { data, error } = await supabase
         .from("enquiries")
         .select(
-          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name,avatar_url),customer_requirements(description),projects(id,project_code)`
+          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name,avatar_url,city,created_at),customer_requirements(description),projects(id,project_code)`
         )
         .eq("provider_id", userData.user.id)
         .order("created_at", { ascending: false });
@@ -352,6 +384,8 @@ export default function EnquiriesPage() {
 
     setIsProvider(amProvider);
     setCurrentUserId(userData.user.id);
+    setCustomerCity(typeof ownProfileResult.data?.city === "string" ? ownProfileResult.data.city.trim() || null : null);
+    setCustomerHomeAddress((homeAddressResult.data as SavedHomeAddress | null) ?? null);
     localStorage.setItem("enquiries:lastSeenSentActivity", new Date().toISOString());
     const now = new Date().toISOString();
     const storedSent = localStorage.getItem("enquiries:lastSeenHistory:sent");
@@ -536,7 +570,7 @@ export default function EnquiriesPage() {
   async function confirmAcceptedEnquiry(
     id: number,
     schedule: { isAsap: boolean; scheduledStartAt: string | null },
-    location: { addressText: string; lat: number | null; lng: number | null }
+    location: { addressText: string; mapsUrl: string | null }
   ) {
     const key = `sent-${id}`;
     setPending(key, true);
@@ -550,11 +584,6 @@ export default function EnquiriesPage() {
         setLocationErrors((current) => ({ ...current, [id]: "Please enter the job site address." }));
         return;
       }
-      if (location.lat === null || location.lng === null) {
-        setLocationErrors((current) => ({ ...current, [id]: "Please drop a pin for the job site." }));
-        return;
-      }
-
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!userData.user) throw new Error("Please sign in again to confirm this enquiry.");
@@ -563,14 +592,13 @@ export default function EnquiriesPage() {
         enquiry_id: id,
         customer_id: userData.user.id,
         address_text: addressText,
-        lat: location.lat,
-        lng: location.lng,
+        maps_url: location.mapsUrl,
       };
       const { error: locationInsertError } = await supabase.from("enquiry_locations").insert(locationPayload);
       if (locationInsertError?.code === "23505") {
         const { error: locationUpdateError } = await supabase
           .from("enquiry_locations")
-          .update({ address_text: locationPayload.address_text, lat: locationPayload.lat, lng: locationPayload.lng })
+          .update({ address_text: locationPayload.address_text, maps_url: locationPayload.maps_url })
           .eq("enquiry_id", id);
         if (locationUpdateError) {
           locationWriteFailed = true;
@@ -601,7 +629,7 @@ export default function EnquiriesPage() {
             : p
         )
       );
-      setConfirmingSchedule((s) => ({ ...s, [id]: { mode: null, scheduledStartAt: "" } }));
+      setConfirmationStepOpen((current) => ({ ...current, [id]: false }));
       showActionToast("Enquiry confirmed. Find it under Active.", "View Active", "sent", "active", id);
     } catch (err: unknown) {
       if (locationWriteFailed) {
@@ -986,211 +1014,40 @@ export default function EnquiriesPage() {
                   )}
 
                   {sentTab === "active" && enq.status === "accepted" && (
-                    <div className="mt-4 space-y-3">
-                      {confirmingSchedule[enq.id]?.mode !== undefined ? (
-                        <div className="flex flex-col gap-2 rounded-md border border-muted p-3">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: "now", scheduledStartAt: "" } }))}
-                              className={`rounded-md px-3 py-1 text-sm ${confirmingSchedule[enq.id]?.mode === "now" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}
-                            >
-                              Now
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: "specific", scheduledStartAt: confirmingSchedule[enq.id]?.scheduledStartAt || "" } }))}
-                              className={`rounded-md px-3 py-1 text-sm ${confirmingSchedule[enq.id]?.mode === "specific" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}
-                            >
-                              Specific date & time
-                            </button>
-                          </div>
-
-                          {confirmingSchedule[enq.id]?.mode === "specific" && (
-                            <input
-                              type="datetime-local"
-                              min={minFutureDateTime}
-                              value={confirmingSchedule[enq.id]?.scheduledStartAt || ""}
-                              onChange={(e) =>
-                                setConfirmingSchedule((s) => ({
-                                  ...s,
-                                  [enq.id]: { mode: "specific", scheduledStartAt: e.target.value },
-                                }))
-                              }
-                              className="rounded-md border border-input bg-background px-2 py-1 text-sm"
-                            />
-                          )}
-
-                          <div className="space-y-2">
-                            <label htmlFor={`job-site-address-${enq.id}`} className="block text-sm font-medium">
-                              Job site location
-                            </label>
-                            <textarea
-                              id={`job-site-address-${enq.id}`}
-                              required
-                              maxLength={300}
-                              value={confirmingLocation[enq.id]?.addressText ?? ""}
-                              onChange={(event) => {
-                                setConfirmingLocation((current) => ({
-                                  ...current,
-                                  [enq.id]: {
-                                    addressText: event.target.value,
-                                    lat: current[enq.id]?.lat ?? null,
-                                    lng: current[enq.id]?.lng ?? null,
-                                  },
-                                }));
-                                setLocationErrors((current) => ({ ...current, [enq.id]: null }));
-                              }}
-                              rows={3}
-                              placeholder="House/street, landmark, area"
-                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                            />
-                            {(confirmingLocation[enq.id]?.addressText?.length ?? 0) > 240 && (
-                              <p className="text-right text-xs text-muted-foreground">
-                                {confirmingLocation[enq.id].addressText.length}/300
-                              </p>
-                            )}
-
-                            {(() => {
-                              const fallbackCenter = resolveLocationFallbackCenter(enq.providers?.city, enq.customer_requirements?.city);
-                              const pin = confirmingLocation[enq.id];
-                              const selectedPin = pin && pin.lat !== null && pin.lng !== null ? { lat: pin.lat, lng: pin.lng } : null;
-
-                              if (selectedPin) {
-                                return (
-                                  <div className="space-y-2">
-                                    <LocationMap lat={selectedPin.lat} lng={selectedPin.lng} height={180} />
-                                    <button
-                                      type="button"
-                                      onClick={() => setLocationPickerOpen((current) => ({ ...current, [enq.id]: true }))}
-                                      className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium"
-                                    >
-                                      Change pin
-                                    </button>
-                                    <LocationPicker
-                                      open={!!locationPickerOpen[enq.id]}
-                                      onOpenChange={(open) => setLocationPickerOpen((current) => ({ ...current, [enq.id]: open }))}
-                                      initial={selectedPin}
-                                      fallbackCenter={fallbackCenter}
-                                      title="Job site location"
-                                      confirmLabel="Use this pin"
-                                      onConfirm={({ lat, lng }) => {
-                                        setConfirmingLocation((current) => ({
-                                          ...current,
-                                          [enq.id]: {
-                                            addressText: current[enq.id]?.addressText ?? "",
-                                            lat,
-                                            lng,
-                                          },
-                                        }));
-                                        setLocationErrors((current) => ({ ...current, [enq.id]: null }));
-                                      }}
-                                    />
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => setLocationPickerOpen((current) => ({ ...current, [enq.id]: true }))}
-                                    className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium"
-                                  >
-                                    Drop pin on map
-                                  </button>
-                                  <LocationPicker
-                                    open={!!locationPickerOpen[enq.id]}
-                                    onOpenChange={(open) => setLocationPickerOpen((current) => ({ ...current, [enq.id]: open }))}
-                                    initial={null}
-                                    fallbackCenter={fallbackCenter}
-                                    title="Job site location"
-                                    confirmLabel="Use this pin"
-                                    onConfirm={({ lat, lng }) => {
-                                      setConfirmingLocation((current) => ({
-                                        ...current,
-                                        [enq.id]: {
-                                          addressText: current[enq.id]?.addressText ?? "",
-                                          lat,
-                                          lng,
-                                        },
-                                      }));
-                                      setLocationErrors((current) => ({ ...current, [enq.id]: null }));
-                                    }}
-                                  />
-                                </>
-                              );
-                            })()}
-                            {locationErrors[enq.id] && (
-                              <p className="text-sm text-destructive" role="alert">{locationErrors[enq.id]}</p>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const chosen = confirmingSchedule[enq.id];
-                                const location = confirmingLocation[enq.id] ?? { addressText: "", lat: null, lng: null };
-                                if (!chosen || (!chosen.scheduledStartAt && chosen.mode !== "now")) return;
-                                if (!location.addressText.trim()) {
-                                  setLocationErrors((current) => ({ ...current, [enq.id]: "Please enter the job site address." }));
-                                  return;
-                                }
-                                if (location.lat === null || location.lng === null) {
-                                  setLocationErrors((current) => ({ ...current, [enq.id]: "Please drop a pin for the job site." }));
-                                  return;
-                                }
-                                if (chosen.mode === "now") {
-                                  confirmAcceptedEnquiry(enq.id, { isAsap: true, scheduledStartAt: null }, location);
-                                } else if (chosen.mode === "specific" && chosen.scheduledStartAt) {
-                                  confirmAcceptedEnquiry(
-                                    enq.id,
-                                    { isAsap: false, scheduledStartAt: new Date(chosen.scheduledStartAt).toISOString() },
-                                    location
-                                  );
-                                }
-                              }}
-                              disabled={
-                                !!pendingMap[key] ||
-                                !confirmingSchedule[enq.id]?.mode ||
-                                (confirmingSchedule[enq.id]?.mode === "specific" && !confirmingSchedule[enq.id]?.scheduledStartAt) ||
-                                !confirmingLocation[enq.id] ||
-                                confirmingLocation[enq.id].lat === null ||
-                                confirmingLocation[enq.id].lng === null
-                              }
-                              className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
-                            >
-                              {pendingMap[key] ? "Confirming…" : "Confirm"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: null, scheduledStartAt: "" } }));
-                              }}
-                              className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
+                    <div className="mt-4">
+                      {confirmationStepOpen[enq.id] ? (
+                        <ConfirmationStep
+                          key={enq.id}
+                          enquiryId={enq.id}
+                          homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
+                          hasSavedHomeAddress={Boolean(customerHomeAddress && [customerHomeAddress.street, customerHomeAddress.house_number, customerHomeAddress.area, customerHomeAddress.city, customerHomeAddress.pincode].some((value) => value?.trim()))}
+                          homeMapsUrl={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
+                            ? coordsViewUrl(customerHomeAddress.lat, customerHomeAddress.lng)
+                            : null}
+                          homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
+                          fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
+                            ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
+                            : resolveLocationFallbackCenter(customerCity || customerHomeAddress?.city || selectedLocation.city, selectedLocation)}
+                          today={todayLocal}
+                          saving={!!pendingMap[key]}
+                          error={errors[key] ?? null}
+                          locationError={locationErrors[enq.id] ?? null}
+                          onCancel={() => setConfirmationStepOpen((current) => ({ ...current, [enq.id]: false }))}
+                          onConfirm={(schedule, jobLocation) => void confirmAcceptedEnquiry(enq.id, schedule, jobLocation)}
+                        />
                       ) : (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            onClick={() => setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: null, scheduledStartAt: "" } }))}
-                            disabled={!!pendingMap[key]}
-                            className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {pendingMap[key] ? "Confirming…" : "Confirm"}
-                          </button>
-                          <button
-                            onClick={() => updateSentStatus(enq.id, "cancelled")}
-                            disabled={!!pendingMap[key]}
-                            className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {pendingMap[key] ? "Cancelling…" : "Cancel"}
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCardError(key, null);
+                            setLocationErrors((current) => ({ ...current, [enq.id]: null }));
+                            setConfirmationStepOpen((current) => ({ ...current, [enq.id]: true }));
+                          }}
+                          disabled={!!pendingMap[key]}
+                          className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          Confirm
+                        </button>
                       )}
                     </div>
                   )}
@@ -1245,14 +1102,23 @@ export default function EnquiriesPage() {
             const review = receivedReviewsByEnquiry[String(enq.id)] ?? null;
             const customerName = enq.profiles?.full_name || "Anonymous";
             const isHighlighted = highlightedEnquiry?.view === "received" && highlightedEnquiry.enquiryId === enq.id;
+            const safeCustomerSummary: CustomerSummary = {
+              fullName: enq.profiles?.full_name ?? null,
+              avatarUrl: enq.profiles?.avatar_url ?? null,
+              city: enq.profiles?.city ?? null,
+              createdAt: enq.profiles?.created_at ?? null,
+            };
             return (
               <article key={enq.id} className={`rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
                 <div className="flex min-w-0 items-center gap-3">
-                  <Avatar src={enq.profiles?.avatar_url} name={customerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-foreground">{customerName}</div>
-                    {enq.customer_requirements?.description && <div className="mt-0.5 truncate text-sm text-muted-foreground">{enq.customer_requirements.description}</div>}
-                  </div>
+                  <button type="button" onClick={() => { setCustomerSummary(safeCustomerSummary); setIsCustomerSummaryOpen(true); }} aria-label={`View ${customerName}'s public details`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Avatar src={enq.profiles?.avatar_url} name={customerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold text-foreground">{customerName}</span>
+                      {enq.customer_requirements?.description && <span className="mt-0.5 block truncate text-sm text-muted-foreground">{enq.customer_requirements.description}</span>}
+                    </span>
+                    <UserRound aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                  </button>
                   <div className="flex flex-wrap items-start justify-end gap-2">
                     {(receivedTab === "active" || receivedTab === "history") && enq.projects && (
                       <button
@@ -1410,7 +1276,7 @@ export default function EnquiriesPage() {
                 {errors[key] && <p className="mt-2 text-sm text-destructive">{errors[key]}</p>}
               </article>
             );
-          })}
+            })}
         </div>
       )}
 
@@ -1455,6 +1321,8 @@ export default function EnquiriesPage() {
           </div>
         );
       })()}
+
+      <CustomerSummarySheet open={isCustomerSummaryOpen} customer={customerSummary} onClose={() => setIsCustomerSummaryOpen(false)} />
 
       {activeReviewPrompt && (
         <ReviewModal
