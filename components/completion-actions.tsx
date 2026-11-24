@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { friendlyDbError } from "@/lib/db-errors";
+import { Button } from "@/components/ui/button";
 
 export function CompletionActions({
   enquiryId,
@@ -66,13 +67,13 @@ export function CompletionActions({
 
   return (
     <div className="mt-2">
-      <button
+      <Button
         onClick={markComplete}
         disabled={pending}
-        className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+        className="min-h-11 rounded-full px-4"
       >
         {pending ? "Marking…" : "Mark work complete"}
-      </button>
+      </Button>
       {theirCompletedAt && <p className="mt-1 text-xs text-muted-foreground">The other party has already marked this complete.</p>}
       {error && <p className="mt-1 text-sm text-destructive">{error}</p>}
     </div>

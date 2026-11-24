@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { ArrowRight, MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import LoadingSpinner from "@/components/loading-spinner";
+import { Avatar } from "@/components/avatar";
+import { Badge } from "@/components/ui/badge";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { EnquiryDirections } from "@/components/enquiry-directions";
 import { CompletionActions } from "@/components/completion-actions";
@@ -36,6 +37,7 @@ type SentEnquiry = {
   providers?: {
     id: string;
     business_name?: string | null;
+    profiles?: { full_name?: string | null; avatar_url?: string | null } | null;
     lat?: number | null;
     lng?: number | null;
     locality?: string | null;
@@ -47,8 +49,8 @@ type SentEnquiry = {
 
 type SentEnquiryRow = Omit<SentEnquiry, "providers" | "customer_requirements" | "projects"> & {
   providers?:
-    | { id: string; business_name?: string | null; lat?: number | null; lng?: number | null; locality?: string | null; city?: string | null }
-    | { id: string; business_name?: string | null; lat?: number | null; lng?: number | null; locality?: string | null; city?: string | null }[]
+    | { id: string; business_name?: string | null; profiles?: { full_name?: string | null; avatar_url?: string | null } | { full_name?: string | null; avatar_url?: string | null }[] | null; lat?: number | null; lng?: number | null; locality?: string | null; city?: string | null }
+    | { id: string; business_name?: string | null; profiles?: { full_name?: string | null; avatar_url?: string | null } | { full_name?: string | null; avatar_url?: string | null }[] | null; lat?: number | null; lng?: number | null; locality?: string | null; city?: string | null }[]
     | null;
   customer_requirements?: { description: string | null; city?: string | null } | { description: string | null; city?: string | null }[] | null;
   projects?: { id: string; project_code: string } | { id: string; project_code: string }[] | null;
@@ -66,13 +68,13 @@ type ReceivedEnquiry = {
   customer_id: string;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
-  profiles?: { full_name: string | null } | null;
+  profiles?: { full_name: string | null; avatar_url?: string | null } | null;
   customer_requirements?: { description: string | null } | null;
   projects?: { id: string; project_code: string } | null;
 };
 
 type ReceivedEnquiryRow = Omit<ReceivedEnquiry, "profiles" | "customer_requirements" | "projects"> & {
-  profiles?: { full_name: string | null } | { full_name: string | null }[] | null;
+  profiles?: { full_name: string | null; avatar_url?: string | null } | { full_name: string | null; avatar_url?: string | null }[] | null;
   customer_requirements?: { description: string | null } | { description: string | null }[] | null;
   projects?: { id: string; project_code: string } | { id: string; project_code: string }[] | null;
 };
@@ -99,13 +101,13 @@ function formatDateTime(dateStr: string | null | undefined): string {
 function statusBadge(status: string) {
   const cls =
     status === "accepted" || status === "confirmed"
-      ? "bg-green-100 text-green-800"
+      ? "border-accent bg-accent text-accent-foreground"
       : status === "declined" || status === "cancelled"
-      ? "bg-red-100 text-red-800"
+      ? "border-destructive/20 bg-destructive/10 text-destructive"
       : status === "completed"
-      ? "bg-blue-100 text-blue-800"
-      : "bg-gray-100 text-gray-800";
-  return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${cls}`}>{status}</span>;
+      ? "border-border bg-secondary text-secondary-foreground"
+      : "border-border bg-muted text-foreground";
+  return <Badge variant="outline" className={`capitalize ${cls}`}>{status === "sent" ? "New" : status}</Badge>;
 }
 
 function getReviewDismissedKey(enquiryId: number) {
@@ -147,11 +149,38 @@ export default function EnquiriesPage() {
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [openChatModal, setOpenChatModal] = useState<{ projectId: string; enquiryId: number; isCompleted: boolean } | null>(null);
   const [unreadByProject, setUnreadByProject] = useState<Record<string, number>>({});
+  const [actionToast, setActionToast] = useState<{ message: string; actionLabel: string; view: "sent" | "received"; tab: "active" | "history"; enquiryId: number } | null>(null);
+  const [highlightedEnquiry, setHighlightedEnquiry] = useState<{ view: "sent" | "received"; enquiryId: number } | null>(null);
 
   useEscapeKey(!!openChatModal, () => setOpenChatModal(null));
 
   const mountedRef = useRef(true);
   const unreadDebounceRef = useRef<number | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completionToastKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => () => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+  }, []);
+
+  function showActionToast(message: string, actionLabel: string, targetView: "sent" | "received", tab: "active" | "history", enquiryId: number) {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setActionToast({ message, actionLabel, view: targetView, tab, enquiryId });
+    toastTimeoutRef.current = setTimeout(() => setActionToast(null), 8000);
+  }
+
+  function openToastDestination() {
+    if (!actionToast) return;
+    setView(actionToast.view);
+    if (actionToast.view === "sent") setSentTab(actionToast.tab);
+    else setReceivedTab(actionToast.tab);
+    setHighlightedEnquiry({ view: actionToast.view, enquiryId: actionToast.enquiryId });
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => setHighlightedEnquiry(null), 3500);
+    setActionToast(null);
+  }
 
   const loadUnread = useCallback(async (userId: string, sentList: SentEnquiry[], receivedList: ReceivedEnquiry[]) => {
     try {
@@ -204,14 +233,17 @@ export default function EnquiriesPage() {
     const { data: sentData } = await supabase
       .from("enquiries")
       .select(
-        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name,lat,lng,locality,city),customer_requirements(description,city),projects(id,project_code)`
+        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name,lat,lng,locality,city,profiles!providers_id_fkey(full_name,avatar_url)),customer_requirements(description,city),projects(id,project_code)`
       )
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
 
     const sentList: SentEnquiry[] = ((sentData ?? []) as SentEnquiryRow[]).map((row) => ({
       ...row,
-      providers: one(row.providers),
+      providers: (() => {
+        const provider = one(row.providers);
+        return provider ? { ...provider, profiles: one(provider.profiles) } : null;
+      })(),
       customer_requirements: one(row.customer_requirements),
       projects: one(row.projects),
     }));
@@ -253,7 +285,7 @@ export default function EnquiriesPage() {
       const { data, error } = await supabase
         .from("enquiries")
         .select(
-          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name),customer_requirements(description),projects(id,project_code)`
+          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name,avatar_url),customer_requirements(description),projects(id,project_code)`
         )
         .eq("provider_id", userData.user.id)
         .order("created_at", { ascending: false });
@@ -474,6 +506,7 @@ export default function EnquiriesPage() {
       const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
       if (error) throw error;
       setSent((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
+      if (status === "cancelled") showActionToast("Enquiry cancelled. Moved to History.", "View History", "sent", "history", id);
     } catch (err: unknown) {
       setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
     } finally {
@@ -491,6 +524,8 @@ export default function EnquiriesPage() {
       const { error } = await supabase.from("enquiries").update({ status, decline_reason: nextReason }).eq("id", id);
       if (error) throw error;
       setReceived((prev) => prev.map((p) => (p.id === id ? { ...p, status, decline_reason: status === "declined" ? nextReason : p.decline_reason } : p)));
+      if (status === "accepted") showActionToast("Enquiry accepted. Find it under Active.", "View Active", "received", "active", id);
+      else if (status === "declined") showActionToast("Enquiry declined. Moved to History.", "View History", "received", "history", id);
     } catch (err: unknown) {
       setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
     } finally {
@@ -567,6 +602,7 @@ export default function EnquiriesPage() {
         )
       );
       setConfirmingSchedule((s) => ({ ...s, [id]: { mode: null, scheduledStartAt: "" } }));
+      showActionToast("Enquiry confirmed. Find it under Active.", "View Active", "sent", "active", id);
     } catch (err: unknown) {
       if (locationWriteFailed) {
         setLocationErrors((current) => ({
@@ -586,9 +622,12 @@ export default function EnquiriesPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <LoadingSpinner size={10} />
-      </div>
+      <main aria-label="Loading enquiries" aria-busy="true" className="mx-auto w-full max-w-3xl space-y-5 px-4 py-8">
+        <div className="space-y-2"><div className="skeleton h-9 w-48 rounded-lg" /><div className="skeleton h-4 w-72 max-w-full rounded" /></div>
+        <div className="skeleton h-12 w-full max-w-sm rounded-full" />
+        <div className="flex gap-2"><div className="skeleton h-11 w-24 rounded-full" /><div className="skeleton h-11 w-24 rounded-full" /><div className="skeleton h-11 w-24 rounded-full" /></div>
+        {[0, 1, 2].map((item) => <div key={item} className="skeleton h-36 rounded-2xl border border-border" />)}
+      </main>
     );
   }
 
@@ -624,7 +663,7 @@ export default function EnquiriesPage() {
   const handleReceivedTabChange = (tab: ReceivedTab) => setReceivedTab(tab);
   const pendingCount = view === "sent" ? sentPendingCount : receivedPendingCount;
   const activeCount = view === "sent" ? sentActiveCount : receivedActiveCount;
-  const pendingLabel = view === "sent" ? "Sent" : "New";
+  const historyCount = bucket(view === "sent" ? sent : received, "history").length;
 
   const shownSent = view === "sent" && sentTab !== "reviews" ? bucket(sent, sentTab) : [];
   const shownReceived = view === "received" ? bucket(received, receivedTab) : [];
@@ -653,91 +692,99 @@ export default function EnquiriesPage() {
     }));
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 pb-12 sm:py-10">
       <div className="mb-6">
-        <h1 className="mb-1 text-2xl font-semibold">Enquiries</h1>
-        <p className="text-muted-foreground">Track what you have sent and, if you are a provider, what you have received.</p>
+        <h1 className="mb-1 font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">Enquiries</h1>
+        <p className="text-sm text-muted-foreground">Track messages, decisions, and work in progress.</p>
       </div>
 
       {isProvider && (
-        <div className="mb-6 flex items-center gap-2">
+        <div role="group" aria-label="Enquiry direction" className="mb-6 flex w-full max-w-sm rounded-full border border-border bg-card p-1 shadow-sm">
           <button
+            type="button"
+            aria-pressed={view === "received"}
             onClick={() => setView("received")}
-            className={`rounded-md px-3 py-1 text-sm font-medium ${view === "received" ? "bg-black text-white" : "bg-muted"}`}
+            className={`min-h-11 flex-1 rounded-full px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === "received" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
           >
             Received
           </button>
           <button
+            type="button"
+            aria-pressed={view === "sent"}
             onClick={() => setView("sent")}
-            className={`rounded-md px-3 py-1 text-sm font-medium ${view === "sent" ? "bg-black text-white" : "bg-muted"}`}
+            className={`min-h-11 flex-1 rounded-full px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === "sent" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
           >
             Sent by me
           </button>
         </div>
       )}
 
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-5 flex flex-wrap items-center gap-2 border-b border-border pb-3">
         <button
+          type="button"
           onClick={() => {
             if (view === "sent") handleSentTabChange("pending");
             else handleReceivedTabChange("pending");
           }}
-          className={`rounded-md px-3 py-1 text-sm font-medium ${activeTab === "pending" ? "bg-blue-600 text-white" : "bg-muted"}`}
+          aria-pressed={activeTab === "pending"}
+          className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === "pending" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-muted"}`}
         >
-          {pendingLabel} <span className="ml-2">{"(" + pendingCount + ")"}</span>
+          New <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-xs ${activeTab === "pending" ? "bg-primary-foreground/15 text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{pendingCount}</span>
         </button>
         <button
+          type="button"
           onClick={() => {
             if (view === "sent") handleSentTabChange("active");
             else handleReceivedTabChange("active");
           }}
-          className={`rounded-md px-3 py-1 text-sm font-medium ${activeTab === "active" ? "bg-blue-600 text-white" : "bg-muted"}`}
+          aria-pressed={activeTab === "active"}
+          className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === "active" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-muted"}`}
         >
-          Active <span className="ml-2">{"(" + activeCount + ")"}</span>
+          Active <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-xs ${activeTab === "active" ? "bg-primary-foreground/15 text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{activeCount}</span>
         </button>
         <button
+          type="button"
           onClick={() => {
             if (view === "sent") handleSentTabChange("history");
             else handleReceivedTabChange("history");
           }}
-          className={`relative rounded-md px-3 py-1 text-sm font-medium ${activeTab === "history" ? "bg-blue-600 text-white" : "bg-muted"}`}
+          aria-pressed={activeTab === "history"}
+          className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === "history" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-muted"}`}
         >
-          History
-          {historyUnseen > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-semibold text-white">
-              {historyUnseen > 9 ? "9+" : historyUnseen}
-            </span>
-          )}
+          History <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-xs ${activeTab === "history" ? "bg-primary-foreground/15 text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{historyCount}</span>
         </button>
         {view === "sent" && (
           <button
+            type="button"
             onClick={() => handleSentTabChange("reviews")}
-            className={`rounded-md px-3 py-1 text-sm font-medium ${activeTab === "reviews" ? "bg-blue-600 text-white" : "bg-muted"}`}
+            aria-pressed={activeTab === "reviews"}
+            className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === "reviews" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-muted"}`}
           >
             Your Reviews
           </button>
         )}
         {activeTab === "history" && historyUnseen > 0 && (
           <button
+            type="button"
             onClick={() => {
               const now = new Date().toISOString();
               localStorage.setItem(`enquiries:lastSeenHistory:${view}`, now);
               setLastSeenHistory((s) => ({ ...s, [view]: now }));
             }}
-            className="ml-auto rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+            className="ml-auto inline-flex min-h-11 items-center rounded-full px-3 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Alright, got it
+            Done
           </button>
         )}
       </div>
 
       {activeTab === "history" && (
-        <div className="mb-4 flex items-center gap-2 text-sm">
+        <div className="mb-5 flex flex-wrap items-center gap-2 text-sm">
           {(["all", "completed", "declined", "cancelled"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setHistoryFilter(f)}
-              className={`rounded-full px-3 py-1 ${historyFilter === f ? "bg-black text-white" : "bg-muted"}`}
+              className={`inline-flex min-h-10 items-center rounded-full border px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${historyFilter === f ? "border-accent bg-accent text-accent-foreground" : "border-border bg-card text-foreground hover:bg-muted"}`}
             >
               {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
@@ -751,7 +798,7 @@ export default function EnquiriesPage() {
             <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Pending</h2>
             {pendingReviews.length > 0 ? (
               pendingReviews.map((prompt) => (
-                <div key={prompt.enquiryId} className="rounded-lg border p-4">
+                <div key={prompt.enquiryId} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-medium">{prompt.providerName}</div>
@@ -770,14 +817,14 @@ export default function EnquiriesPage() {
                   <button
                     type="button"
                     onClick={() => setActiveReviewPrompt({ enquiryId: prompt.enquiryId, providerName: prompt.providerName, existingReview: null })}
-                    className="mt-4 rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+                    className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Leave a review
                   </button>
                 </div>
               ))
             ) : (
-              <div className="rounded-lg border p-4 text-sm text-muted-foreground">No reviews left to submit.</div>
+              <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">No reviews left to submit.</div>
             )}
           </div>
 
@@ -785,16 +832,16 @@ export default function EnquiriesPage() {
             <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Submitted</h2>
             {submittedReviews.length > 0 ? (
               submittedReviews.map((prompt) => (
-                <div key={prompt.enquiryId} className="rounded-lg border p-4">
+                <div key={prompt.enquiryId} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-medium">{prompt.providerName}</div>
-                      <div className="mt-1 text-sm text-yellow-500">{"★".repeat(prompt.existingReview.rating)}{"☆".repeat(5 - prompt.existingReview.rating)}</div>
+                      <div className="mt-1 text-sm text-foreground" aria-label={`${prompt.existingReview.rating} out of 5 stars`}>{"★".repeat(prompt.existingReview.rating)}{"☆".repeat(5 - prompt.existingReview.rating)}</div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setActiveReviewPrompt({ enquiryId: prompt.enquiryId, providerName: prompt.providerName, existingReview: prompt.existingReview })}
-                      className="text-sm font-medium text-blue-600 underline"
+                      className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Edit
                     </button>
@@ -804,38 +851,36 @@ export default function EnquiriesPage() {
                 </div>
               ))
             ) : (
-              <div className="rounded-lg border p-4 text-sm text-muted-foreground">No reviews submitted yet.</div>
+              <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">No reviews submitted yet.</div>
             )}
           </div>
         </div>
       ) : view === "sent" ? (
         shownSent.length === 0 ? (
-          <div className="rounded-lg border p-6 text-center">
-            <p className="text-muted-foreground">
+          <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+            <p className="text-sm text-muted-foreground">
               {sentTab === "pending" ? "You have not sent any enquiries yet." : sentTab === "active" ? "No active work right now." : "No history yet."}
             </p>
-            {sentTab === "pending" && (
-              <div className="mt-4">
-                <Link href="/discover" className="text-sm text-blue-600 underline">
-                  Discover providers
-                </Link>
-              </div>
-            )}
+            <div className="mt-4">
+              <Link href="/discover" className="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {sentTab === "pending" ? "Discover providers" : "Find another provider"}
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
             {shownSent.map((enq) => {
               const key = `sent-${enq.id}`;
+              const providerProfile = enq.providers?.profiles;
+              const providerName = enq.providers?.business_name || providerProfile?.full_name || "Provider";
+              const isHighlighted = highlightedEnquiry?.view === "sent" && highlightedEnquiry.enquiryId === enq.id;
               return (
-                <div key={enq.id} className="rounded-lg border p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <Link href={`/providers/${enq.providers?.id ?? ""}`} className="font-medium text-blue-600 underline">
-                        {enq.providers?.business_name || "Provider"}
-                      </Link>
-                      {enq.customer_requirements?.description && (
-                        <div className="mt-1 text-sm text-muted-foreground">Regarding: {enq.customer_requirements.description}</div>
-                      )}
+                <article key={enq.id} className={`rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar src={providerProfile?.avatar_url} name={providerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/providers/${enq.providers?.id ?? ""}`} className="block truncate font-semibold text-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{providerName}</Link>
+                      {enq.customer_requirements?.description && <div className="mt-0.5 truncate text-sm text-muted-foreground">{enq.customer_requirements.description}</div>}
                     </div>
                     <div className="flex flex-wrap items-start justify-end gap-2">
                       {(sentTab === "active" || sentTab === "history") && enq.projects && (
@@ -851,7 +896,7 @@ export default function EnquiriesPage() {
                               });
                             }
                           }}
-                          className="p-1 text-gray-600 hover:text-gray-900"
+                          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           aria-label={
                             (() => {
                               const projId = Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id;
@@ -869,7 +914,7 @@ export default function EnquiriesPage() {
                               const isOpen = openChatModal?.projectId === projId;
                               if (count > 0 && !isOpen) {
                                 return (
-                                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
+                                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
                                     {count > 9 ? "9+" : count}
                                   </span>
                                 );
@@ -882,11 +927,11 @@ export default function EnquiriesPage() {
                       {sentTab === "active" && enq.status === "confirmed" && (
                         <EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} />
                       )}
-                      <div>{statusBadge(enq.status)}</div>
+                      {statusBadge(enq.status)}
                     </div>
                   </div>
 
-                  <div className="mt-3 text-sm text-muted-foreground">{enq.message}</div>
+                  <p title={enq.message || undefined} className="mt-4 line-clamp-1 text-sm text-foreground">{enq.message || "No message provided."}</p>
                   <div className="mt-3 text-xs text-muted-foreground">
                     Sent {formatDateTime(enq.created_at)}
                     {sentTab === "history" && enq.updated_at && (
@@ -901,7 +946,7 @@ export default function EnquiriesPage() {
                   {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && (
                     <Link
                       href={`/projects/${Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id}`}
-                      className="mt-3 inline-block text-sm text-blue-600 underline"
+                      className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       View Project ({Array.isArray(enq.projects) ? enq.projects[0]?.project_code : enq.projects.project_code})
                     </Link>
@@ -910,7 +955,7 @@ export default function EnquiriesPage() {
                   {sentTab === "pending" && enq.status === "sent" && (
                     <div className="mt-4">
                       {confirmingWithdraw[enq.id] ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm text-muted-foreground">Withdraw this enquiry?</span>
                           <button
                             onClick={() => {
@@ -918,13 +963,13 @@ export default function EnquiriesPage() {
                               updateSentStatus(enq.id, "cancelled");
                             }}
                             disabled={!!pendingMap[key]}
-                            className="rounded-md bg-red-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                            className="inline-flex min-h-11 items-center rounded-full bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             {pendingMap[key] ? "Withdrawing…" : "Yes, withdraw"}
                           </button>
                           <button
                             onClick={() => setConfirmingWithdraw((s) => ({ ...s, [enq.id]: false }))}
-                            className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+                            className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             Never mind
                           </button>
@@ -932,7 +977,7 @@ export default function EnquiriesPage() {
                       ) : (
                         <button
                           onClick={() => setConfirmingWithdraw((s) => ({ ...s, [enq.id]: true }))}
-                          className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+                          className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           Withdraw
                         </button>
@@ -1130,18 +1175,18 @@ export default function EnquiriesPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             onClick={() => setConfirmingSchedule((s) => ({ ...s, [enq.id]: { mode: null, scheduledStartAt: "" } }))}
                             disabled={!!pendingMap[key]}
-                            className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                            className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             {pendingMap[key] ? "Confirming…" : "Confirm"}
                           </button>
                           <button
                             onClick={() => updateSentStatus(enq.id, "cancelled")}
                             disabled={!!pendingMap[key]}
-                            className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800 disabled:opacity-60"
+                            className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             {pendingMap[key] ? "Cancelling…" : "Cancel"}
                           </button>
@@ -1158,7 +1203,17 @@ export default function EnquiriesPage() {
                         role="customer"
                         customerCompletedAt={enq.customer_completed_at}
                         providerCompletedAt={enq.provider_completed_at}
-                        onUpdated={(patch) => setSent((prev) => prev.map((p) => (p.id === enq.id ? { ...p, ...patch } : p)))}
+                        onUpdated={(patch) => {
+                          setSent((prev) => prev.map((p) => (p.id === enq.id ? { ...p, ...patch } : p)));
+                          if (patch.customer_completed_at) {
+                            const key = `customer:${enq.id}:${patch.customer_completed_at}`;
+                            if (!completionToastKeysRef.current.has(key)) {
+                              completionToastKeysRef.current.add(key);
+                              const completed = patch.status === "completed";
+                              showActionToast(completed ? "Work completed. Moved to History." : "Completion noted. Find it under Active.", completed ? "View History" : "View Active", "sent", completed ? "history" : "active", enq.id);
+                            }
+                          }
+                        }}
                         onReviewNeeded={(enquiryId) => {
                           const enquiry = sent.find((item) => item.id === enquiryId);
                           if (!enquiry || reviewsByEnquiry[String(enquiryId)]) return;
@@ -1173,28 +1228,30 @@ export default function EnquiriesPage() {
                   )}
 
                   {errors[key] && <p className="mt-2 text-sm text-destructive">{errors[key]}</p>}
-                </div>
+                </article>
               );
             })}
           </div>
         )
       ) : shownReceived.length === 0 ? (
-        <div className="rounded-lg border p-6 text-center text-muted-foreground">
-          {receivedTab === "pending" ? "No new enquiries yet" : receivedTab === "active" ? "No active work right now" : "No history yet"}
+          <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <p className="text-sm text-muted-foreground">{receivedTab === "pending" ? "No new enquiries yet" : receivedTab === "active" ? "No active work right now" : "No history yet"}</p>
+          <Link href={`/providers/${currentUserId}`} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">View your public profile</Link>
         </div>
       ) : (
         <div className="space-y-4">
           {shownReceived.map((enq) => {
             const key = `received-${enq.id}`;
             const review = receivedReviewsByEnquiry[String(enq.id)] ?? null;
+            const customerName = enq.profiles?.full_name || "Anonymous";
+            const isHighlighted = highlightedEnquiry?.view === "received" && highlightedEnquiry.enquiryId === enq.id;
             return (
-              <div key={enq.id} className="rounded-lg border p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="font-medium">{enq.profiles?.full_name || "Anonymous"}</div>
-                    {enq.customer_requirements?.description && (
-                      <div className="mt-1 text-sm text-muted-foreground">Regarding: {enq.customer_requirements.description}</div>
-                    )}
+              <article key={enq.id} className={`rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar src={enq.profiles?.avatar_url} name={customerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-semibold text-foreground">{customerName}</div>
+                    {enq.customer_requirements?.description && <div className="mt-0.5 truncate text-sm text-muted-foreground">{enq.customer_requirements.description}</div>}
                   </div>
                   <div className="flex flex-wrap items-start justify-end gap-2">
                     {(receivedTab === "active" || receivedTab === "history") && enq.projects && (
@@ -1207,7 +1264,7 @@ export default function EnquiriesPage() {
                             isCompleted: enq.status === "completed",
                           });
                         }}
-                        className="p-1 text-gray-600 hover:text-gray-900"
+                        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         aria-label={(() => {
                           const projId = enq.projects!.id;
                           const count = projId ? unreadByProject[projId] || 0 : 0;
@@ -1223,7 +1280,7 @@ export default function EnquiriesPage() {
                             const isOpen = openChatModal?.projectId === projId;
                             if (count > 0 && !isOpen) {
                               return (
-                                <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
+                                <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
                                   {count > 9 ? "9+" : count}
                                 </span>
                               );
@@ -1236,11 +1293,11 @@ export default function EnquiriesPage() {
                     {receivedTab === "active" && enq.status === "confirmed" && (
                       <EnquiryDirections enquiryId={enq.id} role="provider" />
                     )}
-                    {receivedTab === "history" && <div>{statusBadge(enq.status)}</div>}
+                    {statusBadge(enq.status)}
                   </div>
                 </div>
 
-                <div className="mt-3 text-sm text-muted-foreground">{enq.message}</div>
+                <p title={enq.message || undefined} className="mt-4 line-clamp-1 text-sm text-foreground">{enq.message || "No message provided."}</p>
                 <div className="mt-3 text-xs text-muted-foreground">
                   Sent {formatDateTime(enq.created_at)}
                   {receivedTab === "history" && enq.updated_at && (
@@ -1250,7 +1307,7 @@ export default function EnquiriesPage() {
                 {receivedTab === "history" && enq.status === "completed" && review && (
                   <div className="mt-3 rounded-md border border-muted bg-muted/30 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-yellow-500">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
+                      <div className="text-foreground" aria-label={`${review.rating} out of 5 stars`}>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
                       <div className="text-xs text-muted-foreground">Reviewed {formatDateTime(review.created_at)}</div>
                     </div>
                     {review.comment && <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">{review.comment}</p>}
@@ -1264,7 +1321,7 @@ export default function EnquiriesPage() {
                 {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && (
                   <Link
                     href={`/projects/${enq.projects.id}`}
-                    className="mt-3 inline-block text-sm text-blue-600 underline"
+                    className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     View Project ({enq.projects.project_code})
                   </Link>
@@ -1273,9 +1330,10 @@ export default function EnquiriesPage() {
                 {receivedTab === "pending" && (
                   <div className="mt-4 flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => updateReceivedStatus(enq.id, "accepted")}
                       disabled={!!pendingMap[key]}
-                      className="rounded-md bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                      className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {pendingMap[key] ? "Accepting…" : "Accept"}
                     </button>
@@ -1290,7 +1348,7 @@ export default function EnquiriesPage() {
                             }))
                           }
                           placeholder="Optional reason"
-                          className="w-48 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                          className="min-h-11 w-full max-w-48 rounded-full border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
                         <button
                           onClick={() => {
@@ -1299,13 +1357,13 @@ export default function EnquiriesPage() {
                             updateReceivedStatus(enq.id, "declined", reason);
                           }}
                           disabled={!!pendingMap[key]}
-                          className="rounded-md bg-red-600 px-3 py-1 text-sm text-white disabled:opacity-60"
+                          className="inline-flex min-h-11 items-center rounded-full bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {pendingMap[key] ? "Declining…" : "Confirm decline"}
                         </button>
                         <button
                           onClick={() => setConfirmingDecline((s) => ({ ...s, [enq.id]: { open: false, reason: "" } }))}
-                          className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800"
+                          className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           Cancel
                         </button>
@@ -1314,7 +1372,7 @@ export default function EnquiriesPage() {
                       <button
                         onClick={() => setConfirmingDecline((s) => ({ ...s, [enq.id]: { open: true, reason: "" } }))}
                         disabled={!!pendingMap[key]}
-                        className="rounded-md bg-gray-200 px-3 py-1 text-sm text-gray-800 disabled:opacity-60"
+                        className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {pendingMap[key] ? "Declining…" : "Decline"}
                       </button>
@@ -1334,13 +1392,23 @@ export default function EnquiriesPage() {
                       role="provider"
                       customerCompletedAt={enq.customer_completed_at}
                       providerCompletedAt={enq.provider_completed_at}
-                      onUpdated={(patch) => setReceived((prev) => prev.map((p) => (p.id === enq.id ? { ...p, ...patch } : p)))}
+                      onUpdated={(patch) => {
+                        setReceived((prev) => prev.map((p) => (p.id === enq.id ? { ...p, ...patch } : p)));
+                        if (patch.provider_completed_at) {
+                          const key = `provider:${enq.id}:${patch.provider_completed_at}`;
+                          if (!completionToastKeysRef.current.has(key)) {
+                            completionToastKeysRef.current.add(key);
+                            const completed = patch.status === "completed";
+                            showActionToast(completed ? "Work completed. Moved to History." : "Completion noted. Find it under Active.", completed ? "View History" : "View Active", "received", completed ? "history" : "active", enq.id);
+                          }
+                        }
+                      }}
                     />
                   </>
                 )}
 
                 {errors[key] && <p className="mt-2 text-sm text-destructive">{errors[key]}</p>}
-              </div>
+              </article>
             );
           })}
         </div>
@@ -1358,8 +1426,8 @@ export default function EnquiriesPage() {
           : null;
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-3xl max-h-[95vh] overflow-y-auto rounded-lg bg-white p-6 shadow-lg">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
+            <div className="max-h-[95dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-border bg-background p-4 text-foreground shadow-lifted sm:p-6">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Chat with {otherPartyName}</h2>
                 <button
@@ -1369,7 +1437,7 @@ export default function EnquiriesPage() {
                     // reload unread counts when chat closes
                     loadUnread(currentUserId, sent, received);
                   }}
-                  className="text-gray-600 hover:text-gray-900"
+                  className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label="Close chat"
                 >
                   ✕
@@ -1411,6 +1479,14 @@ export default function EnquiriesPage() {
           }}
         />
       )}
-    </div>
+      {actionToast && (
+        <div role="status" aria-live="polite" className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-[70] mx-auto flex max-w-lg flex-col gap-3 rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-lifted sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-medium">{actionToast.message}</p>
+          <button type="button" onClick={openToastDestination} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {actionToast.actionLabel}<ArrowRight aria-hidden="true" className="size-4" />
+          </button>
+        </div>
+      )}
+    </main>
   );
 }

@@ -1080,14 +1080,14 @@ export default function ProjectChat(props: ProjectChatProps) {
   return (
     <div className="w-full">
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+        <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lifted">
           {toastMessage}
         </div>
       )}
 
       <div
         ref={containerRef}
-        className="mb-6 max-h-[60vh] space-y-4 overflow-y-auto rounded bg-gray-50 p-4"
+        className="mb-6 max-h-[60vh] space-y-4 overflow-y-auto rounded-2xl border border-border bg-muted/50 p-4"
         onScroll={() => {
           const el = containerRef.current;
           if (!el) return;
@@ -1095,9 +1095,9 @@ export default function ProjectChat(props: ProjectChatProps) {
         }}
       >
         {loadingMessages ? (
-          <p className="text-center text-sm text-gray-500">Loading messages...</p>
+          <p className="text-center text-sm text-muted-foreground">Loading messages...</p>
         ) : messages.length === 0 ? (
-          <p className="text-center text-sm text-gray-500">No messages yet. Start the conversation!</p>
+          <p className="text-center text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
         ) : (
           messages.map((msg) => {
             const isOwn = msg.sender_id === currentUserId;
@@ -1108,9 +1108,9 @@ export default function ProjectChat(props: ProjectChatProps) {
             if (isDeleted || isAdminRemoved) {
               return (
                 <div key={msg.id} className={isOwn ? "flex justify-end" : "flex items-start justify-start"}>
-                  <div className="max-w-md rounded-lg bg-gray-100 px-3 py-2 text-sm italic text-gray-500">
+                  <div className="max-w-md rounded-xl bg-muted px-3 py-2 text-sm italic text-muted-foreground">
                     <p>{isAdminRemoved ? "This message was removed by an admin." : "This message was deleted"}</p>
-                    <div className="mt-1 text-xs text-gray-400">{formatTime(msg.created_at)}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{formatTime(msg.created_at)}</div>
                   </div>
                 </div>
               );
@@ -1124,18 +1124,18 @@ export default function ProjectChat(props: ProjectChatProps) {
                       type="button"
                       onClick={() => setOpenMenuFor(openMenuFor === msg.id ? null : msg.id)}
                       aria-label="Message options"
-                      className={`mt-1 rounded p-1 text-blue-400 hover:bg-blue-100 ${
+                      className={`mt-1 rounded p-1 text-primary hover:bg-accent ${
                         openMenuFor === msg.id ? "opacity-100" : "opacity-60 group-hover:opacity-100"
                       }`}
                     >
                       ⋮
                     </button>
                     {openMenuFor === msg.id && (
-                      <div className="absolute left-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
+                      <div className="absolute left-0 top-6 z-10 w-32 rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-soft">
                         {msg.body && (
                           <button
                             type="button"
-                            className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                            className="block min-h-11 w-full border-b border-border px-3 py-2 text-left text-foreground hover:bg-muted"
                             onClick={() => handleCopyMessage(msg)}
                           >
                             {copiedMessageId === msg.id ? "Copied" : "Copy"}
@@ -1143,7 +1143,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                         )}
                         <button
                           type="button"
-                          className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                          className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted"
                           onClick={() => setConfirmDeleteMessageId(msg.id)}
                         >
                           Delete
@@ -1154,7 +1154,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                 )}
                 <div className="max-w-md">
                   {msg.body && (
-                    <div className={`rounded-lg px-3 py-2 text-sm ${isOwn ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-900"}`}>
+                    <div className={`rounded-xl px-3 py-2 text-sm ${isOwn ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
                       <p className="break-words">{msg.body}</p>
                     </div>
                   )}
@@ -1179,15 +1179,15 @@ export default function ProjectChat(props: ProjectChatProps) {
                                       setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id);
                                     }}
                                     aria-label={`Options for ${attachment.file_name}`}
-                                    className="mt-1 rounded p-1 text-gray-700 hover:bg-gray-200"
+                                    className="mt-1 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                   >
                                     ⋮
                                   </button>
                                   {openAttachmentMenuFor === attachment.id && (
-                                    <div className="absolute left-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                    <div className="absolute left-0 top-6 z-20 w-32 rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-soft">
                                       <button
                                         type="button"
-                                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full border-b border-border px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={async () => {
                                           setOpenAttachmentMenuFor(null);
                                           const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
@@ -1198,7 +1198,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                                       </button>
                                       <button
                                         type="button"
-                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={() => {
                                           setOpenAttachmentMenuFor(null);
                                           setConfirmDeleteAttachment({
@@ -1216,7 +1216,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                               )}
                               <button
                                 type="button"
-                                className="block overflow-hidden rounded-md border border-gray-200 bg-white"
+                                className="block overflow-hidden rounded-md border border-border bg-background"
                                 onClick={async () => {
                                   const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "display");
                                   if (url) setLightboxImage(url);
@@ -1233,7 +1233,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                                     onError={() => handleDisplayUrlError(attachment.bucket, attachment.storage_path)}
                                   />
                                 ) : (
-                                  <div className="flex h-44 w-72 items-center justify-center bg-gray-100 text-xs text-gray-500">
+                                  <div className="flex h-44 w-72 items-center justify-center bg-muted text-xs text-muted-foreground">
                                     Loading…
                                   </div>
                                 )}
@@ -1247,15 +1247,15 @@ export default function ProjectChat(props: ProjectChatProps) {
                                       setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id);
                                     }}
                                     aria-label={`Options for ${attachment.file_name}`}
-                                    className="mt-1 rounded p-1 text-gray-700 hover:bg-gray-200"
+                                    className="mt-1 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                   >
                                     ⋮
                                   </button>
                                   {openAttachmentMenuFor === attachment.id && (
-                                    <div className="absolute right-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                    <div className="absolute right-0 top-6 z-20 w-32 rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-soft">
                                       <button
                                         type="button"
-                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={async () => {
                                           setOpenAttachmentMenuFor(null);
                                           const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
@@ -1267,7 +1267,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                                       {(!isOwn && !msg.deleted_at && !msg.admin_removed_at) && (
                                         <button
                                           type="button"
-                                          className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                                          className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground"
                                           disabled={reportedIds.has(msg.id)}
                                           onClick={() => {
                                             setOpenAttachmentMenuFor(null);
@@ -1302,15 +1302,15 @@ export default function ProjectChat(props: ProjectChatProps) {
                                     type="button"
                                     onClick={() => setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id)}
                                     aria-label={`Options for ${attachment.file_name}`}
-                                    className="mt-1 rounded p-1 text-gray-700 hover:bg-gray-200"
+                                    className="mt-1 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                   >
                                     ⋮
                                   </button>
                                   {openAttachmentMenuFor === attachment.id && (
-                                    <div className="absolute left-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                    <div className="absolute left-0 top-6 z-20 w-32 rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-soft">
                                       <button
                                         type="button"
-                                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full border-b border-border px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={async () => {
                                           setOpenAttachmentMenuFor(null);
                                           const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
@@ -1321,7 +1321,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                                       </button>
                                       <button
                                         type="button"
-                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={() => {
                                           setOpenAttachmentMenuFor(null);
                                           setConfirmDeleteAttachment({
@@ -1351,15 +1351,15 @@ export default function ProjectChat(props: ProjectChatProps) {
                                     type="button"
                                     onClick={() => setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id)}
                                     aria-label={`Options for ${attachment.file_name}`}
-                                    className="mt-1 rounded p-1 text-gray-700 hover:bg-gray-200"
+                                    className="mt-1 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                   >
                                     ⋮
                                   </button>
                                   {openAttachmentMenuFor === attachment.id && (
-                                    <div className="absolute right-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                    <div className="absolute right-0 top-6 z-20 w-32 rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-soft">
                                       <button
                                         type="button"
-                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={async () => {
                                           setOpenAttachmentMenuFor(null);
                                           const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
@@ -1389,15 +1389,15 @@ export default function ProjectChat(props: ProjectChatProps) {
                                     type="button"
                                     onClick={() => setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id)}
                                     aria-label={`Options for ${attachment.file_name}`}
-                                    className="rounded p-1 text-gray-700 hover:bg-gray-200"
+                                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                   >
                                     ⋮
                                   </button>
                                   {openAttachmentMenuFor === attachment.id && (
-                                    <div className="absolute left-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                    <div className="absolute left-0 top-6 z-20 w-32 rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-soft">
                                       <button
                                         type="button"
-                                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full border-b border-border px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={async () => {
                                           setOpenAttachmentMenuFor(null);
                                           const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
@@ -1408,7 +1408,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                                       </button>
                                       <button
                                         type="button"
-                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={() => {
                                           setOpenAttachmentMenuFor(null);
                                           setConfirmDeleteAttachment({
@@ -1424,14 +1424,14 @@ export default function ProjectChat(props: ProjectChatProps) {
                                   )}
                                 </div>
                               )}
-                              <div className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-3 py-2">
+                              <div className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2">
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-gray-800">{attachment.file_name}</p>
-                                  <p className="text-xs text-gray-500">{formatFileSize(attachment.size_bytes)}</p>
+                                  <p className="truncate text-sm font-medium text-foreground">{attachment.file_name}</p>
+                                  <p className="text-xs text-muted-foreground">{formatFileSize(attachment.size_bytes)}</p>
                                 </div>
                                 <button
                                   type="button"
-                                  className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
+                                  className="min-h-9 rounded-full border border-border bg-background px-3 text-xs text-foreground hover:bg-muted"
                                   onClick={async () => {
                                     const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
                                     if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -1446,15 +1446,15 @@ export default function ProjectChat(props: ProjectChatProps) {
                                     type="button"
                                     onClick={() => setOpenAttachmentMenuFor(openAttachmentMenuFor === attachment.id ? null : attachment.id)}
                                     aria-label={`Options for ${attachment.file_name}`}
-                                    className="rounded p-1 text-gray-700 hover:bg-gray-200"
+                                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                   >
                                     ⋮
                                   </button>
                                   {openAttachmentMenuFor === attachment.id && (
-                                    <div className="absolute right-0 top-6 z-20 w-32 rounded border bg-white text-sm shadow-lg">
+                                    <div className="absolute right-0 top-6 z-20 w-32 rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-soft">
                                       <button
                                         type="button"
-                                        className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted"
                                         onClick={async () => {
                                           setOpenAttachmentMenuFor(null);
                                           const url = await getSignedUrl(attachment.bucket, attachment.storage_path, attachment.file_name, "download");
@@ -1473,7 +1473,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                     </div>
                   )}
 
-                  <div className={`mt-1 text-xs ${isOwn ? "text-blue-100" : "text-gray-600"}`}>
+                  <div className={`mt-1 text-xs ${isOwn ? "text-primary-foreground" : "text-muted-foreground"}`}>
                     {formatTime(msg.created_at)}
                     {isOwn && <span className="ml-2">{msg.read_at ? "Seen" : "Sent"}</span>}
                   </div>
@@ -1484,18 +1484,18 @@ export default function ProjectChat(props: ProjectChatProps) {
                       type="button"
                       onClick={() => setOpenMenuFor(openMenuFor === msg.id ? null : msg.id)}
                       aria-label="Message options"
-                      className={`mt-1 rounded p-1 text-gray-500 hover:bg-gray-200 ${
+                      className={`mt-1 rounded p-1 text-muted-foreground hover:bg-muted ${
                         openMenuFor === msg.id ? "opacity-100" : "opacity-60 group-hover:opacity-100"
                       }`}
                     >
                       ⋮
                     </button>
                     {openMenuFor === msg.id && (
-                      <div className="absolute left-0 top-6 z-10 w-32 rounded border bg-white text-sm shadow-lg">
+                      <div className="absolute left-0 top-6 z-10 w-32 rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-soft">
                         {msg.body && (
                           <button
                             type="button"
-                            className="block w-full border-b border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                            className="block min-h-11 w-full border-b border-border px-3 py-2 text-left text-foreground hover:bg-muted"
                             onClick={() => handleCopyMessage(msg)}
                           >
                             {copiedMessageId === msg.id ? "Copied" : "Copy"}
@@ -1503,7 +1503,7 @@ export default function ProjectChat(props: ProjectChatProps) {
                         )}
                         <button
                           type="button"
-                          className="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                          className="block min-h-11 w-full px-3 py-2 text-left text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground"
                           disabled={reportedIds.has(msg.id)}
                           onClick={() => {
                             setOpenMenuFor(null);
@@ -1527,10 +1527,10 @@ export default function ProjectChat(props: ProjectChatProps) {
 
       {lightboxImage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightboxImage(null)}>
-          <div className="relative max-h-[90vh] max-w-4xl rounded-lg bg-white p-2 shadow-2xl">
+          <div className="relative max-h-[90vh] max-w-4xl rounded-2xl border border-border bg-background p-2 shadow-lifted">
             <button
               type="button"
-              className="absolute -right-3 -top-3 rounded-full bg-white p-2 text-gray-700 shadow"
+              className="absolute -right-3 -top-3 inline-flex size-11 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Close image"
               onClick={() => setLightboxImage(null)}
             >
@@ -1543,31 +1543,31 @@ export default function ProjectChat(props: ProjectChatProps) {
 
       {reportingMessageId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
-            <h3 className="mb-3 text-lg font-semibold text-gray-900">Report this message</h3>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-lifted">
+            <h3 className="mb-3 text-lg font-semibold text-foreground">Report this message</h3>
             <textarea
               value={reportReason}
               onChange={(e) => setReportReason(e.target.value)}
               maxLength={1000}
               rows={4}
               placeholder="Why are you reporting this message?"
-              className="w-full rounded border border-gray-300 p-2 text-sm outline-none focus:border-blue-500"
+              className="min-h-11 w-full rounded-xl border border-input bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             {reportReason.length > 800 && (
-              <p className="mt-1 text-right text-xs text-gray-500">{reportReason.length}/1000</p>
+              <p className="mt-1 text-right text-xs text-muted-foreground">{reportReason.length}/1000</p>
             )}
-            {reportError && <p className="mt-2 text-sm text-red-600">{reportError}</p>}
+            {reportError && <p className="mt-2 text-sm text-destructive">{reportError}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm text-foreground hover:bg-muted"
                 onClick={closeReportDialog}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-11 items-center rounded-full bg-destructive px-4 text-sm font-medium text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={reportReason.trim().length === 0 || reportSubmitting}
                 onClick={handleSubmitReport}
               >
@@ -1580,20 +1580,20 @@ export default function ProjectChat(props: ProjectChatProps) {
 
       {confirmDeleteMessageId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
-            <h3 className="mb-3 text-lg font-semibold text-gray-900">Delete message?</h3>
-            <p className="mb-4 text-sm text-gray-600">Delete this message for everyone? This cannot be undone.</p>
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-lifted">
+            <h3 className="mb-3 text-lg font-semibold text-foreground">Delete message?</h3>
+            <p className="mb-4 text-sm text-muted-foreground">Delete this message for everyone? This cannot be undone.</p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm text-foreground hover:bg-muted"
                 onClick={() => setConfirmDeleteMessageId(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-11 items-center rounded-full bg-destructive px-4 text-sm font-medium text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={deletingMessageId !== null}
                 onClick={() => handleDeleteMessage(confirmDeleteMessageId)}
               >
@@ -1606,22 +1606,22 @@ export default function ProjectChat(props: ProjectChatProps) {
 
       {confirmDeleteAttachment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
-            <h3 className="mb-3 text-lg font-semibold text-gray-900">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-lifted">
+            <h3 className="mb-3 text-lg font-semibold text-foreground">
               Delete this {confirmDeleteAttachment.kind} for everyone? This cannot be undone.
             </h3>
-            <p className="mb-4 text-sm text-gray-600">{confirmDeleteAttachment.fileName}</p>
+            <p className="mb-4 text-sm text-muted-foreground">{confirmDeleteAttachment.fileName}</p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm text-foreground hover:bg-muted"
                 onClick={() => setConfirmDeleteAttachment(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-11 items-center rounded-full bg-destructive px-4 text-sm font-medium text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={deletingAttachmentId !== null}
                 onClick={() => handleDeleteAttachment(confirmDeleteAttachment.id)}
               >
@@ -1633,7 +1633,7 @@ export default function ProjectChat(props: ProjectChatProps) {
       )}
 
       {error && (
-        <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
       )}
 
       {canSend ? (
@@ -1641,11 +1641,11 @@ export default function ProjectChat(props: ProjectChatProps) {
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {pendingFiles.map((pendingFile) => (
-                <div key={pendingFile.id} className="relative w-24 rounded-md border border-gray-200 bg-white p-2">
+                <div key={pendingFile.id} className="relative w-24 rounded-md border border-border bg-card p-2">
                   <button
                     type="button"
                     aria-label={`Remove ${pendingFile.file.name}`}
-                    className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-gray-700 text-[10px] text-white"
+                    className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground"
                     onClick={() => handleRemoveFile(pendingFile.id)}
                   >
                     ×
@@ -1653,19 +1653,19 @@ export default function ProjectChat(props: ProjectChatProps) {
                   {pendingFile.kind === "photo" && pendingFile.previewUrl ? (
                     <Image src={pendingFile.previewUrl} alt={pendingFile.file.name} width={200} height={64} unoptimized className="h-16 w-full rounded object-cover" />
                   ) : (
-                    <div className="flex h-16 w-full items-center justify-center rounded bg-gray-100 text-xl">
+                    <div className="flex h-16 w-full items-center justify-center rounded bg-muted text-xl">
                       {pendingFile.kind === "video" ? "🎬" : "📄"}
                     </div>
                   )}
-                  <p className="mt-2 truncate text-[10px] text-gray-700">{pendingFile.file.name}</p>
-                  <p className="text-[10px] text-gray-500">{formatFileSize(pendingFile.file.size)}</p>
+                  <p className="mt-2 truncate text-[10px] text-foreground">{pendingFile.file.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{formatFileSize(pendingFile.file.size)}</p>
                 </div>
               ))}
             </div>
           )}
 
           {uploadError && (
-            <div className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700 whitespace-pre-line">{uploadError}</div>
+            <div className="rounded border border-destructive/20 bg-destructive/10 p-2 text-sm text-destructive whitespace-pre-line">{uploadError}</div>
           )}
 
           <div className="flex items-center gap-2">
@@ -1673,7 +1673,7 @@ export default function ProjectChat(props: ProjectChatProps) {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={sending}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-border bg-background px-3 text-sm text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Add files"
             >
               📎
@@ -1694,21 +1694,21 @@ export default function ProjectChat(props: ProjectChatProps) {
               onKeyDown={handleKeyDown}
               disabled={sending}
               placeholder="Type a message..."
-              className="flex-1 rounded border p-2 text-sm disabled:opacity-50"
+              className="min-h-11 min-w-0 flex-1 rounded-xl border border-input bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground"
               rows={3}
             />
 
             <button
               onClick={handleSend}
               disabled={sending || (!text.trim() && pendingFiles.length === 0)}
-              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-blue-700"
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {sending ? "Uploading…" : "Send"}
             </button>
           </div>
         </div>
       ) : (
-        <div className="rounded bg-gray-100 p-4 text-sm text-gray-700">{readOnlyReason}</div>
+        <div className="rounded-xl border border-border bg-muted p-4 text-sm text-muted-foreground">{readOnlyReason}</div>
       )}
     </div>
   );
