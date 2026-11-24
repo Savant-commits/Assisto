@@ -20,6 +20,7 @@ import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiri
 import { ConfirmationStep } from "@/components/enquiries/confirmation-step";
 import type { EnquiryDetailsValue } from "@/components/enquiries/enquiry-details-fields";
 import { RequestDetailsEditor } from "@/components/enquiries/request-details-editor";
+import { saveEnquiryLocation } from "@/lib/enquiry-location";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -516,16 +517,13 @@ export default function EnquiriesPage() {
       if (userError) throw userError;
       if (!userData.user) throw new Error("Please sign in again to edit this enquiry.");
 
-      const locationPayload = {
-        enquiry_id: id,
-        customer_id: userData.user.id,
-        address_text: details.addressText,
+      const locationSaveError = await saveEnquiryLocation(supabase, {
+        enquiryId: id,
+        customerId: userData.user.id,
+        addressText: details.addressText,
         lat: details.lat,
         lng: details.lng,
-      };
-      const { error: locationSaveError } = await supabase
-        .from("enquiry_locations")
-        .upsert(locationPayload, { onConflict: "enquiry_id" });
+      });
       if (locationSaveError) throw locationSaveError;
       const { error } = await supabase.from("enquiries").update({
         is_asap: details.isAsap,

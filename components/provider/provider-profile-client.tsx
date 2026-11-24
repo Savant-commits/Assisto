@@ -30,6 +30,7 @@ import ProviderReviewsSection from "@/components/provider/provider-reviews-secti
 import { EnquiryDetailsFields, type EnquiryDetailsValue } from "@/components/enquiries/enquiry-details-fields";
 import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { useLocation } from "@/lib/location/provider";
+import { saveEnquiryLocation } from "@/lib/enquiry-location";
 
 type Props = { id: string };
 
@@ -409,13 +410,13 @@ function EnquiryWidget({
         return;
       }
 
-      const { error: locationError } = await supabase.from("enquiry_locations").upsert({
-        enquiry_id: inserted.id,
-        customer_id: user.id,
-        address_text: details.addressText,
+      const locationError = await saveEnquiryLocation(supabase, {
+        enquiryId: inserted.id,
+        customerId: user.id,
+        addressText: details.addressText,
         lat: details.lat,
         lng: details.lng,
-      }, { onConflict: "enquiry_id" });
+      });
       if (locationError) {
         logSupabaseError("provider enquiry location insert failed:", locationError);
         setErrorMessage("Enquiry sent, but the location couldn't be saved. Edit it from Requests.");

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EnquiryDetailsFields, type EnquiryDetailsValue } from "@/components/enquiries/enquiry-details-fields";
 import { createClient } from "@/lib/supabase/client";
+import { saveEnquiryLocation } from "@/lib/enquiry-location";
 
 type Pin = { lat: number; lng: number };
 type Props = {
@@ -77,13 +78,13 @@ export function RequestDetailsEditor({
         scheduled_start_at: details.isAsap ? null : details.scheduledStartAt,
       }).eq("id", enquiryId);
       if (enquiryError) throw enquiryError;
-      const { error: locationError } = await supabase.from("enquiry_locations").upsert({
-        enquiry_id: enquiryId,
-        customer_id: authData.user.id,
-        address_text: details.addressText,
+      const locationError = await saveEnquiryLocation(supabase, {
+        enquiryId,
+        customerId: authData.user.id,
+        addressText: details.addressText,
         lat: details.lat,
         lng: details.lng,
-      }, { onConflict: "enquiry_id" });
+      });
       if (locationError) throw locationError;
       onSaved(details);
       onClose();
