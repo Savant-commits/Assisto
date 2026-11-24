@@ -14,9 +14,9 @@ const LocationPicker = dynamic(
 );
 
 function selectedFromGeocoded(result: GeocodedLocation, source: SelectedLocation["source"]): SelectedLocation {
-  const cityKinds = new Set(["city", "town", "village", "suburb", "district"]);
+  const cityKinds = new Set(["city", "town", "village", "suburb", "district", "locality"]);
   const kind = result.kind.trim().toLocaleLowerCase();
-  const city = result.city ?? (cityKinds.has(kind) ? result.name || result.district || null : null);
+  const city = result.city?.trim() || result.district?.trim() || (cityKinds.has(kind) ? result.name?.trim() || null : null);
   return {
     label: result.label,
     locality: result.locality,

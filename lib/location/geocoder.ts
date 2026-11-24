@@ -1,4 +1,5 @@
 import type { GeocodedLocation } from "@/lib/location/types";
+import { DEFAULT_LOCATION } from "@/lib/location/default";
 
 const rateLimitWindowMs = 60_000;
 const rateLimitLimit = 30;
@@ -133,13 +134,13 @@ export function normalizePhotonFeature(feature: PhotonFeature): GeocodedLocation
   const placeName = text(properties.name);
   const osmValue = text(properties.osm_value)?.toLocaleLowerCase();
   const photonType = text(properties.type)?.toLocaleLowerCase();
-  const cityKinds = new Set(["city", "town", "village", "suburb", "district"]);
+  const cityKinds = new Set(["city", "town", "village", "suburb", "district", "locality"]);
   const isCityLikeFeature = Boolean(
     (osmValue && cityKinds.has(osmValue)) ||
     (photonType && cityKinds.has(photonType)),
   );
-  const city = text(properties.city) ?? text(properties.town) ?? text(properties.village) ??
-    (isCityLikeFeature ? placeName ?? district : null);
+  const city = text(properties.city) ?? text(properties.town) ?? text(properties.village) ?? district ??
+    (isCityLikeFeature ? placeName : null);
   const name = placeName ?? text(properties.street) ?? city ?? district ?? "Tamil Nadu";
   const locality = text(properties.locality) ?? text(properties.suburb) ?? text(properties.neighbourhood) ?? city ?? text(properties.street) ?? name;
   const label = [name, city && city !== name ? city : district && district !== name ? district : null]
@@ -166,6 +167,35 @@ export function normalizePhotonFeature(feature: PhotonFeature): GeocodedLocation
 export function photonBaseUrl(): string {
   const base = process.env.GEOCODER_BASE_URL?.trim() || "https://photon.komoot.io";
   return base.replace(/\/+$/, "");
+}
+
+export async function resolvePhotonLocation(query: string): Promise<GeocodedLocation | null> {
+  const trimmedQuery = query.trim();
+  if (trimmedQuery.length < 3 || trimmedQuery.length > 100) return null;
+
+  const photonUrl = new URL(`${photonBaseUrl()}/api/`);
+  photonUrl.searchParams.set("q", trimmedQuery);
+  photonUrl.searchParams.set("limit", "8");
+  photonUrl.searchParams.set("lang", "en");
+  photonUrl.searchParams.set("bbox", "76.2,8.0,80.4,13.6");
+  photonUrl.searchParams.set("lat", String(DEFAULT_LOCATION.lat));
+  photonUrl.searchParams.set("lon", String(DEFAULT_LOCATION.lng));
+
+  try {
+    const response = await fetch(photonUrl, {
+      headers: { "User-Agent": "Assisto/1.0 (Tamil Nadu location search)", Accept: "application/json" },
+      cache: "force-cache",
+      next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as { features?: PhotonFeature[] };
+    const results = (payload.features ?? []).map(normalizePhotonFeature).filter((location) => location !== null);
+    const normalizedQuery = trimmedQuery.toLocaleLowerCase();
+    return results.find((location) => location.city?.trim().toLocaleLowerCase() === normalizedQuery) ?? results[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function geocodeResponseHeaders() {

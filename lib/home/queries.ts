@@ -31,20 +31,22 @@ export const getHomeCategories = cache(async (): Promise<HomeCategory[]> => {
 });
 
 export const getCityProviders = cache(async (city: string | null): Promise<HomeProvider[]> => {
-  if (!city) return [];
+  const normalizedCity = city?.trim().toLocaleLowerCase();
+  if (!normalizedCity) return [];
   const supabase = await createClient();
+  const cityPattern = `%${normalizedCity.replace(/[\\%_]/g, "\\$&")}%`;
   const providers: HomeProvider[] = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase
       .from("providers")
       .select("id, business_name, city, locality, lat, lng, provider_categories ( category_id )")
       .eq("is_active", true)
-      .ilike("city", city)
+      .ilike("city", cityPattern)
       .order("id")
       .range(offset, offset + 999);
     if (error) throw error;
     const batch = (data ?? []) as HomeProvider[];
-    providers.push(...batch);
+    providers.push(...batch.filter((provider) => provider.city?.trim().toLocaleLowerCase() === normalizedCity));
     if (batch.length < 1000) return providers;
   }
 });

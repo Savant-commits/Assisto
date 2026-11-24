@@ -15,7 +15,7 @@ type CoverageData = {
 
 async function loadCoverageData(location: SelectedLocation): Promise<CoverageData | null | "error"> {
   try {
-    const areaName = location.source === "manual" ? null : location.city;
+    const areaName = location.city?.trim() || (location.source === "manual" ? location.locality.trim() : null);
     if (areaName) {
       const localProviders = await getCityProviders(areaName);
       if (localProviders.length > 0) return null;
@@ -26,7 +26,7 @@ async function loadCoverageData(location: SelectedLocation): Promise<CoverageDat
       : [];
     const nearest = location.lat !== null && location.lng !== null
       ? remoteProviders
-        .filter((provider) => provider.id && provider.business_name && typeof provider.lat === "number" && typeof provider.lng === "number" && (provider.locality || provider.city))
+        .filter((provider) => provider.id && provider.business_name && typeof provider.lat === "number" && typeof provider.lng === "number" && provider.locality?.trim())
         .map((provider) => ({
           provider,
           distance: distanceKm({ lat: location.lat!, lng: location.lng! }, { lat: provider.lat!, lng: provider.lng! }),
@@ -35,7 +35,11 @@ async function loadCoverageData(location: SelectedLocation): Promise<CoverageDat
         .slice(0, 3)
       : [];
 
-    return { areaName, unknownLocation: location.source === "manual" || !areaName, nearest };
+    const hasCoordinates = typeof location.lat === "number" && typeof location.lng === "number";
+    const isUsableName = (value: string) => Boolean(value.trim()) && !["selected location", "tamil nadu"].includes(value.trim().toLocaleLowerCase());
+    const displayAreaName = areaName || (isUsableName(location.locality) ? location.locality.trim() : null) ||
+      (isUsableName(location.label) ? location.label.trim() : null);
+    return { areaName: displayAreaName, unknownLocation: !displayAreaName && !hasCoordinates, nearest };
   } catch {
     return "error";
   }
@@ -65,7 +69,7 @@ export async function CoverageNotice({ location, locationKey }: { location: Sele
                       {provider.business_name}
                     </Link>
                     <span className="text-muted-foreground">
-                      {[provider.locality, provider.city].filter(Boolean).join(", ")} · {distance.toFixed(1)} km
+                      {provider.locality?.trim()} · {distance.toFixed(1)} km
                     </span>
                   </li>
                 ))}
