@@ -13,7 +13,6 @@ type Props = {
   providerName: string;
   initialIndex: number;
   trigger: HTMLElement | null;
-  requestFullscreen: () => Promise<boolean>;
   onClose: () => void;
 };
 
@@ -21,7 +20,7 @@ const subscribeNever = () => () => {};
 const getClientSnapshot = () => true;
 const getServerSnapshot = () => false;
 
-export default function MediaViewer({ open, items, providerName, initialIndex, trigger, requestFullscreen, onClose }: Props) {
+export default function MediaViewer({ open, items, providerName, initialIndex, trigger, onClose }: Props) {
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const scrollerRef = React.useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = React.useState(initialIndex);
@@ -69,6 +68,24 @@ export default function MediaViewer({ open, items, providerName, initialIndex, t
         void closeViewer();
         return;
       }
+      if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && dialogRef.current?.contains(document.activeElement)) {
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest("input, button, [role='menu']")) return;
+        event.preventDefault();
+        const next = Math.max(0, Math.min(items.length - 1, activeIndex + (event.key === "ArrowRight" ? 1 : -1)));
+        if (next !== activeIndex) {
+          unlockOrientation();
+          setActiveIndex(next);
+          setZoom(1);
+          setControlsVisible(true);
+          setAnnouncement("Zoom reset");
+          scrollerRef.current?.scrollTo({
+            left: scrollerRef.current.clientWidth * next,
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          });
+        }
+        return;
+      }
       if (dialogRef.current?.contains(document.activeElement) && !event.defaultPrevented) {
         if (event.key === "+" || event.key === "=") {
           event.preventDefault();
@@ -83,22 +100,22 @@ export default function MediaViewer({ open, items, providerName, initialIndex, t
       }
       if (event.key !== "Tab") return;
       const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]), input:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])',
       );
       if (!focusable?.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) {
         event.preventDefault();
         first.focus();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, closeViewer]);
+  }, [activeIndex, items.length, open, closeViewer, unlockOrientation]);
 
   function setActive(next: number) {
     const bounded = Math.max(0, Math.min(items.length - 1, next));
@@ -171,9 +188,6 @@ export default function MediaViewer({ open, items, providerName, initialIndex, t
                   item={item}
                   activeIndex={index}
                   itemCount={items.length}
-                  zoom={zoom}
-                  onZoomChange={handleZoomChange}
-                  requestFullscreen={requestFullscreen}
                   onPrevious={() => goTo(index - 1)}
                   onNext={() => goTo(index + 1)}
                   onClose={closeViewer}

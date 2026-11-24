@@ -7,12 +7,13 @@ import Link from "next/link";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft, Play, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import LoadingSpinner from "@/components/loading-spinner";
 import { friendlyDbError } from "@/lib/db-errors";
-import { PortfolioMediaDialog } from "@/components/provider/portfolio-media-dialog";
+import MediaViewer from "@/components/media-viewer";
+import type { ProviderPortfolioItem } from "@/lib/types";
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -98,16 +99,17 @@ function SortablePortfolioCard({
   item,
   onDelete,
   onSaveCaption,
+  onOpenMedia,
   reorderMode,
 }: {
   item: PortfolioItem;
   onDelete: (itemId: string) => Promise<void>;
   onSaveCaption: (itemId: string, nextCaption: string) => Promise<void>;
+  onOpenMedia: (itemId: string, trigger: HTMLElement) => void;
   reorderMode: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftCaption, setDraftCaption] = useState(() => item.caption ?? item.description ?? "");
-  const [isMediaOpen, setIsMediaOpen] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
 
@@ -123,7 +125,7 @@ function SortablePortfolioCard({
       <div className="relative">
         <button
           type="button"
-          onClick={() => setIsMediaOpen(true)}
+          onClick={(event) => onOpenMedia(item.id, event.currentTarget)}
           aria-label={`View ${item.media_type === "video" ? "video" : "photo"}`}
           className="group relative block aspect-[4/3] w-full overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:aspect-square"
         >
@@ -210,13 +212,6 @@ function SortablePortfolioCard({
         )
       )}
 
-      <PortfolioMediaDialog
-        open={isMediaOpen}
-        onClose={() => setIsMediaOpen(false)}
-        src={item.image_url}
-        type={item.media_type}
-        alt={item.caption || item.description || "Portfolio item"}
-      />
     </div>
   );
 }
@@ -233,6 +228,11 @@ export default function PortfolioPage() {
   const [reorderSnapshot, setReorderSnapshot] = useState<PortfolioItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [mediaViewerIndex, setMediaViewerIndex] = useState<number | null>(null);
+  const [mediaViewerTrigger, setMediaViewerTrigger] = useState<HTMLElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const successToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stagedUploadsRef = useRef<StagedPortfolioFile[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -244,6 +244,7 @@ export default function PortfolioPage() {
   useEffect(() => {
     return () => {
       stagedUploadsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      if (successToastTimerRef.current) clearTimeout(successToastTimerRef.current);
     };
   }, []);
 
@@ -345,6 +346,14 @@ export default function PortfolioPage() {
     event.target.value = "";
   }
 
+  function removeStagedFile(fileId: string) {
+    setStagedUploads((current) => {
+      const file = current.find((item) => item.id === fileId);
+      if (file) URL.revokeObjectURL(file.previewUrl);
+      return current.filter((item) => item.id !== fileId);
+    });
+  }
+
   async function handleUploadStagedFiles() {
     const stagedItemCount = stagedUploads.filter((item) => !item.error && item.status !== "success").length;
     if (items.length >= MAX_PORTFOLIO_ITEMS || items.length + stagedItemCount > MAX_PORTFOLIO_ITEMS) {
@@ -360,7 +369,9 @@ export default function PortfolioPage() {
 
     setError(null);
     setSuccess(null);
+    setSuccessToast(null);
     setUploadingBatch(true);
+    let uploadedCount = 0;
 
     try {
       const supabase = createClient();
@@ -452,6 +463,7 @@ export default function PortfolioPage() {
           }
 
           nextSortOrder += 1;
+          uploadedCount += 1;
           setStagedUploads((current) =>
             current.map((item) =>
               item.id === stagedFile.id ? { ...item, status: "success", progress: 100, error: null } : item
@@ -472,7 +484,13 @@ export default function PortfolioPage() {
       const refreshedItems = await loadPortfolioItems(userData.user.id);
       setItems(refreshedItems);
       setStagedUploads((current) => current.filter((item) => item.status !== "success"));
-      setSuccess("Upload batch finished.");
+      if (uploadedCount > 0) {
+        const message = uploadedCount === 1 ? "Your work was uploaded." : `${uploadedCount} work samples were uploaded.`;
+        setSuccess(message);
+        setSuccessToast(message);
+        if (successToastTimerRef.current) clearTimeout(successToastTimerRef.current);
+        successToastTimerRef.current = setTimeout(() => setSuccessToast(null), 4500);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Upload failed.";
       setError(message);
@@ -559,6 +577,21 @@ export default function PortfolioPage() {
 
   const itemIds = useMemo(() => visibleItems.map((item) => item.id), [visibleItems]);
   const hasValidQueuedFiles = stagedUploads.some((item) => !item.error && item.status !== "success");
+  const viewerItems = useMemo<ProviderPortfolioItem[]>(() => visibleItems.map((item) => ({
+    id: item.id,
+    image_url: item.image_url,
+    media_type: item.media_type,
+    caption: item.caption,
+    description: item.description,
+    created_at: item.created_at,
+  })), [visibleItems]);
+
+  function openMedia(itemId: string, trigger: HTMLElement) {
+    const index = visibleItems.findIndex((item) => item.id === itemId);
+    if (index < 0) return;
+    setMediaViewerTrigger(trigger);
+    setMediaViewerIndex(index);
+  }
 
   if (loading) {
     return (
@@ -577,42 +610,64 @@ export default function PortfolioPage() {
         </p>
       </div>
 
-      <div className="mb-8 rounded-lg border p-6">
+      <div className="mb-8 rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm sm:p-6">
         <h2 className="mb-4 font-medium">Upload your work</h2>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Image or video</label>
+          <div className="space-y-3">
             <input
+              ref={fileInputRef}
               type="file"
+              id="portfolio-upload-files"
               accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
               multiple
               onChange={handleFileSelection}
               disabled={uploadingBatch}
-              className="w-full text-sm"
+              className="sr-only"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Images (max 10MB) or videos (max 50MB, ~10 seconds)
+            <Button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingBatch}
+              className="min-h-12 w-full rounded-xl text-base sm:w-auto sm:px-6"
+            >
+              Choose photos or videos
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              Select multiple JPEG, PNG, or WebP photos (up to 10 MB each) and MP4, QuickTime, or WebM videos (up to 50 MB each, about 10 seconds).
             </p>
           </div>
 
           {stagedUploads.length > 0 && (
-            <div className="space-y-3">
+            <div aria-label="Selected files" className="space-y-3">
               {stagedUploads.map((item) => (
-                <div key={item.id} className="rounded-md border p-3">
-                  <div className="flex gap-3">
-                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
+                <div key={item.id} className="rounded-xl border border-border bg-background p-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="relative aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {item.media_type === "video" ? (
-                        <video src={item.previewUrl} className="h-full w-full object-cover" />
+                        <video src={item.previewUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
                       ) : (
-                        <img src={item.previewUrl} alt={item.file.name} className="h-full w-full object-cover" />
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
                       )}
+                      {item.media_type === "video" && <span className="absolute inset-0 grid place-items-center text-white" aria-hidden="true"><Play className="size-6 fill-current drop-shadow" /></span>}
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-medium">{item.file.name}</p>
-                        <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(item.file.size)}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="break-all text-sm font-medium text-foreground">{item.file.name}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{item.media_type === "video" ? "Video" : "Photo"} · {formatFileSize(item.file.size)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeStagedFile(item.id)}
+                          disabled={uploadingBatch || item.status === "uploading"}
+                          aria-label={`Remove ${item.file.name}`}
+                          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <X aria-hidden="true" className="size-4" />
+                        </button>
                       </div>
 
                       <input
@@ -627,7 +682,8 @@ export default function PortfolioPage() {
                           );
                         }}
                         placeholder="Caption this file"
-                        className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0"
+                        disabled={uploadingBatch || item.status === "uploading"}
+                        className="mt-2 min-h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                       />
                       {item.caption.length > 160 && (
                         <p className="mt-1 text-right text-xs text-muted-foreground">{item.caption.length}/200</p>
@@ -650,9 +706,7 @@ export default function PortfolioPage() {
                         </div>
                       )}
 
-                      {item.status === "success" && (
-                        <p className="mt-2 text-xs text-green-600">Uploaded</p>
-                      )}
+                      {item.status === "success" && <p className="mt-2 text-xs font-medium text-primary">Uploaded</p>}
                     </div>
                   </div>
                 </div>
@@ -660,18 +714,20 @@ export default function PortfolioPage() {
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="space-y-2">
             <Button
               type="button"
               onClick={handleUploadStagedFiles}
               disabled={uploadingBatch || !hasValidQueuedFiles}
+              className="min-h-12 w-full rounded-xl text-base sm:w-auto sm:min-w-40"
             >
-              {uploadingBatch ? "Uploading..." : "Upload"}
+              {uploadingBatch ? "Uploading…" : "Upload"}
             </Button>
+            {!hasValidQueuedFiles && !uploadingBatch && <p className="text-xs text-muted-foreground">Choose at least one valid file to enable Upload.</p>}
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {success && <p className="text-sm text-green-600">{success}</p>}
+          {success && <p role="status" className="text-sm text-primary">{success}</p>}
         </div>
       </div>
 
@@ -761,6 +817,7 @@ export default function PortfolioPage() {
                     item={item}
                     onDelete={deleteItem}
                     onSaveCaption={saveCaption}
+                    onOpenMedia={openMedia}
                     reorderMode={reorderMode}
                   />
                 ))}
@@ -775,6 +832,7 @@ export default function PortfolioPage() {
                 item={item}
                 onDelete={deleteItem}
                 onSaveCaption={saveCaption}
+                onOpenMedia={openMedia}
                 reorderMode={reorderMode}
               />
             ))}
@@ -782,12 +840,27 @@ export default function PortfolioPage() {
         )}
       </div>
 
+      <MediaViewer
+        key={`${mediaViewerIndex ?? "closed"}-${viewerItems[mediaViewerIndex ?? 0]?.id ?? "none"}`}
+        open={mediaViewerIndex !== null}
+        items={viewerItems}
+        providerName="Your work"
+        initialIndex={mediaViewerIndex ?? 0}
+        trigger={mediaViewerTrigger}
+        onClose={() => setMediaViewerIndex(null)}
+      />
+
       <div className="mt-8">
         <Link href="/profile" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ArrowLeft aria-hidden="true" className="size-4" />
           Back to profile
         </Link>
       </div>
+      {successToast && (
+        <div role="status" aria-live="polite" className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-md rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium text-card-foreground shadow-lg">
+          {successToast}
+        </div>
+      )}
     </div>
   );
 }

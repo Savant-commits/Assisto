@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Play } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { PortfolioMediaDialog } from "@/components/provider/portfolio-media-dialog";
+import MediaViewer from "@/components/media-viewer";
 import type { ProviderPortfolioItem } from "@/lib/types";
 
 type MediaFilter = "all" | "photos" | "videos";
@@ -20,7 +20,9 @@ type Props = {
 
 export default function ProviderWorkSection({ items, providerName, mediaFilter, setMediaFilter, sortDirection, setSortDirection, isOwner }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ProviderPortfolioItem | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [initialIndex, setInitialIndex] = useState(0);
+  const [trigger, setTrigger] = useState<HTMLElement | null>(null);
 
   const filteredItems = useMemo(() => [...items]
     .filter((item) => {
@@ -37,7 +39,10 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
   const hasPhotos = items.some((item) => item.media_type !== "video");
   const hasVideos = items.some((item) => item.media_type === "video");
   const visibleItems = expanded ? filteredItems : filteredItems.slice(0, 6);
-  const selectedCaption = selectedItem?.description?.trim() || selectedItem?.caption?.trim() || `${providerName} work sample`;
+  const viewerItems = useMemo(() => filteredItems.map((item) => ({
+    ...item,
+    description: item.description?.trim() || item.caption?.trim() || null,
+  })), [filteredItems]);
 
   return (
     <section aria-labelledby="provider-work-heading" className="mb-[var(--section-gap)]">
@@ -112,7 +117,11 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
                   <button
                     type="button"
                     aria-label={`Open ${isVideo ? "video" : "photo"} work sample ${index + 1}`}
-                    onClick={() => setSelectedItem(item)}
+                    onClick={(event) => {
+                      setInitialIndex(index);
+                      setTrigger(event.currentTarget);
+                      setViewerOpen(true);
+                    }}
                     className="group relative block aspect-[4/3] w-full overflow-hidden bg-muted text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:aspect-square"
                   >
                     {isVideo ? (
@@ -163,15 +172,15 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
         </>
       )}
 
-      {selectedItem && (
-        <PortfolioMediaDialog
-          open={Boolean(selectedItem)}
-          onClose={() => setSelectedItem(null)}
-          src={selectedItem.image_url ?? ""}
-          type={selectedItem.media_type === "video" ? "video" : "image"}
-          alt={selectedCaption}
-        />
-      )}
+      <MediaViewer
+        key={`${viewerOpen}-${initialIndex}`}
+        open={viewerOpen}
+        items={viewerItems}
+        providerName={providerName}
+        initialIndex={initialIndex}
+        trigger={trigger}
+        onClose={() => setViewerOpen(false)}
+      />
     </section>
   );
 }
