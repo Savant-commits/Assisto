@@ -20,7 +20,7 @@ const tabs = [
   { label: "Home", href: "/", Icon: House },
   { label: "Discover", href: "/discover", Icon: Compass },
   { label: "Requests", href: "/enquiries", Icon: ClipboardList, requiresLogin: true },
-  { label: "Messages", href: "/enquiries", Icon: MessageCircle, requiresLogin: true, messages: true },
+  { label: "Messages", href: "/messages", Icon: MessageCircle, requiresLogin: true },
   { label: "Profile", href: "/profile", Icon: UserRound, requiresLogin: true },
 ];
 
@@ -54,39 +54,25 @@ export default function AppHeader({ fullName, isLoggedIn }: AppHeaderProps) {
           </Link>
 
           {isHomeRoute && <nav aria-label="Main navigation" className="hidden items-center gap-1 lg:flex">
-            {tabs.map(({ label, href, Icon, requiresLogin, messages }) => {
-              const messagesOpen = !!notifications?.isOpen && notifications.activeTab === "messages";
-              const active = messages ? messagesOpen : !messagesOpen && pathname === href;
+            {tabs.map(({ label, href, Icon, requiresLogin }) => {
+              const active = pathname === href || (href === "/messages" && pathname.startsWith("/messages"));
               const className = `inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${active ? "bg-accent text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`;
 
-              if (messages && isLoggedIn) {
-                return (
-                  <button key={label} type="button" className={className} aria-current={active ? "page" : undefined} onClick={() => notifications?.openPanel("messages")}>
-                    <Icon aria-hidden="true" className="size-4" />
-                    {label}
-                  </button>
-                );
-              }
-
-              return (
-                requiresLogin ? (
-                  <AuthGatedLink
-                    key={label}
-                    href={href}
-                    actionLabel={`to view ${label.toLowerCase()}`}
-                    onAuthenticated={messages ? () => notifications?.openPanel("messages") : undefined}
-                    className={className}
-                    aria-current={active ? "page" : undefined}
-                  >
-                    <Icon aria-hidden="true" className="size-4" />
-                    {label}
-                  </AuthGatedLink>
-                ) : (
-                  <Link key={label} href={href} className={className} aria-current={active ? "page" : undefined}>
-                    <Icon aria-hidden="true" className="size-4" />
-                    {label}
-                  </Link>
-                )
+              return requiresLogin ? (
+                <AuthGatedLink key={label} href={href} actionLabel={`to view ${label.toLowerCase()}`} className={className} aria-current={active ? "page" : undefined}>
+                  <Icon aria-hidden="true" className="size-4" />
+                  {label}
+                  {label === "Messages" && !!notifications?.unreadMessageCount && (
+                    <span aria-label={`${notifications.unreadMessageCount} unread messages`} className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+                      {notifications.unreadMessageCount > 9 ? "9+" : notifications.unreadMessageCount}
+                    </span>
+                  )}
+                </AuthGatedLink>
+              ) : (
+                <Link key={label} href={href} className={className} aria-current={active ? "page" : undefined}>
+                  <Icon aria-hidden="true" className="size-4" />
+                  {label}
+                </Link>
               );
             })}
           </nav>}

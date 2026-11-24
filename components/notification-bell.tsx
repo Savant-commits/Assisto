@@ -16,7 +16,7 @@ type Notification = {
   created_at?: string | null;
 };
 
-export type NotificationTab = "all" | "messages";
+export type NotificationTab = "all";
 
 type NotificationsContextValue = {
   unreadCount: number;
@@ -178,8 +178,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       {children}
       <NotificationsPanel
         isOpen={isOpen}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
         notifications={notifications}
         loading={loading}
         unreadCount={unreadCount}
@@ -194,8 +192,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
 function NotificationsPanel({
   isOpen,
-  activeTab,
-  setActiveTab,
   notifications,
   loading,
   unreadCount,
@@ -205,8 +201,6 @@ function NotificationsPanel({
   onDelete,
 }: {
   isOpen: boolean;
-  activeTab: NotificationTab;
-  setActiveTab: (tab: NotificationTab) => void;
   notifications: Notification[];
   loading: boolean;
   unreadCount: number;
@@ -227,15 +221,11 @@ function NotificationsPanel({
     return () => previouslyFocused?.focus();
   }, [isOpen]);
 
-  const visibleNotifications = activeTab === "messages"
-    ? notifications.filter((notification) => notification.type === "project_message")
-    : notifications;
-
   async function openNotification(notification: Notification) {
     if (!notification.is_read) await onMarkAsRead(notification.id);
     onClose();
     if (notification.type === "project_message" && notification.related_id) {
-      router.push(`/enquiries?chat=${notification.related_id}`);
+      router.push(`/messages/${notification.related_id}`);
       return;
     }
     if (notification.type?.startsWith("enquiry_")) {
@@ -282,20 +272,18 @@ function NotificationsPanel({
       >
         <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
           <h2 id="notifications-panel-title" className="text-lg font-semibold">
-            {activeTab === "messages" ? "Messages" : "Notifications"}
+            Notifications
           </h2>
           <div className="flex items-center gap-2">
-            {activeTab === "all" && (
-              <button
-                type="button"
-                onClick={() => void onMarkAll()}
-                disabled={unreadCount === 0}
-                className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-              >
-                <Check aria-hidden="true" className="size-4" />
-                <span className="hidden sm:inline">Mark all as read</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => void onMarkAll()}
+              disabled={unreadCount === 0}
+              className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            >
+              <Check aria-hidden="true" className="size-4" />
+              <span className="hidden sm:inline">Mark all as read</span>
+            </button>
             <button
               ref={closeButtonRef}
               type="button"
@@ -308,44 +296,15 @@ function NotificationsPanel({
           </div>
         </header>
 
-        <div role="tablist" aria-label="Notification categories" className="flex gap-2 border-b border-border px-5 py-3">
-          {([
-            ["all", "All"],
-            ["messages", "Messages"],
-          ] as const).map(([tab, label]) => (
-            <button
-              key={tab}
-              id={`notifications-tab-${tab}`}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab}
-              aria-controls="notifications-panel-content"
-              tabIndex={activeTab === tab ? 0 : -1}
-              onClick={() => setActiveTab(tab)}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                  event.preventDefault();
-                  const nextTab = tab === "all" ? "messages" : "all";
-                  setActiveTab(nextTab);
-                  document.getElementById(`notifications-tab-${nextTab}`)?.focus();
-                }
-              }}
-              className={`min-h-11 rounded-full px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div id="notifications-panel-content" role="tabpanel" aria-labelledby={`notifications-tab-${activeTab}`} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div id="notifications-panel-content" className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           {loading && <p role="status" className="mb-3 text-sm text-muted-foreground">Loading…</p>}
-          {!loading && visibleNotifications.length === 0 && (
+          {!loading && notifications.length === 0 && (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              {activeTab === "messages" ? "No messages yet" : "No notifications yet"}
+              No notifications yet
             </p>
           )}
           <ul className="flex flex-col gap-3">
-            {visibleNotifications.map((notification) => (
+            {notifications.map((notification) => (
               <li key={notification.id} className="flex items-start gap-3 rounded-xl border border-border bg-card p-3">
                 <div className="mt-2 w-2 shrink-0">
                   {!notification.is_read && <span aria-label="Unread" className="block size-2 rounded-full bg-primary" />}

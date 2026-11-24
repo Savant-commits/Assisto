@@ -11,11 +11,9 @@ import { ContactUnlock } from "@/components/contact-unlock";
 import { EnquiryDirections } from "@/components/enquiry-directions";
 import { CompletionActions } from "@/components/completion-actions";
 import { ReviewModal } from "@/components/review-modal";
-import ProjectChat from "@/components/project-chat";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 import { friendlyDbError } from "@/lib/db-errors";
 import { CITY_CENTERS, coordsViewUrl, DEFAULT_MAP_CENTER } from "@/lib/maps";
-import { useEscapeKey } from "@/lib/use-escape-key";
 import { one } from "@/lib/relations";
 import { useLocation } from "@/lib/location/provider";
 import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiries/customer-summary-sheet";
@@ -175,12 +173,9 @@ export default function EnquiriesPage() {
   const [todayLocal] = useState(() => localDateValue(new Date()));
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [openChatModal, setOpenChatModal] = useState<{ projectId: string; enquiryId: number; isCompleted: boolean } | null>(null);
   const [unreadByProject, setUnreadByProject] = useState<Record<string, number>>({});
   const [actionToast, setActionToast] = useState<{ message: string; actionLabel: string; view: "sent" | "received"; tab: "active" | "history"; enquiryId: number } | null>(null);
   const [highlightedEnquiry, setHighlightedEnquiry] = useState<{ view: "sent" | "received"; enquiryId: number } | null>(null);
-
-  useEscapeKey(!!openChatModal, () => setOpenChatModal(null));
 
   const mountedRef = useRef(true);
   const unreadDebounceRef = useRef<number | null>(null);
@@ -460,55 +455,6 @@ export default function EnquiriesPage() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [load]);
 
-  // Handle deep link for chat
-  useEffect(() => {
-    if (loading) return;
-
-    const params = new URLSearchParams(window.location.search);
-    const chatProjectId = params.get("chat");
-    if (!chatProjectId) return;
-
-    // Find the enquiry with this project
-    const sentEnq = sent.find((e) => e.projects?.id === chatProjectId);
-    const receivedEnq = received.find((e) => e.projects?.id === chatProjectId);
-    const enquiry = sentEnq || receivedEnq;
-
-    if (!enquiry) return;
-
-    const isSent = !!sentEnq;
-    const isCompleted = enquiry.status === "completed";
-
-    // Switch view
-    setView(isSent ? "sent" : "received");
-
-    // Switch tab
-    if (isCompleted) {
-      if (isSent) {
-        setSentTab("history");
-      } else {
-        setReceivedTab("history");
-      }
-    } else {
-      if (isSent) {
-        setSentTab("active");
-      } else {
-        setReceivedTab("active");
-      }
-    }
-
-    // Open chat modal
-    if (enquiry.projects) {
-      setOpenChatModal({
-        projectId: enquiry.projects.id,
-        enquiryId: enquiry.id,
-        isCompleted,
-      });
-    }
-
-    // Replace URL to remove query parameter
-    router.replace("/enquiries");
-  }, [loading, sent, received, router]);
-
   function setPending(key: string, v: boolean) {
     setPendingMap((s) => ({ ...s, [key]: v }));
   }
@@ -517,19 +463,11 @@ export default function EnquiriesPage() {
     setErrors((s) => ({ ...s, [key]: msg }));
   }
 
-  function getOtherPartyName(enquiry: SentEnquiry | ReceivedEnquiry): string {
-    if ("customer_id" in enquiry) {
-      // Received enquiry - I'm the provider
-      return enquiry.profiles?.full_name || "Customer";
-    } else {
-      // Sent enquiry - I'm the customer
-      return enquiry.providers?.business_name || "Provider";
-    }
-  }
-
-  function getChatCanSend(enquiry: SentEnquiry | ReceivedEnquiry): boolean {
-    return enquiry.status === "confirmed";
-  }
+  useEffect(() => {
+    if (loading) return;
+    const chatProjectId = new URLSearchParams(window.location.search).get("chat");
+    if (chatProjectId) router.replace(`/messages/${encodeURIComponent(chatProjectId)}`);
+  }, [loading, router]);
 
   async function updateSentStatus(id: number, status: string) {
     const key = `sent-${id}`;
@@ -912,45 +850,26 @@ export default function EnquiriesPage() {
                     </div>
                     <div className="flex flex-wrap items-start justify-end gap-2">
                       {(sentTab === "active" || sentTab === "history") && enq.projects && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (enq.projects) {
-                              const projectId = Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id;
-                              setOpenChatModal({
-                                projectId: projectId!,
-                                enquiryId: enq.id,
-                                isCompleted: enq.status === "completed",
-                              });
-                            }
-                          }}
+                        <Link
+                          href={`/messages/${encodeURIComponent(enq.projects.id)}`}
                           className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          aria-label={
-                            (() => {
-                              const projId = Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id;
-                              const count = projId ? unreadByProject[projId] || 0 : 0;
-                              return count > 0 ? `Open chat, ${count} unread` : "Open chat";
-                            })()
-                          }
+                          aria-label={(() => {
+                            const count = unreadByProject[enq.projects.id] || 0;
+                            return count > 0 ? `Open chat, ${count} unread` : "Open chat";
+                          })()}
                           title="Open chat"
                         >
-                          <div className="relative">
+                          <span className="relative">
                             <MessageCircle size={20} />
                             {(() => {
-                              const projId = Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id;
-                              const count = projId ? unreadByProject[projId] || 0 : 0;
-                              const isOpen = openChatModal?.projectId === projId;
-                              if (count > 0 && !isOpen) {
-                                return (
-                                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
-                                    {count > 9 ? "9+" : count}
-                                  </span>
-                                );
+                              const count = unreadByProject[enq.projects.id] || 0;
+                              if (count > 0) {
+                                return <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">{count > 9 ? "9+" : count}</span>;
                               }
                               return null;
                             })()}
-                          </div>
-                        </button>
+                          </span>
+                        </Link>
                       )}
                       {sentTab === "active" && enq.status === "confirmed" && (
                         <EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} />
@@ -1021,11 +940,11 @@ export default function EnquiriesPage() {
                           enquiryId={enq.id}
                           homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
                           hasSavedHomeAddress={Boolean(customerHomeAddress && [customerHomeAddress.street, customerHomeAddress.house_number, customerHomeAddress.area, customerHomeAddress.city, customerHomeAddress.pincode].some((value) => value?.trim()))}
-                          homeMapsUrl={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
+                          homeMapsUrl={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
                             ? coordsViewUrl(customerHomeAddress.lat, customerHomeAddress.lng)
                             : null}
                           homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
-                          fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
+                          fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
                             ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
                             : resolveLocationFallbackCenter(customerCity || customerHomeAddress?.city || selectedLocation.city, selectedLocation)}
                           today={todayLocal}
@@ -1121,40 +1040,26 @@ export default function EnquiriesPage() {
                   </button>
                   <div className="flex flex-wrap items-start justify-end gap-2">
                     {(receivedTab === "active" || receivedTab === "history") && enq.projects && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpenChatModal({
-                            projectId: enq.projects!.id,
-                            enquiryId: enq.id,
-                            isCompleted: enq.status === "completed",
-                          });
-                        }}
+                      <Link
+                        href={`/messages/${encodeURIComponent(enq.projects.id)}`}
                         className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         aria-label={(() => {
-                          const projId = enq.projects!.id;
-                          const count = projId ? unreadByProject[projId] || 0 : 0;
+                          const count = unreadByProject[enq.projects.id] || 0;
                           return count > 0 ? `Open chat, ${count} unread` : "Open chat";
                         })()}
                         title="Open chat"
                       >
-                        <div className="relative">
+                        <span className="relative">
                           <MessageCircle size={20} />
                           {(() => {
-                            const projId = enq.projects!.id;
-                            const count = projId ? unreadByProject[projId] || 0 : 0;
-                            const isOpen = openChatModal?.projectId === projId;
-                            if (count > 0 && !isOpen) {
-                              return (
-                                <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
-                                  {count > 9 ? "9+" : count}
-                                </span>
-                              );
+                            const count = unreadByProject[enq.projects.id] || 0;
+                            if (count > 0) {
+                              return <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">{count > 9 ? "9+" : count}</span>;
                             }
                             return null;
                           })()}
-                        </div>
-                      </button>
+                        </span>
+                      </Link>
                     )}
                     {receivedTab === "active" && enq.status === "confirmed" && (
                       <EnquiryDirections enquiryId={enq.id} role="provider" />
@@ -1279,48 +1184,6 @@ export default function EnquiriesPage() {
             })}
         </div>
       )}
-
-      {openChatModal && (() => {
-        const allEnquiries = [...sent, ...received];
-        const enquiry = allEnquiries.find((e) => e.id === openChatModal.enquiryId);
-        if (!enquiry) return null;
-
-        const otherPartyName = getOtherPartyName(enquiry);
-        const canSend = getChatCanSend(enquiry);
-        const readOnlyReason = openChatModal.isCompleted
-          ? "This project is completed. The chat is now read-only."
-          : null;
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
-            <div className="max-h-[95dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-border bg-background p-4 text-foreground shadow-lifted sm:p-6">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Chat with {otherPartyName}</h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpenChatModal(null);
-                    // reload unread counts when chat closes
-                    loadUnread(currentUserId, sent, received);
-                  }}
-                  className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="Close chat"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <ProjectChat
-                projectId={openChatModal.projectId}
-                currentUserId={currentUserId}
-                canSend={canSend}
-                otherPartyName={otherPartyName}
-                readOnlyReason={readOnlyReason}
-              />
-            </div>
-          </div>
-        );
-      })()}
 
       <CustomerSummarySheet open={isCustomerSummaryOpen} customer={customerSummary} onClose={() => setIsCustomerSummaryOpen(false)} />
 

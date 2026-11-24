@@ -100,7 +100,7 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
   }
 
   if (notification.type === "project_message" && notification.related_id) {
-    redirect(`/enquiries?chat=${notification.related_id}`);
+    redirect(`/messages/${notification.related_id}`);
   }
 
   if (notification.type === "new_report" && notification.related_id) {
