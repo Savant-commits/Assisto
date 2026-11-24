@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -16,7 +17,8 @@ export default function Error({ reset }: Props) {
         <p className="mt-2 text-sm text-muted-foreground">Please try again, or return to Discover.</p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button type="button" variant="outline" className="min-h-11" onClick={reset}>Try again</Button>
-          <Link href="/discover" className="inline-flex min-h-11 items-center rounded-full px-3 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href="/discover" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <ArrowLeft aria-hidden="true" className="size-4" />
             Back to discover
           </Link>
         </div>

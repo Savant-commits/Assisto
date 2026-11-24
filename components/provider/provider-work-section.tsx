@@ -1,8 +1,10 @@
 "use client";
 
-import * as React from "react";
+import Link from "next/link";
 import { Play } from "lucide-react";
-import MediaViewer from "@/components/media-viewer";
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { PortfolioMediaDialog } from "@/components/provider/portfolio-media-dialog";
 import type { ProviderPortfolioItem } from "@/lib/types";
 
 type MediaFilter = "all" | "photos" | "videos";
@@ -12,27 +14,15 @@ type Props = {
   mediaFilter: MediaFilter;
   setMediaFilter: (filter: MediaFilter) => void;
   sortDirection: "latest" | "oldest";
+  setSortDirection: (direction: "latest" | "oldest") => void;
   isOwner: boolean;
 };
 
-type FullscreenDocument = Document & {
-  webkitFullscreenElement?: Element | null;
-  webkitExitFullscreen?: () => Promise<void> | void;
-};
-type FullscreenRoot = HTMLElement & {
-  webkitRequestFullscreen?: () => Promise<void> | void;
-};
+export default function ProviderWorkSection({ items, providerName, mediaFilter, setMediaFilter, sortDirection, setSortDirection, isOwner }: Props) {
+  const [expanded, setExpanded] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ProviderPortfolioItem | null>(null);
 
-export default function ProviderWorkSection({ items, providerName, mediaFilter, setMediaFilter, sortDirection, isOwner }: Props) {
-  const [expanded, setExpanded] = React.useState(false);
-  const [viewerOpen, setViewerOpen] = React.useState(false);
-  const [initialIndex, setInitialIndex] = React.useState(0);
-  const [trigger, setTrigger] = React.useState<HTMLButtonElement | null>(null);
-  const openRef = React.useRef(false);
-  const enteredByViewerRef = React.useRef(false);
-  const pendingRequestRef = React.useRef<Promise<boolean> | null>(null);
-
-  const filteredItems = React.useMemo(() => [...items]
+  const filteredItems = useMemo(() => [...items]
     .filter((item) => {
       if (mediaFilter === "photos") return item.media_type !== "video";
       if (mediaFilter === "videos") return item.media_type === "video";
@@ -47,77 +37,10 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
   const hasPhotos = items.some((item) => item.media_type !== "video");
   const hasVideos = items.some((item) => item.media_type === "video");
   const visibleItems = expanded ? filteredItems : filteredItems.slice(0, 6);
-
-  const requestFullscreen = React.useCallback((): Promise<boolean> => {
-    const doc = document as FullscreenDocument;
-    if (doc.fullscreenElement || doc.webkitFullscreenElement) return Promise.resolve(true);
-    if (pendingRequestRef.current) return pendingRequestRef.current;
-
-    const root = document.documentElement as FullscreenRoot;
-    let request: Promise<void>;
-    try {
-      if (typeof root.requestFullscreen === "function") request = Promise.resolve(root.requestFullscreen());
-      else if (typeof root.webkitRequestFullscreen === "function") request = Promise.resolve(root.webkitRequestFullscreen());
-      else return Promise.resolve(false);
-    } catch {
-      return Promise.resolve(false);
-    }
-
-    const pending = request.then(() => {
-      const currentDoc = document as FullscreenDocument;
-      const entered = currentDoc.fullscreenElement === root || currentDoc.webkitFullscreenElement === root;
-      if (entered) {
-        enteredByViewerRef.current = true;
-        if (!openRef.current) {
-          try {
-            if (document.fullscreenElement === root) void document.exitFullscreen().catch(() => {});
-            else if (currentDoc.webkitExitFullscreen) void Promise.resolve(currentDoc.webkitExitFullscreen()).catch(() => {});
-          } catch {}
-        }
-      }
-      return entered;
-    }).catch(() => false).finally(() => {
-      if (pendingRequestRef.current === pending) pendingRequestRef.current = null;
-    });
-    pendingRequestRef.current = pending;
-    return pending;
-  }, []);
-
-  function openViewer(index: number, event: React.MouseEvent<HTMLButtonElement>) {
-    if (!window.matchMedia("(max-width: 639px)").matches || openRef.current) return;
-    openRef.current = true;
-    enteredByViewerRef.current = false;
-    setTrigger(event.currentTarget);
-    setInitialIndex(index);
-    const doc = document as FullscreenDocument;
-    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) void requestFullscreen();
-    setViewerOpen(true);
-  }
-
-  const closeViewer = React.useCallback(async () => {
-    openRef.current = false;
-    try {
-      const doc = document as FullscreenDocument;
-      const root = document.documentElement;
-      if (enteredByViewerRef.current && (doc.fullscreenElement === root || doc.webkitFullscreenElement === root)) {
-        try {
-          if (doc.fullscreenElement === root) await document.exitFullscreen();
-          else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
-        } catch {}
-      }
-    } finally {
-      enteredByViewerRef.current = false;
-      setViewerOpen(false);
-    }
-  }, []);
-
-  const viewerItems = React.useMemo(() => filteredItems.map((item) => ({
-    ...item,
-    description: item.description?.trim() || item.caption?.trim() || null,
-  })), [filteredItems]);
+  const selectedCaption = selectedItem?.description?.trim() || selectedItem?.caption?.trim() || `${providerName} work sample`;
 
   return (
-    <section aria-labelledby="provider-work-heading" className="mb-8 sm:hidden">
+    <section aria-labelledby="provider-work-heading" className="mb-[var(--section-gap)]">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 id="provider-work-heading" className="font-display text-xl text-foreground">Work samples</h2>
         <span className="shrink-0 text-sm text-muted-foreground">{filteredItems.length} {filteredItems.length === 1 ? "item" : "items"}</span>
@@ -130,18 +53,39 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
             ["photos", "Photos"],
             ["videos", "Videos"],
           ] as const).map(([filter, label]) => (
-            <button
+            <Button
               key={filter}
               type="button"
+              variant={mediaFilter === filter ? "default" : "outline"}
               aria-pressed={mediaFilter === filter}
               onClick={() => {
                 setMediaFilter(filter);
                 setExpanded(false);
               }}
-              className={`inline-flex min-h-11 items-center justify-center rounded-full border border-border px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${mediaFilter === filter ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-muted"}`}
+              className="min-h-11 rounded-full px-4"
             >
               {label}
-            </button>
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {filteredItems.length > 1 && (
+        <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Sort work samples">
+          {([
+            ["latest", "Latest"],
+            ["oldest", "Oldest"],
+          ] as const).map(([direction, label]) => (
+            <Button
+              key={direction}
+              type="button"
+              variant={sortDirection === direction ? "secondary" : "outline"}
+              aria-pressed={sortDirection === direction}
+              onClick={() => setSortDirection(direction)}
+              className="min-h-10 rounded-full px-3"
+            >
+              {label}
+            </Button>
           ))}
         </div>
       )}
@@ -151,7 +95,7 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
           {items.length === 0 ? (
             <>
               <p>No work samples yet.</p>
-              {isOwner && <a href="/your-work" className="mt-2 inline-flex min-h-11 items-center text-primary underline-offset-4 hover:underline">Add your work</a>}
+              {isOwner && <Link href="/your-work" className="mt-2 inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Add your work</Link>}
             </>
           ) : (
             <p>No work samples match this filter.</p>
@@ -159,25 +103,30 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2">
-            {visibleItems.map((item) => {
-              const sourceIndex = filteredItems.findIndex((filtered) => filtered.id === item.id);
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+            {visibleItems.map((item, index) => {
               const caption = item.caption?.trim() || item.description?.trim();
               const isVideo = item.media_type === "video";
               return (
-                <div key={item.id} className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
+                <article key={item.id} className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
                   <button
                     type="button"
-                    aria-label={`Open work sample ${sourceIndex + 1} of ${filteredItems.length}`}
-                    aria-describedby={isVideo ? `work-video-description-${sourceIndex}` : undefined}
-                    onClick={(event) => openViewer(sourceIndex, event)}
-                    className="group relative block aspect-[4/3] w-full overflow-hidden bg-muted text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                    aria-label={`Open ${isVideo ? "video" : "photo"} work sample ${index + 1}`}
+                    onClick={() => setSelectedItem(item)}
+                    className="group relative block aspect-[4/3] w-full overflow-hidden bg-muted text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:aspect-square"
                   >
                     {isVideo ? (
-                      <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true">
-                        <Play aria-hidden="true" className="size-8 fill-current" />
-                      </span>
+                      <video
+                        src={item.image_url ?? undefined}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={item.image_url ?? undefined}
                         alt={caption || `${providerName} work sample`}
@@ -186,37 +135,43 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
                         className="h-full w-full object-cover"
                       />
                     )}
+                    {isVideo && (
+                      <span className="absolute inset-0 grid place-items-center bg-black/15 text-white" aria-hidden="true">
+                        <span className="grid size-12 place-items-center rounded-full bg-black/65 shadow-md">
+                          <Play aria-hidden="true" className="ml-0.5 size-6 fill-current" />
+                        </span>
+                      </span>
+                    )}
                   </button>
-                  {isVideo && <span id={`work-video-description-${sourceIndex}`} className="sr-only">Play video</span>}
                   {caption && <p className="line-clamp-1 px-2 py-1.5 text-xs text-muted-foreground">{caption}</p>}
-                </div>
+                </article>
               );
             })}
           </div>
 
           {filteredItems.length > 6 && (
-            <button
+            <Button
               type="button"
+              variant="outline"
               aria-expanded={expanded}
               onClick={() => setExpanded((value) => !value)}
-              className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-3 min-h-11 w-full rounded-full"
             >
               {expanded ? "Show fewer" : `Show all ${filteredItems.length} items`}
-            </button>
+            </Button>
           )}
         </>
       )}
 
-      <MediaViewer
-        key={`${viewerOpen}-${initialIndex}`}
-        open={viewerOpen}
-        items={viewerItems}
-        providerName={providerName}
-        initialIndex={initialIndex}
-        trigger={trigger}
-        requestFullscreen={requestFullscreen}
-        onClose={closeViewer}
-      />
+      {selectedItem && (
+        <PortfolioMediaDialog
+          open={Boolean(selectedItem)}
+          onClose={() => setSelectedItem(null)}
+          src={selectedItem.image_url ?? ""}
+          type={selectedItem.media_type === "video" ? "video" : "image"}
+          alt={selectedCaption}
+        />
+      )}
     </section>
   );
 }

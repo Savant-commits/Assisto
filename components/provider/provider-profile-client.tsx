@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { BadgeCheck } from "lucide-react";
+import { ArrowLeft, BadgeCheck, BriefcaseBusiness, PencilLine } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -565,7 +565,6 @@ export default function ProviderProfileClient({ id }: Props) {
   const [loading, setLoading] = useState(true);
   const [providerLoadError, setProviderLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [showAllWork, setShowAllWork] = useState(false);
   const [mediaFilter, setMediaFilter] = useState<"all" | "photos" | "videos">("all");
   const [sortDirection, setSortDirection] = useState<"latest" | "oldest">("latest");
   const [profileReported, setProfileReported] = useState(false);
@@ -708,7 +707,8 @@ export default function ProviderProfileClient({ id }: Props) {
           <Button type="button" variant="outline" className="mt-3 min-h-11" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
             Try again
           </Button>
-          <Link href="/discover" className="ml-3 inline-flex min-h-11 items-center rounded-full px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href="/discover" className="ml-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <ArrowLeft aria-hidden="true" className="size-4" />
             Back to discover
           </Link>
         </div>
@@ -720,7 +720,8 @@ export default function ProviderProfileClient({ id }: Props) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-10">
         <h1 className="text-2xl font-semibold">Provider not found</h1>
-        <Link href="/discover" className="mt-4 inline-block underline">
+        <Link href="/discover" className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ArrowLeft aria-hidden="true" className="size-4" />
           Back to discover
         </Link>
       </div>
@@ -747,6 +748,7 @@ export default function ProviderProfileClient({ id }: Props) {
   }
 
   function renderReviewReport(review: ProviderReview) {
+    if (currentUserId === provider?.id) return null;
     return (
       <span
         onClickCapture={(event) => {
@@ -831,163 +833,12 @@ export default function ProviderProfileClient({ id }: Props) {
         mediaFilter={mediaFilter}
         setMediaFilter={setMediaFilter}
         sortDirection={sortDirection}
+        setSortDirection={setSortDirection}
         isOwner={currentUserId === provider.id}
       />
 
       <ProviderLocationSection locality={provider.locality} city={provider.city} businessName={name} />
       <VerifiedCredentialsSection credentials={verifiedCredentials} className="sm:hidden" />
-
-      <div className="max-sm:hidden">
-      {(provider.provider_portfolio_items ?? []).length > 0 && (
-        <div className="mb-8">
-          <h2 className="mb-2 font-medium">Work</h2>
-
-          {(() => {
-            const items = (provider.provider_portfolio_items ?? []) as NonNullable<ProviderRecord["provider_portfolio_items"]>;
-            const filteredSortedItems = [...items]
-              .filter((item) => {
-                if (mediaFilter === "photos") return item.media_type !== "video";
-                if (mediaFilter === "videos") return item.media_type === "video";
-                return true;
-              })
-              .sort((a, b) => {
-                const aTime = new Date(a.created_at ?? "1970-01-01T00:00:00Z").getTime();
-                const bTime = new Date(b.created_at ?? "1970-01-01T00:00:00Z").getTime();
-                return sortDirection === "latest" ? bTime - aTime : aTime - bTime;
-              });
-
-            const total = filteredSortedItems.length;
-            const shouldCollapse = total > 6;
-            const visible = shouldCollapse && !showAllWork ? filteredSortedItems.slice(0, 6) : filteredSortedItems;
-            const hidden = shouldCollapse && !showAllWork ? filteredSortedItems.slice(6) : [];
-
-            return (
-              <div className="space-y-3">
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {[
-                    { value: "all", label: "All" },
-                    { value: "photos", label: "Photos" },
-                    { value: "videos", label: "Videos" },
-                  ].map((option) => {
-                    const isActive = mediaFilter === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setMediaFilter(option.value as "all" | "photos" | "videos")}
-                        className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-
-                  {[
-                    { value: "latest", label: "Latest" },
-                    { value: "oldest", label: "Oldest" },
-                  ].map((option) => {
-                    const isActive = sortDirection === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setSortDirection(option.value as "latest" | "oldest")}
-                        className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  {visible.map((item) => {
-                    const captionText = item.caption ?? item.description;
-
-                    return (
-                      <div key={item.id} className="overflow-hidden rounded-md bg-muted">
-                        {item.media_type === "video" ? (
-                          <video src={item.image_url} controls className="aspect-square w-full object-cover" />
-                        ) : (
-                          <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
-                        )}
-
-                        {captionText && (
-                          <div className="border-t bg-background p-2">
-                            <p className="text-xs text-foreground">{captionText}</p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {shouldCollapse && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllWork((current) => !current)}
-                    className="relative w-full overflow-hidden rounded-md border bg-muted text-left"
-                  >
-                    {!showAllWork ? (
-                      <>
-                        <div className="grid grid-cols-3 gap-3 p-1 opacity-95 blur-[6px]">
-                          {hidden.map((item) => {
-                            const captionText = item.caption ?? item.description;
-                            return (
-                              <div key={item.id} className="overflow-hidden rounded-md bg-background">
-                                {item.media_type === "video" ? (
-                                  <video src={item.image_url} controls className="aspect-square w-full object-cover" />
-                                ) : (
-                                  <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-foreground">
-                          <span className="rounded-full bg-background/80 p-2 shadow-soft backdrop-blur-sm">
-                            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-[2]" aria-hidden="true">
-                              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </span>
-                          <span className="text-sm font-medium">View all work ({total})</span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="relative">
-                        <div className="max-h-[calc(6*150px+5*0.75rem)] overflow-y-auto pr-1 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent">
-                          <div className="grid grid-cols-3 gap-3 p-1">
-                            {hidden.map((item) => {
-                              const captionText = item.caption ?? item.description;
-                              return (
-                                <div key={item.id} className="overflow-hidden rounded-md bg-background">
-                                  {item.media_type === "video" ? (
-                                    <video src={item.image_url} controls className="aspect-square w-full object-cover" />
-                                  ) : (
-                                    <img src={item.image_url} alt={captionText || "Portfolio item"} className="aspect-square w-full object-cover" />
-                                  )}
-                                  {captionText && (
-                                    <div className="border-t bg-background p-2">
-                                      <p className="text-xs text-foreground">{captionText}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background via-background/70 to-transparent" />
-                      </div>
-                    )}
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-        </div>
-      )}
-      </div>
 
       <ProviderReviewsSection
         reviews={reviews}
@@ -1038,45 +889,59 @@ export default function ProviderProfileClient({ id }: Props) {
         )}
       </div>
 
-      <div id="provider-enquiry" className="rounded-lg border p-4">
-        <p className="mb-3 text-sm text-muted-foreground">
-          Contact details unlock once you send an enquiry and the provider confirms.
-        </p>
-        {profileReported ? (
-          <div className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
-            Thank you for reporting. We&apos;ll review your report and take appropriate action if needed.
+      {currentUserId === provider.id ? (
+        <section className="rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
+          <h2 className="font-display text-lg">This is how customers see your profile</h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href="/your-work" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <BriefcaseBusiness aria-hidden="true" className="size-4" />Manage your work
+            </Link>
+            <Link href="/profile" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <PencilLine aria-hidden="true" className="size-4" />Edit profile
+            </Link>
           </div>
-        ) : (
-          <EnquiryWidget
-            providerId={provider.id}
-            providerName={name}
-            requirementId={requirementId}
-            initialMessage={initialRequirementMessage}
-            isSelf={currentUserId === provider.id}
-            onFormOpenChange={(open) => {
-              setEnquiryFormOpen(open);
-              if (open) setActionBarDismissed(true);
-            }}
-            onActionBarDismiss={() => setActionBarDismissed(false)}
-          />
-        )}
-      </div>
+        </section>
+      ) : (
+        <>
+          <div id="provider-enquiry" className="rounded-lg border p-4">
+            <p className="mb-3 text-sm text-muted-foreground">
+              Contact details unlock once you send an enquiry and the provider confirms.
+            </p>
+            {profileReported ? (
+              <div className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
+                Thank you for reporting. We&apos;ll review your report and take appropriate action if needed.
+              </div>
+            ) : (
+              <EnquiryWidget
+                providerId={provider.id}
+                providerName={name}
+                requirementId={requirementId}
+                initialMessage={initialRequirementMessage}
+                isSelf={false}
+                onFormOpenChange={(open) => {
+                  setEnquiryFormOpen(open);
+                  if (open) setActionBarDismissed(true);
+                }}
+                onActionBarDismiss={() => setActionBarDismissed(false)}
+              />
+            )}
+          </div>
 
-      <div className="mt-4 flex flex-col items-center gap-3 max-sm:hidden">
-        {reviewAction}
-        {profileReported ? (
-          <button disabled className="text-xs text-muted-foreground">
-            Reported
-          </button>
-        ) : (
-          <ReportDialog
-            reportableType="provider"
-            reportableId={provider.id}
-            triggerLabel="Report this profile"
-            onSuccess={() => setProfileReported(true)}
-          />
-        )}
-      </div>
+          <div className="mt-4 flex flex-col items-center gap-3 max-sm:hidden">
+            {reviewAction}
+            {profileReported ? (
+              <button disabled className="text-xs text-muted-foreground">Reported</button>
+            ) : (
+              <ReportDialog
+                reportableType="provider"
+                reportableId={provider.id}
+                triggerLabel="Report this profile"
+                onSuccess={() => setProfileReported(true)}
+              />
+            )}
+          </div>
+        </>
+      )}
 
       {reviewModalEnquiryId !== null && (
         <ReviewModal
@@ -1092,7 +957,7 @@ export default function ProviderProfileClient({ id }: Props) {
       )}
 
       {/* Your history with this provider (only for authenticated users) */}
-      <ProviderEnquiryHistory providerId={provider.id} />
+      {currentUserId !== provider.id && <ProviderEnquiryHistory providerId={provider.id} />}
       {showMobileActionBar && <ProviderActionBar onActivate={activateMobileEnquiry} />}
     </div>
   );

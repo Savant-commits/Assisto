@@ -7,12 +7,12 @@ import Link from "next/link";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { ArrowLeft, Play } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import LoadingSpinner from "@/components/loading-spinner";
-import { useEscapeKey } from "@/lib/use-escape-key";
 import { friendlyDbError } from "@/lib/db-errors";
+import { PortfolioMediaDialog } from "@/components/provider/portfolio-media-dialog";
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -107,28 +107,9 @@ function SortablePortfolioCard({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftCaption, setDraftCaption] = useState(() => item.caption ?? item.description ?? "");
-  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  useEscapeKey(isLightboxOpen, () => setIsLightboxOpen(false));
+  const [isMediaOpen, setIsMediaOpen] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
-
-  const handleVideoMouseEnter = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = true;
-    video.loop = true;
-    video.playsInline = true;
-    video.play().catch(() => undefined);
-  };
-
-  const handleVideoMouseLeave = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.pause();
-    video.currentTime = 0;
-  };
 
   return (
     <div
@@ -140,43 +121,32 @@ function SortablePortfolioCard({
       className={`overflow-hidden rounded-lg border bg-card ${isDragging ? "opacity-60" : ""}`}
     >
       <div className="relative">
-        {item.media_type === "video" ? (
-          <video
-            ref={videoRef}
-            src={item.image_url}
-            controls
-            muted
-            loop
-            playsInline
-            onMouseEnter={handleVideoMouseEnter}
-            onMouseLeave={handleVideoMouseLeave}
-            className="aspect-square w-full max-h-[180px] object-cover"
-          />
-        ) : (
-          <>
-            <img src={item.image_url} alt={item.caption || item.description || "Portfolio item"} className="aspect-square w-full max-h-[180px] object-cover" />
-            <button
-              type="button"
-              onClick={() => setIsLightboxOpen(true)}
-              className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow-sm"
-              aria-label="View image full size"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-[2]" aria-hidden="true">
-                <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          onClick={() => setIsMediaOpen(true)}
+          aria-label={`View ${item.media_type === "video" ? "video" : "photo"}`}
+          className="group relative block aspect-[4/3] w-full overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:aspect-square"
+        >
+          {item.media_type === "video" ? (
+            <video src={item.image_url} muted playsInline preload="metadata" tabIndex={-1} aria-hidden="true" className="h-full w-full object-cover" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.image_url} alt={item.caption || item.description || "Portfolio item"} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+          )}
+          {item.media_type === "video" && (
+            <span className="absolute inset-0 grid place-items-center bg-black/15 text-white" aria-hidden="true">
+              <span className="grid size-11 place-items-center rounded-full bg-black/65 shadow-md"><Play className="ml-0.5 size-5 fill-current" /></span>
+            </span>
+          )}
+        </button>
 
-        {item.media_type === "video" && <Badge className="absolute left-2 top-2">Video</Badge>}
-
-        <div className="absolute right-2 top-2 flex gap-2">
+        <div className="absolute right-2 top-2 flex max-w-[calc(100%-1rem)] flex-wrap justify-end gap-1.5">
           {reorderMode && (
             <button
               type="button"
               {...attributes}
               {...listeners}
-              className="rounded-full bg-black/70 px-2 py-1 text-xs text-white"
+              className="inline-flex min-h-8 items-center rounded-full border border-border bg-background/95 px-2.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
               aria-label="Reorder portfolio item"
             >
               ⋮⋮
@@ -185,15 +155,17 @@ function SortablePortfolioCard({
           <button
             type="button"
             onClick={() => setIsEditing((current) => !current)}
-            className="rounded-full bg-black/70 px-2 py-1 text-xs text-white"
+            className="inline-flex min-h-8 items-center rounded-full border border-border bg-background/95 px-2.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
             aria-label="Edit caption"
           >
             Edit
           </button>
           <button
             type="button"
-            onClick={() => onDelete(item.id)}
-            className="rounded-full bg-red-600 px-2 py-1 text-xs text-white"
+            onClick={() => {
+              if (window.confirm("Delete this work sample? This action cannot be undone.")) void onDelete(item.id);
+            }}
+            className="inline-flex min-h-8 items-center rounded-full border border-destructive/30 bg-destructive/10 px-2.5 text-xs font-medium text-destructive shadow-sm hover:bg-destructive/20"
             aria-label="Delete portfolio item"
           >
             Delete
@@ -238,26 +210,13 @@ function SortablePortfolioCard({
         )
       )}
 
-      {isLightboxOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={() => setIsLightboxOpen(false)}>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setIsLightboxOpen(false);
-            }}
-            className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1 text-sm text-white"
-          >
-            Close
-          </button>
-          <img
-            src={item.image_url}
-            alt={item.caption || item.description || "Portfolio item"}
-            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
-            onClick={(event) => event.stopPropagation()}
-          />
-        </div>
-      )}
+      <PortfolioMediaDialog
+        open={isMediaOpen}
+        onClose={() => setIsMediaOpen(false)}
+        src={item.image_url}
+        type={item.media_type}
+        alt={item.caption || item.description || "Portfolio item"}
+      />
     </div>
   );
 }
@@ -824,7 +783,8 @@ export default function PortfolioPage() {
       </div>
 
       <div className="mt-8">
-        <Link href="/profile" className="text-sm text-blue-600 underline">
+        <Link href="/profile" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ArrowLeft aria-hidden="true" className="size-4" />
           Back to profile
         </Link>
       </div>

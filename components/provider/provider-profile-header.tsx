@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import type { MouseEvent } from "react";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -54,9 +54,9 @@ export default function ProviderProfileHeader({
         href="/discover"
         onClick={handleBack}
         aria-label="Back to previous page"
-        className="mb-4 inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
+        className="mb-4 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
       >
-        <ChevronLeft aria-hidden="true" className="size-5" />
+        <ArrowLeft aria-hidden="true" className="size-4" />
         Back
       </Link>
 
