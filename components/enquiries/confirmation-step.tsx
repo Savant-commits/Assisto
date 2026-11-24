@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
-import { coordsViewUrl, CITY_CENTERS } from "@/lib/maps";
+import { CITY_CENTERS } from "@/lib/maps";
 import type { GeocodedLocation } from "@/lib/location/types";
 
 type Pin = { lat: number; lng: number };
@@ -15,7 +15,7 @@ type Props = {
   enquiryId: number;
   homeAddress: string;
   hasSavedHomeAddress: boolean;
-  homeMapsUrl: string | null;
+  homePin: Pin | null;
   homeCity: string | null;
   fallbackCenter: Pin;
   today: string;
@@ -23,7 +23,7 @@ type Props = {
   error: string | null;
   locationError: string | null;
   onCancel: () => void;
-  onConfirm: (schedule: { isAsap: boolean; scheduledStartAt: string | null }, location: { addressText: string; mapsUrl: string | null }) => void;
+  onConfirm: (schedule: { isAsap: boolean; scheduledStartAt: string | null }, location: { addressText: string; lat: number | null; lng: number | null }) => void;
 };
 
 function localFutureDateTime(date: string, time: string) {
@@ -36,7 +36,7 @@ export function ConfirmationStep({
   enquiryId,
   homeAddress,
   hasSavedHomeAddress,
-  homeMapsUrl,
+  homePin,
   homeCity,
   fallbackCenter,
   today,
@@ -52,7 +52,7 @@ export function ConfirmationStep({
   const [place, setPlace] = useState<"home" | "different">("home");
   const [addressText, setAddressText] = useState(homeAddress);
   const [pin, setPin] = useState<Pin | null>(null);
-  const [mapsUrl, setMapsUrl] = useState<string | null>(homeMapsUrl);
+  const [mapsPin, setMapsPin] = useState<Pin | null>(homePin);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerCenter, setPickerCenter] = useState(fallbackCenter);
   const [resolvingCenter, setResolvingCenter] = useState(false);
@@ -95,7 +95,7 @@ export function ConfirmationStep({
 
   async function handlePin(point: Pin, suggestion?: GeocodedLocation | null) {
     setPin(point);
-    setMapsUrl(coordsViewUrl(point.lat, point.lng));
+    setMapsPin(point);
     const revision = addressRevisionRef.current;
     const requestId = ++reverseRequestRef.current;
     const suggestionText = suggestion?.formattedLabel?.trim() || suggestion?.label?.trim() || suggestion?.city?.trim();
@@ -128,7 +128,7 @@ export function ConfirmationStep({
     if (scheduleIsInvalid || addressIsInvalid || saving) return;
     onConfirm(
       { isAsap: when === "now", scheduledStartAt: when === "schedule" ? scheduledAt!.toISOString() : null },
-      { addressText: addressText.trim(), mapsUrl },
+      { addressText: addressText.trim(), lat: mapsPin?.lat ?? null, lng: mapsPin?.lng ?? null },
     );
   }
 
@@ -171,12 +171,12 @@ export function ConfirmationStep({
                 addressRevisionRef.current += 1;
                 setAddressText(homeAddress);
                 setPin(null);
-                setMapsUrl(homeMapsUrl);
+                setMapsPin(homePin);
               } else {
                 addressRevisionRef.current += 1;
                 setAddressText("");
                 setPin(null);
-                setMapsUrl(null);
+                setMapsPin(null);
               }
             }} className={`min-h-11 flex-1 rounded-full px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${place === value ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"}`}>
               {label}

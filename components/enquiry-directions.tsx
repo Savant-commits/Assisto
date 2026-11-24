@@ -73,11 +73,6 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
       setError("Please enter the job site address.");
       return;
     }
-    if (lat === null || lng === null) {
-      setError("Please drop a pin for the job site.");
-      return;
-    }
-
     setSaving(true);
     try {
       const supabase = createClient();
@@ -178,7 +173,7 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
                   onClick={() => setIsPickerOpen(true)}
                   className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium"
                 >
-                  Drop pin on map
+                  Add pin (optional)
                 </button>
               )}
               <LocationPicker

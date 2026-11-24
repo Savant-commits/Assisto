@@ -13,7 +13,7 @@ import { CompletionActions } from "@/components/completion-actions";
 import { ReviewModal } from "@/components/review-modal";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 import { friendlyDbError } from "@/lib/db-errors";
-import { CITY_CENTERS, coordsViewUrl, DEFAULT_MAP_CENTER } from "@/lib/maps";
+import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { one } from "@/lib/relations";
 import { useLocation } from "@/lib/location/provider";
 import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiries/customer-summary-sheet";
@@ -508,7 +508,7 @@ export default function EnquiriesPage() {
   async function confirmAcceptedEnquiry(
     id: number,
     schedule: { isAsap: boolean; scheduledStartAt: string | null },
-    location: { addressText: string; mapsUrl: string | null }
+    location: { addressText: string; lat: number | null; lng: number | null }
   ) {
     const key = `sent-${id}`;
     setPending(key, true);
@@ -530,21 +530,15 @@ export default function EnquiriesPage() {
         enquiry_id: id,
         customer_id: userData.user.id,
         address_text: addressText,
-        maps_url: location.mapsUrl,
+        lat: location.lat,
+        lng: location.lng,
       };
-      const { error: locationInsertError } = await supabase.from("enquiry_locations").insert(locationPayload);
-      if (locationInsertError?.code === "23505") {
-        const { error: locationUpdateError } = await supabase
-          .from("enquiry_locations")
-          .update({ address_text: locationPayload.address_text, maps_url: locationPayload.maps_url })
-          .eq("enquiry_id", id);
-        if (locationUpdateError) {
-          locationWriteFailed = true;
-          throw locationUpdateError;
-        }
-      } else if (locationInsertError) {
+      const { error: locationSaveError } = await supabase
+        .from("enquiry_locations")
+        .upsert(locationPayload, { onConflict: "enquiry_id" });
+      if (locationSaveError) {
         locationWriteFailed = true;
-        throw locationInsertError;
+        throw locationSaveError;
       }
 
       locationWriteFailed = false;
@@ -571,13 +565,12 @@ export default function EnquiriesPage() {
       showActionToast("Enquiry confirmed. Find it under Active.", "View Active", "sent", "active", id);
     } catch (err: unknown) {
       if (locationWriteFailed) {
-        setLocationErrors((current) => ({
-          ...current,
-          [id]: friendlyDbError(
-            err && typeof err === "object" ? err as { message?: string; code?: string } : null,
-            "Unable to save the job site location."
-          ),
-        }));
+          setLocationErrors((current) => ({
+            ...current,
+            [id]: err && typeof err === "object" && "message" in err && typeof err.message === "string"
+              ? err.message
+              : "Unable to save the job site location.",
+          }));
       } else {
         setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
       }
@@ -940,8 +933,8 @@ export default function EnquiriesPage() {
                           enquiryId={enq.id}
                           homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
                           hasSavedHomeAddress={Boolean(customerHomeAddress && [customerHomeAddress.street, customerHomeAddress.house_number, customerHomeAddress.area, customerHomeAddress.city, customerHomeAddress.pincode].some((value) => value?.trim()))}
-                          homeMapsUrl={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
-                            ? coordsViewUrl(customerHomeAddress.lat, customerHomeAddress.lng)
+                          homePin={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
+                            ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
                             : null}
                           homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
                           fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
