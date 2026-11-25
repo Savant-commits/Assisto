@@ -134,7 +134,7 @@ export default function MessageConversationPage({ params }: { params: Promise<{ 
           currentUserId={currentUserId}
           canSend={canSend && !history}
           otherPartyName={name}
-          readOnlyReason={history ? "This conversation is read-only." : null}
+          readOnlyReason={status === "cancelled" ? "This enquiry was cancelled. Messaging is closed." : history ? "This conversation is read-only." : null}
         />
       </section>
     </main>

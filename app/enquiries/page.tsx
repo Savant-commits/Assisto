@@ -19,6 +19,7 @@ import { one } from "@/lib/relations";
 import { useLocation } from "@/lib/location/provider";
 import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiries/customer-summary-sheet";
 import { RequestDetailsEditor } from "@/components/enquiries/request-details-editor";
+import { CancellationSheet, type CancellationReasonCode } from "@/components/enquiries/cancellation-sheet";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -34,6 +35,12 @@ type SentEnquiry = {
   scheduled_start_at?: string | null;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
+  cancelled_by?: string | null;
+  cancelled_at?: string | null;
+  cancelled_from_status?: string | null;
+  cancel_reason_code?: string | null;
+  cancel_reason_note?: string | null;
+  admin_cancelled_by?: string | null;
   providers?: {
     id: string;
     business_name?: string | null;
@@ -68,6 +75,12 @@ type ReceivedEnquiry = {
   customer_id: string;
   customer_completed_at: string | null;
   provider_completed_at: string | null;
+  cancelled_by?: string | null;
+  cancelled_at?: string | null;
+  cancelled_from_status?: string | null;
+  cancel_reason_code?: string | null;
+  cancel_reason_note?: string | null;
+  admin_cancelled_by?: string | null;
   profiles?: { full_name: string | null; avatar_url?: string | null; city?: string | null; created_at?: string | null } | null;
   customer_requirements?: { description: string | null } | null;
   projects?: { id: string; project_code: string } | null;
@@ -108,6 +121,60 @@ function statusBadge(status: string) {
       ? "border-border bg-secondary text-secondary-foreground"
       : "border-border bg-muted text-foreground";
   return <Badge variant="outline" className={`capitalize ${cls}`}>{status === "sent" ? "New" : status}</Badge>;
+}
+
+function isWithdrawn(enquiry: { status: string; cancelled_from_status?: string | null; cancelled_by?: string | null }, customerId: string | null | undefined) {
+  return enquiry.status === "cancelled" && enquiry.cancelled_from_status === "sent" && Boolean(customerId) && enquiry.cancelled_by === customerId;
+}
+
+function cancellationReasonLabel(code?: string | null) {
+  const labels: Record<string, string> = {
+    sent_by_mistake: "The enquiry was sent by mistake",
+    work_arranged: "The work has already been arranged",
+    timing_not_suitable: "The timing is no longer suitable",
+    unable_to_take_work: "I am unable to take on this work at this time",
+    scheduling_conflict: "I have a scheduling conflict",
+    scope_not_suitable: "The scope of work is not suitable for me",
+    other: "Other",
+  };
+  return code ? labels[code] ?? "Reason not provided" : "Reason not provided";
+}
+
+function enquiryStatusBadge(enquiry: { status: string; cancelled_from_status?: string | null; cancelled_by?: string | null }, customerId: string | null | undefined) {
+  if (enquiry.status === "cancelled") {
+    const withdrawn = isWithdrawn(enquiry, customerId);
+    return <Badge variant="outline" className="border-destructive/20 bg-destructive/10 text-destructive">{withdrawn ? "Withdrawn" : "Cancelled"}</Badge>;
+  }
+  if (enquiry.status === "completed") return <Badge variant="outline" className="border-border bg-secondary text-secondary-foreground">Completed</Badge>;
+  if (enquiry.status === "declined") return <Badge variant="outline" className="border-destructive/20 bg-destructive/10 text-destructive">Declined</Badge>;
+  return statusBadge(enquiry.status);
+}
+
+function cancellationActorLabel(
+  enquiry: { cancelled_by?: string | null; admin_cancelled_by?: string | null; cancelled_from_status?: string | null },
+  customerId: string | null | undefined,
+  currentUserId: string,
+  otherPartyName: string,
+) {
+  if (enquiry.admin_cancelled_by) return "Cancelled by Assisto support";
+  const withdrawn = enquiry.cancelled_from_status === "sent" && enquiry.cancelled_by === customerId;
+  if (enquiry.cancelled_by === currentUserId) {
+    return withdrawn ? "Withdrawn by you" : "Cancelled by you";
+  }
+  if (withdrawn) return otherPartyName ? `Withdrawn by ${otherPartyName}` : "Withdrawn by the customer";
+  return otherPartyName ? `Cancelled by ${otherPartyName}` : "Cancelled by the other party";
+}
+
+function isHistoryFilterMatch(
+  enquiry: { status: string; customer_id?: string; cancelled_by?: string | null; cancelled_from_status?: string | null },
+  customerId: string | null | undefined,
+  filter: "all" | "completed" | "cancelled" | "withdrawn",
+) {
+  const resolvedCustomerId = enquiry.customer_id ?? customerId;
+  if (filter === "all") return ["completed", "declined", "cancelled"].includes(enquiry.status);
+  if (filter === "completed") return enquiry.status === "completed";
+  if (filter === "withdrawn") return isWithdrawn(enquiry, resolvedCustomerId);
+  return enquiry.status === "cancelled" && !isWithdrawn(enquiry, resolvedCustomerId);
 }
 
 function getReviewDismissedKey(enquiryId: number) {
@@ -159,8 +226,9 @@ export default function EnquiriesPage() {
   const [receivedTab, setReceivedTab] = useState<ReceivedTab>("pending");
   const [sent, setSent] = useState<SentEnquiry[]>([]);
   const [received, setReceived] = useState<ReceivedEnquiry[]>([]);
+  const [sentHistoryFilter, setSentHistoryFilter] = useState<"all" | "completed" | "cancelled" | "withdrawn">("all");
+  const [receivedHistoryFilter, setReceivedHistoryFilter] = useState<"all" | "completed" | "cancelled" | "withdrawn">("all");
   const [lastSeenHistory, setLastSeenHistory] = useState<{ sent: string; received: string }>({ sent: "", received: "" });
-  const [historyFilter, setHistoryFilter] = useState<"all" | "completed" | "declined" | "cancelled">("all");
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [requestEditorOpen, setRequestEditorOpen] = useState<Record<number, boolean>>({});
   const [confirmingDecline, setConfirmingDecline] = useState<Record<number, { open: boolean; reason: string }>>({});
@@ -180,6 +248,8 @@ export default function EnquiriesPage() {
   const [highlightedEnquiry, setHighlightedEnquiry] = useState<{ view: "sent" | "received"; enquiryId: string | number } | null>(null);
   const [unavailableToast, setUnavailableToast] = useState(false);
   const [pendingScrollEnquiry, setPendingScrollEnquiry] = useState<{ view: "sent" | "received"; enquiryId: string | number } | null>(null);
+  const [cancellationTarget, setCancellationTarget] = useState<{ id: number; view: "sent" | "received"; role: "customer" | "provider"; fromStatus: string } | null>(null);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
   const unreadDebounceRef = useRef<number | null>(null);
@@ -213,6 +283,8 @@ export default function EnquiriesPage() {
     setView(actionToast.view);
     if (actionToast.view === "sent") setSentTab(actionToast.tab);
     else setReceivedTab(actionToast.tab);
+    setSentHistoryFilter("all");
+    setReceivedHistoryFilter("all");
     setHighlightedEnquiry({ view: actionToast.view, enquiryId: actionToast.enquiryId });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => setHighlightedEnquiry(null), 3500);
@@ -272,13 +344,21 @@ export default function EnquiriesPage() {
       supabase.from("profile_private_addresses").select("street,house_number,area,city,pincode,lat,lng").eq("profile_id", userData.user.id).maybeSingle(),
     ]);
 
-    const { data: sentData } = await supabase
+    const { data: sentData, error: sentError } = await supabase
       .from("enquiries")
       .select(
-        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,providers(id,business_name,lat,lng,locality,city,profiles!providers_id_fkey(full_name,avatar_url)),customer_requirements(description,city),projects(id,project_code)`
+        `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_completed_at,provider_completed_at,cancelled_by,cancelled_at,cancelled_from_status,cancel_reason_code,cancel_reason_note,admin_cancelled_by,providers(id,business_name,lat,lng,locality,city,profiles!providers_id_fkey(full_name,avatar_url)),customer_requirements(description,city),projects(id,project_code)`
       )
       .eq("customer_id", userData.user.id)
       .order("created_at", { ascending: false });
+
+    if (sentError) {
+      console.error("sent enquiries cancellation history query failed:", sentError.message, sentError.details, sentError.hint, sentError.code);
+      setSchemaError("Unable to load enquiry cancellation details. Confirm migration 041 is applied and reload this page.");
+      setLoading(false);
+      return;
+    }
+    setSchemaError(null);
 
     const sentList: SentEnquiry[] = ((sentData ?? []) as SentEnquiryRow[]).map((row) => ({
       ...row,
@@ -327,28 +407,23 @@ export default function EnquiriesPage() {
       const { data, error } = await supabase
         .from("enquiries")
         .select(
-          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,profiles!enquiries_customer_id_fkey(full_name,avatar_url,city,created_at),customer_requirements(description),projects(id,project_code)`
+          `id,message,status,created_at,updated_at,decline_reason,is_asap,scheduled_start_at,customer_id,customer_completed_at,provider_completed_at,cancelled_by,cancelled_at,cancelled_from_status,cancel_reason_code,cancel_reason_note,admin_cancelled_by,profiles!enquiries_customer_id_fkey(full_name,avatar_url,city,created_at),customer_requirements(description),projects(id,project_code)`
         )
         .eq("provider_id", userData.user.id)
         .order("created_at", { ascending: false });
 
-      if (error) console.error("enquiries query failed:", {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-      });
+      if (error) {
+        console.error("received enquiries cancellation history query failed:", error.message, error.details, error.hint, error.code);
+        setSchemaError("Unable to load enquiry cancellation details. Confirm migration 041 is applied and reload this page.");
+        setLoading(false);
+        return;
+      }
       receivedData = ((data ?? []) as ReceivedEnquiryRow[]).map((row) => ({
         ...row,
         profiles: one(row.profiles),
         customer_requirements: one(row.customer_requirements),
         projects: one(row.projects),
       }));
-      receivedData = receivedData.filter((e: ReceivedEnquiry) => {
-        if (e.status !== "cancelled" || !e.created_at || !e.updated_at) return true;
-        const heldForMs = new Date(e.updated_at).getTime() - new Date(e.created_at).getTime();
-        return heldForMs > 2 * 60 * 1000;
-      });
 
       const completedReceivedEnquiryIds = receivedData.filter((enquiry) => enquiry.status === "completed").map((enquiry) => String(enquiry.id));
       if (completedReceivedEnquiryIds.length > 0) {
@@ -484,7 +559,8 @@ export default function EnquiriesPage() {
       }
 
       setView(targetView);
-      setHistoryFilter("all");
+      setSentHistoryFilter("all");
+      setReceivedHistoryFilter("all");
       if (targetView === "sent") setSentTab(targetTab);
       else setReceivedTab(targetTab);
       const highlight = { view: targetView, enquiryId: String(enquiry.id) };
@@ -629,6 +705,51 @@ export default function EnquiriesPage() {
     }
   }
 
+  async function cancelEnquiry(reasonCode: CancellationReasonCode, reasonNote: string | null) {
+    if (!cancellationTarget) return "This cancellation could not be completed. Please try again.";
+    const { id, view: targetView, fromStatus } = cancellationTarget;
+    const key = `${targetView}-${id}`;
+    setPending(key, true);
+    setCardError(key, null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("enquiries").update({
+        status: "cancelled",
+        cancel_reason_code: reasonCode,
+        cancel_reason_note: reasonCode === "other" ? reasonNote : null,
+      }).eq("id", id);
+      if (error) {
+        if (error.code === "23514") return "Choose a valid reason and provide a note for Other.";
+        if (error.code === "42501") return "You can no longer cancel this enquiry. Refresh and try again.";
+        return friendlyDbError(error, "Unable to cancel this enquiry. Please try again.");
+      }
+
+      const message = fromStatus === "sent" ? "Enquiry withdrawn" : "Enquiry cancelled";
+      setCancellationTarget(null);
+      setView(targetView);
+      setSentTab("history");
+      setReceivedTab("history");
+      setSentHistoryFilter("all");
+      setReceivedHistoryFilter("all");
+      await load();
+      setView(targetView);
+      setSentTab("history");
+      setReceivedTab("history");
+      setSentHistoryFilter("all");
+      setReceivedHistoryFilter("all");
+      setHighlightedEnquiry({ view: targetView, enquiryId: id });
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = setTimeout(() => setHighlightedEnquiry(null), 3500);
+      showActionToast(message, "View in History", targetView, "history", id);
+      return null;
+    } catch (error) {
+      console.error("enquiry cancellation failed:", error);
+      return "Unable to cancel this enquiry right now. Please try again.";
+    } finally {
+      setPending(key, false);
+    }
+  }
+
   if (loading) {
     return (
       <main aria-label="Loading enquiries" aria-busy="true" className="mx-auto w-full max-w-3xl space-y-5 px-4 py-8">
@@ -652,12 +773,12 @@ export default function EnquiriesPage() {
     ).length;
   }
 
-  const bucket = <T extends { status: string },>(list: T[], t: "pending" | "active" | "history") =>
+  const bucket = <T extends { status: string; customer_id?: string; cancelled_from_status?: string | null; cancelled_by?: string | null },>(list: T[], t: "pending" | "active" | "history", customerId?: string | null, filter: "all" | "completed" | "cancelled" | "withdrawn" = "all") =>
     t === "pending"
       ? list.filter((e) => e.status === "sent")
       : t === "active"
       ? list.filter((e) => e.status === "accepted" || e.status === "confirmed")
-      : list.filter((e) => ["completed", "declined", "cancelled"].includes(e.status) && (historyFilter === "all" || e.status === historyFilter));
+      : list.filter((e) => isHistoryFilterMatch(e, customerId, filter));
 
   const sentPendingCount = bucket(sent, "pending").length;
   const sentActiveCount = bucket(sent, "active").length;
@@ -672,10 +793,18 @@ export default function EnquiriesPage() {
   const handleReceivedTabChange = (tab: ReceivedTab) => setReceivedTab(tab);
   const pendingCount = view === "sent" ? sentPendingCount : receivedPendingCount;
   const activeCount = view === "sent" ? sentActiveCount : receivedActiveCount;
-  const historyCount = bucket(view === "sent" ? sent : received, "history").length;
+  const historyCount = bucket(view === "sent" ? sent : received, "history", currentUserId, "all").length;
 
-  const shownSent = view === "sent" && sentTab !== "reviews" ? bucket(sent, sentTab) : [];
-  const shownReceived = view === "received" ? bucket(received, receivedTab) : [];
+  const shownSent = view === "sent" && sentTab !== "reviews" ? bucket(sent, sentTab, currentUserId, sentHistoryFilter) : [];
+  const shownReceived = view === "received" ? bucket(received, receivedTab, currentUserId, receivedHistoryFilter) : [];
+  const activeHistoryFilter = view === "sent" ? sentHistoryFilter : receivedHistoryFilter;
+  const historyRows = view === "sent" ? sent : received;
+  const historyCounts = {
+    all: bucket(historyRows, "history", currentUserId, "all").length,
+    completed: bucket(historyRows, "history", currentUserId, "completed").length,
+    cancelled: bucket(historyRows, "history", currentUserId, "cancelled").length,
+    withdrawn: bucket(historyRows, "history", currentUserId, "withdrawn").length,
+  };
 
   const pendingReviews =
     typeof window !== "undefined"
@@ -708,6 +837,7 @@ export default function EnquiriesPage() {
       </div>
 
       {unavailableToast && <p role="status" aria-live="polite" className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-[70] mx-auto max-w-lg rounded-2xl border border-border bg-card p-4 text-center text-sm font-medium text-card-foreground shadow-lifted">This request is no longer available</p>}
+      {schemaError && <p role="alert" className="mb-5 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{schemaError}</p>}
 
       {isProvider && (
         <div role="group" aria-label="Enquiry direction" className="mb-6 flex w-full max-w-sm rounded-full border border-border bg-card p-1 shadow-sm">
@@ -791,13 +921,16 @@ export default function EnquiriesPage() {
 
       {activeTab === "history" && (
         <div className="mb-5 flex flex-wrap items-center gap-2 text-sm">
-          {(["all", "completed", "declined", "cancelled"] as const).map((f) => (
+          {(["all", "completed", "cancelled", "withdrawn"] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setHistoryFilter(f)}
-              className={`inline-flex min-h-10 items-center rounded-full border px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${historyFilter === f ? "border-accent bg-accent text-accent-foreground" : "border-border bg-card text-foreground hover:bg-muted"}`}
+              type="button"
+              onClick={() => view === "sent" ? setSentHistoryFilter(f) : setReceivedHistoryFilter(f)}
+              aria-pressed={activeHistoryFilter === f}
+              className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeHistoryFilter === f ? "border-accent bg-accent text-accent-foreground" : "border-border bg-card text-foreground hover:bg-muted"}`}
             >
               {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+              <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-xs ${activeHistoryFilter === f ? "bg-accent-foreground/10" : "bg-muted text-muted-foreground"}`}>{historyCounts[f]}</span>
             </button>
           ))}
         </div>
@@ -895,13 +1028,21 @@ export default function EnquiriesPage() {
                       <Link href={`/providers/${enq.providers?.id ?? ""}`} className="block min-h-11 truncate py-2 font-semibold text-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{providerName}</Link>
                       <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Provider</span>
                     </div>
-                    {statusBadge(enq.status)}
+                    {enquiryStatusBadge(enq, currentUserId)}
                   </div>
 
                   <p title={enq.message || undefined} className="mt-4 whitespace-pre-line text-sm text-foreground">{enq.message || "No message provided."}</p>
                   {scheduleLine(enq) && <p className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</p>}
                   {sentTab === "history" && enq.status === "declined" && enq.decline_reason && (
                     <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
+                  )}
+                  {sentTab === "history" && enq.status === "cancelled" && (
+                    <div className="mt-3 rounded-xl border border-border bg-muted/40 p-3 text-sm">
+                      <p className="font-medium text-foreground">{cancellationActorLabel(enq, currentUserId, currentUserId, providerName)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(enq.cancelled_at)}</p>
+                      <p className="mt-2 text-muted-foreground">{cancellationReasonLabel(enq.cancel_reason_code)}</p>
+                      {enq.cancel_reason_note && <p className="mt-1 whitespace-pre-line text-muted-foreground">{enq.cancel_reason_note}</p>}
+                    </div>
                   )}
 
                   {sentTab === "active" && enq.status === "confirmed" && (
@@ -942,6 +1083,7 @@ export default function EnquiriesPage() {
 
                   <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     {enq.status === "accepted" && <Button type="button" onClick={() => void confirmAcceptedEnquiry(enq.id)} disabled={!!pendingMap[key]} className="min-h-11 rounded-full px-4">{pendingMap[key] ? "Confirming…" : "Confirm"}</Button>}
+                    {(enq.status === "sent" || enq.status === "accepted" || enq.status === "confirmed") && <button type="button" onClick={() => setCancellationTarget({ id: enq.id, view: "sent", role: "customer", fromStatus: enq.status })} className="inline-flex min-h-11 items-center rounded-full border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{enq.status === "sent" ? "Withdraw enquiry" : "Cancel enquiry"}</button>}
                     {enq.status === "confirmed" && <CompletionActions
                         enquiryId={enq.id}
                         role="customer"
@@ -1012,7 +1154,7 @@ export default function EnquiriesPage() {
                     <button type="button" onClick={() => { setCustomerSummary(safeCustomerSummary); setIsCustomerSummaryOpen(true); }} className="block min-h-11 max-w-full truncate py-2 text-left font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{customerName}</button>
                     <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Customer</span>
                   </div>
-                  {statusBadge(enq.status)}
+                  {enquiryStatusBadge(enq, enq.customer_id)}
                 </div>
 
                 <p title={enq.message || undefined} className="mt-4 whitespace-pre-line text-sm text-foreground">{enq.message || "No message provided."}</p>
@@ -1028,6 +1170,14 @@ export default function EnquiriesPage() {
                 )}
                 {receivedTab === "history" && enq.status === "declined" && enq.decline_reason && (
                   <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
+                )}
+                {receivedTab === "history" && enq.status === "cancelled" && (
+                  <div className="mt-3 rounded-xl border border-border bg-muted/40 p-3 text-sm">
+                    <p className="font-medium text-foreground">{cancellationActorLabel(enq, enq.customer_id, currentUserId, customerName)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(enq.cancelled_at)}</p>
+                    <p className="mt-2 text-muted-foreground">{cancellationReasonLabel(enq.cancel_reason_code)}</p>
+                    {enq.cancel_reason_note && <p className="mt-1 whitespace-pre-line text-muted-foreground">{enq.cancel_reason_note}</p>}
+                  </div>
                 )}
                 {enq.status === "confirmed" && <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="provider" /></div>}
 
@@ -1109,6 +1259,14 @@ export default function EnquiriesPage() {
                     />
                     {enq.projects && <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message{(unreadByProject[enq.projects.id] ?? 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">{unreadByProject[enq.projects.id] > 9 ? "9+" : unreadByProject[enq.projects.id]}</span>}</Link>}
                     <div className="[&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center [&_a]:rounded-full [&_a]:px-4"><ContactUnlock profileId={enq.customer_id} showUnavailable /></div>
+                    <button type="button" onClick={() => setCancellationTarget({ id: enq.id, view: "received", role: "provider", fromStatus: enq.status })} className="inline-flex min-h-11 items-center rounded-full border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cancel enquiry</button>
+                  </div>
+                )}
+
+                {enq.status === "accepted" && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                    <button type="button" onClick={() => setCancellationTarget({ id: enq.id, view: "received", role: "provider", fromStatus: enq.status })} className="inline-flex min-h-11 items-center rounded-full border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cancel enquiry</button>
+                    {enq.projects && <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message</Link>}
                   </div>
                 )}
 
@@ -1131,6 +1289,16 @@ export default function EnquiriesPage() {
       )}
 
       <CustomerSummarySheet open={isCustomerSummaryOpen} customer={customerSummary} onClose={() => setIsCustomerSummaryOpen(false)} />
+      <CancellationSheet
+        key={cancellationTarget ? `${cancellationTarget.view}-${cancellationTarget.id}-${cancellationTarget.fromStatus}` : "closed"}
+        open={cancellationTarget !== null}
+        role={cancellationTarget?.role ?? "customer"}
+        isWithdraw={cancellationTarget?.fromStatus === "sent"}
+        isConfirmed={cancellationTarget?.fromStatus === "confirmed"}
+        saving={cancellationTarget ? !!pendingMap[`${cancellationTarget.view}-${cancellationTarget.id}`] : false}
+        onClose={() => setCancellationTarget(null)}
+        onConfirm={cancelEnquiry}
+      />
 
       {activeReviewPrompt && (
         <ReviewModal
