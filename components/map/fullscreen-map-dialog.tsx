@@ -9,7 +9,7 @@ import { ShareLocationMenu } from "@/components/map/share-location-menu";
 
 const MapPreview = dynamic(() => import("@/components/map/leaflet-map-inner").then((mod) => mod.LeafletMapInner), {
   ssr: false,
-  loading: () => <div className="h-[100dvh] w-full animate-pulse rounded-none bg-zinc-200" />,
+  loading: () => <div className="h-[100dvh] w-full animate-pulse rounded-none bg-[#f3f4f6] motion-reduce:animate-none" />,
 });
 
 function subscribeToNothing() {
@@ -63,18 +63,19 @@ export function FullscreenMapDialog({
       role="dialog"
       aria-modal="true"
       aria-label={title || "Location"}
-      className="fixed inset-0 z-[1100] h-[100dvh] w-screen overflow-hidden bg-white"
+      style={{ colorScheme: "light", backgroundColor: "#ffffff", color: "#1f2937" }}
+      className="fixed inset-0 z-[1100] h-[100dvh] w-screen overflow-hidden bg-white text-[#1f2937] [--background:#fff] [--foreground:#1f2937]"
       onClick={(event) => {
         if (event.target === event.currentTarget) onOpenChange(false);
       }}
     >
-      <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between border-b bg-background/80 px-4 py-3 backdrop-blur-sm">
+      <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between border-b border-[#d1d5db] bg-white/90 px-4 py-3 text-[#1f2937] backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <button
             type="button"
             aria-label="Close map"
             onClick={() => onOpenChange(false)}
-            className="inline-flex items-center justify-center rounded-full border bg-background p-2 text-muted-foreground hover:bg-muted"
+            className="inline-flex size-11 items-center justify-center rounded-full border border-[#d1d5db] bg-white text-[#1f2937] hover:bg-[#f3f4f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           >
             <X className="h-4 w-4" />
           </button>

@@ -1045,8 +1045,8 @@ export default function EnquiriesPage() {
                     </div>
                   )}
 
-                  {sentTab === "active" && enq.status === "confirmed" && (
-                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} /></div>
+                  {sentTab === "active" && (enq.status === "confirmed" || enq.status === "accepted") && (
+                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} hideWhenMissing={enq.status === "accepted"} /></div>
                   )}
 
                   {(enq.status === "sent" || enq.status === "accepted") && (
@@ -1179,7 +1179,7 @@ export default function EnquiriesPage() {
                     {enq.cancel_reason_note && <p className="mt-1 whitespace-pre-line text-muted-foreground">{enq.cancel_reason_note}</p>}
                   </div>
                 )}
-                {enq.status === "confirmed" && <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="provider" /></div>}
+                {(enq.status === "confirmed" || (receivedTab === "active" && enq.status === "accepted")) && <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="provider" hideWhenMissing={enq.status === "accepted"} /></div>}
 
                 {receivedTab === "pending" && (
                   <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">

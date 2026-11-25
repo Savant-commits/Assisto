@@ -6,6 +6,7 @@ import { Bell, Check, MoreHorizontal, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { getNotificationHref } from "@/lib/notification-routes";
+import { groupNotifications } from "@/lib/notification-groups";
 
 type Notification = {
   id: string;
@@ -261,6 +262,7 @@ function NotificationsPanel({
   }
 
   if (!isOpen) return null;
+  const notificationGroups = groupNotifications(notifications, new Date());
 
   return (
     <div className="fixed inset-0 z-[60]">
@@ -307,42 +309,49 @@ function NotificationsPanel({
               No notifications yet
             </p>
           )}
-          <ul className="flex flex-col gap-3">
-            {notifications.map((notification) => (
-              <li key={notification.id} className="flex items-start gap-3 rounded-xl border border-border bg-card p-3">
-                <div className="mt-2 w-2 shrink-0">
-                  {!notification.is_read && <span aria-label="Unread" className="block size-2 rounded-full bg-primary" />}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void openNotification(notification)}
-                  className="min-h-11 min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="block font-medium">{notification.title}</span>
-                  {notification.body && <span className="line-clamp-2 block text-sm text-muted-foreground">{notification.body}</span>}
-                  <span className="mt-1 block text-xs text-muted-foreground">{relativeTime(notification.created_at)}</span>
-                </button>
-                <details className="relative shrink-0">
-                  <summary aria-label={`Actions for ${notification.title}`} className="flex size-11 cursor-pointer list-none items-center justify-center rounded-full text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <MoreHorizontal aria-hidden="true" className="size-5" />
-                  </summary>
-                  <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-border bg-popover p-1 shadow-soft">
-                    {!notification.is_read && (
-                      <button type="button" onClick={() => void onMarkAsRead(notification.id)} className="min-h-11 w-full rounded-md px-3 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        Mark as read
+          <div className="flex flex-col gap-5">
+            {notificationGroups.map((group) => (
+              <section key={group.key} aria-labelledby={`notifications-group-${group.key}`}>
+                <h3 id={`notifications-group-${group.key}`} className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</h3>
+                <ul className="flex flex-col gap-3">
+                  {group.items.map((notification) => (
+                    <li key={notification.id} className="flex items-start gap-3 rounded-xl border border-border bg-card p-3">
+                      <div className="mt-2 w-2 shrink-0">
+                        {!notification.is_read && <span aria-label="Unread" className="block size-2 rounded-full bg-primary" />}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void openNotification(notification)}
+                        className="min-h-11 min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="block font-medium">{notification.title}</span>
+                        {notification.body && <span className="line-clamp-2 block text-sm text-muted-foreground">{notification.body}</span>}
+                        <span className="mt-1 block text-xs text-muted-foreground">{relativeTime(notification.created_at)}</span>
                       </button>
-                    )}
-                    <button type="button" onClick={() => void openNotification(notification)} className="min-h-11 w-full rounded-md px-3 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      Open
-                    </button>
-                    <button type="button" onClick={() => void onDelete(notification.id)} className="min-h-11 w-full rounded-md px-3 text-left text-sm text-destructive hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      Delete
-                    </button>
-                  </div>
-                </details>
-              </li>
+                      <details className="relative shrink-0">
+                        <summary aria-label={`Actions for ${notification.title}`} className="flex size-11 cursor-pointer list-none items-center justify-center rounded-full text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          <MoreHorizontal aria-hidden="true" className="size-5" />
+                        </summary>
+                        <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-border bg-popover p-1 shadow-soft">
+                          {!notification.is_read && (
+                            <button type="button" onClick={() => void onMarkAsRead(notification.id)} className="min-h-11 w-full rounded-md px-3 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                              Mark as read
+                            </button>
+                          )}
+                          <button type="button" onClick={() => void openNotification(notification)} className="min-h-11 w-full rounded-md px-3 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            Open
+                          </button>
+                          <button type="button" onClick={() => void onDelete(notification.id)} className="min-h-11 w-full rounded-md px-3 text-left text-sm text-destructive hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            Delete
+                          </button>
+                        </div>
+                      </details>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         </div>
       </section>
     </div>

@@ -90,7 +90,7 @@ export function ShareLocationMenu({ lat, lng }: { lat: number; lng: number }) {
           updatePosition();
           setOpen(true);
         }}
-        className="rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+        className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         Share location
       </button>
@@ -99,12 +99,12 @@ export function ShareLocationMenu({ lat, lng }: { lat: number; lng: number }) {
         <div
           ref={menuRef}
           style={{ top: position.top, left: position.left }}
-          className="fixed z-[1200] max-h-[min(80vh,24rem)] w-64 overflow-y-auto rounded-md border bg-background p-2 shadow-lg"
+          className="fixed z-[1200] max-h-[min(80vh,24rem)] w-64 overflow-y-auto rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
         >
           <div className="space-y-1">
             <button
               type="button"
-              className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+              className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={async () => {
                 await copyValue(shareUrl);
                 setOpen(false);
@@ -114,7 +114,7 @@ export function ShareLocationMenu({ lat, lng }: { lat: number; lng: number }) {
             </button>
             <button
               type="button"
-              className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+              className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={async () => {
                 await copyValue(coordsText);
                 setOpen(false);
@@ -125,7 +125,7 @@ export function ShareLocationMenu({ lat, lng }: { lat: number; lng: number }) {
             {canShare && (
               <button
                 type="button"
-                className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={async () => {
                   try {
                     await navigator.share({ title: "Location", url: shareUrl });
@@ -142,7 +142,7 @@ export function ShareLocationMenu({ lat, lng }: { lat: number; lng: number }) {
               href={shareUrl}
               {...EXTERNAL_LINK_PROPS}
               onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+              className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Open in Google Maps
             </a>

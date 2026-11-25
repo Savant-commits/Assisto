@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { friendlyDbError } from "@/lib/db-errors";
-import { coordsDirectionsUrl, DEFAULT_MAP_CENTER, directionsUrl, EXTERNAL_LINK_PROPS, CITY_CENTERS } from "@/lib/maps";
+import { coordsDirectionsUrl, DEFAULT_MAP_CENTER, directionsUrl, CITY_CENTERS } from "@/lib/maps";
 import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
 
@@ -16,6 +16,7 @@ type EnquiryLocation = {
 type EnquiryDirectionsProps = {
   enquiryId: number;
   role: "customer" | "provider";
+  hideWhenMissing?: boolean;
   providerLocation?: {
     lat?: number | null;
     lng?: number | null;
@@ -24,7 +25,7 @@ type EnquiryDirectionsProps = {
   } | null;
 };
 
-export function EnquiryDirections({ enquiryId, role, providerLocation }: EnquiryDirectionsProps) {
+export function EnquiryDirections({ enquiryId, role, providerLocation, hideWhenMissing = false }: EnquiryDirectionsProps) {
   const [location, setLocation] = useState<EnquiryLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -34,7 +35,6 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [mapExpanded, setMapExpanded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -112,6 +112,8 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
   const providerDirections = providerHasPin
     ? coordsDirectionsUrl(providerLocation.lat!, providerLocation.lng!)
     : directionsUrl({ address: providerLocation?.locality, city: providerLocation?.city });
+
+  if (!loading && !location && hideWhenMissing) return null;
 
   if (role === "customer") {
     return (
@@ -202,19 +204,11 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
           ) : location ? (
             <>
               <p className="mt-1 whitespace-pre-line text-muted-foreground">{location.address_text}</p>
-              <button type="button" aria-expanded={mapExpanded} onClick={() => setMapExpanded((open) => !open)} className="mt-2 inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                {mapExpanded ? "Hide map" : "Show map"}
-              </button>
-              {mapExpanded && (
-                <div className="mt-3 space-y-3">
-                  {providerDirections && <a href={providerDirections} {...EXTERNAL_LINK_PROPS} className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-primary underline-offset-4 hover:bg-muted hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show directions</a>}
-                  {location.lat !== null && location.lng !== null && (
-                    <div className="[&_button]:min-h-11 [&_button]:px-3">
-                      <LocationMap lat={location.lat} lng={location.lng} height={180} />
-                    </div>
-                  )}
+              {location.lat !== null && location.lng !== null ? (
+                <div className="mt-3">
+                  <LocationMap lat={location.lat} lng={location.lng} height={160} interactive="static" toolbarPosition="bottom" directionsHref={providerDirections} />
                 </div>
-              )}
+              ) : <p className="mt-2 text-xs text-muted-foreground">No map pin was added.</p>}
             </>
           ) : (
             <p className="mt-1 text-muted-foreground">No site location saved yet.</p>
@@ -237,19 +231,11 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
         ) : location ? (
           <>
             <p className="mt-1 whitespace-pre-line text-muted-foreground">{location.address_text}</p>
-            <button type="button" aria-expanded={mapExpanded} onClick={() => setMapExpanded((open) => !open)} className="mt-2 inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              {mapExpanded ? "Hide map" : "Show map"}
-            </button>
-            {mapExpanded && (
-              <div className="mt-3 space-y-3">
-                {jobSiteDirections && <a href={jobSiteDirections} {...EXTERNAL_LINK_PROPS} className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-primary underline-offset-4 hover:bg-muted hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show directions</a>}
-                {locationHasPin && location.lat !== null && location.lng !== null && (
-                  <div className="[&_button]:min-h-11 [&_button]:px-3">
-                    <LocationMap lat={location.lat} lng={location.lng} height={160} />
-                  </div>
-                )}
+            {locationHasPin && location.lat !== null && location.lng !== null ? (
+              <div className="mt-3">
+                <LocationMap lat={location.lat} lng={location.lng} height={160} interactive="static" toolbarPosition="bottom" directionsHref={jobSiteDirections} />
               </div>
-            )}
+            ) : <p className="mt-2 text-xs text-muted-foreground">No map pin was added.</p>}
           </>
         ) : (
           <p className="mt-1 text-muted-foreground">The customer hasn&apos;t shared a site location yet.</p>

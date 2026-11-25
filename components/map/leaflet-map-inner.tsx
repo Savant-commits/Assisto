@@ -84,7 +84,28 @@ export function LeafletMapInner({
   const visibleMarker = marker === undefined ? center : marker;
 
   return (
-    <div role={interactive === "static" ? "img" : undefined} aria-label={interactive === "static" ? "Map showing your saved location" : undefined} style={{ height, width: "100%" }} className="relative isolate z-0 overflow-hidden rounded-lg border bg-muted/40">
+    <div role={interactive === "static" ? "img" : undefined} aria-label={interactive === "static" ? "Map showing your saved location" : undefined} style={{ height, width: "100%", colorScheme: "light", backgroundColor: "#f3f4f6", color: "#1f2937" }} className="leaflet-light-map relative isolate z-0 overflow-hidden rounded-lg border border-[#d1d5db] bg-[#f3f4f6] text-[#1f2937]">
+      <style jsx global>{`
+        .leaflet-light-map .leaflet-tile-pane {
+          filter: none !important;
+        }
+        .leaflet-light-map .leaflet-control-zoom a,
+        .leaflet-light-map .leaflet-control-attribution {
+          background-color: #ffffff;
+          color: #1f2937;
+        }
+        .leaflet-light-map .leaflet-control-zoom a {
+          border-color: #d1d5db;
+        }
+        .leaflet-light-map .leaflet-control-attribution a {
+          color: #1d4ed8;
+        }
+        .leaflet-light-map .leaflet-popup-content-wrapper,
+        .leaflet-light-map .leaflet-popup-tip {
+          background-color: #ffffff;
+          color: #1f2937;
+        }
+      `}</style>
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={zoom}
@@ -92,6 +113,8 @@ export function LeafletMapInner({
         zoomControl={interactive !== "static"}
         dragging={interactive !== "static"}
         keyboard={interactive !== "static"}
+        touchZoom={interactive === "full"}
+        doubleClickZoom={interactive === "full"}
         attributionControl
         style={{ height: "100%", width: "100%" }}
       >
