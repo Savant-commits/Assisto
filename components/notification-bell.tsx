@@ -1,10 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell, Check, MoreHorizontal, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEscapeKey } from "@/lib/use-escape-key";
+import { getNotificationHref } from "@/lib/notification-routes";
 
 type Notification = {
   id: string;
@@ -132,13 +133,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const markAsRead = useCallback(async (id: string) => {
     const notification = notifications.find((item) => item.id === id);
     if (!notification || notification.is_read) return;
-    const supabase = createClient();
-    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
     setNotifications((current) => current.map((item) => item.id === id ? { ...item, is_read: true } : item));
     setUnreadCount((count) => Math.max(0, count - 1));
     if (notification.type === "project_message") {
       setUnreadMessageCount((count) => Math.max(0, count - 1));
     }
+    const supabase = createClient();
+    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
   }, [notifications]);
 
   const deleteNotification = useCallback(async (id: string) => {
@@ -210,6 +211,7 @@ function NotificationsPanel({
   onDelete: (id: string) => Promise<void>;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const panelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   useEscapeKey(isOpen, onClose);
@@ -222,17 +224,19 @@ function NotificationsPanel({
   }, [isOpen]);
 
   async function openNotification(notification: Notification) {
-    if (!notification.is_read) await onMarkAsRead(notification.id);
+    if (!notification.is_read) void onMarkAsRead(notification.id);
     onClose();
-    if (notification.type === "project_message" && notification.related_id) {
-      router.push(`/messages/${notification.related_id}`);
-      return;
+    const href = getNotificationHref(notification, { currentPathname: pathname });
+    if (href) {
+      const targetUrl = new URL(href, window.location.origin);
+      if (targetUrl.pathname === pathname) {
+        router.refresh();
+      }
+      router.push(href);
+      if (targetUrl.pathname === pathname) {
+        window.dispatchEvent(new CustomEvent("app:notification-refresh", { detail: { href } }));
+      }
     }
-    if (notification.type?.startsWith("enquiry_")) {
-      router.push("/enquiries");
-      return;
-    }
-    router.push(`/notifications/${notification.id}`);
   }
 
   function trapFocus(event: React.KeyboardEvent<HTMLElement>) {

@@ -16,6 +16,20 @@ export default function MessageConversationPage({ params }: { params: Promise<{ 
   const [status, setStatus] = useState<string>("");
   const [currentUserId, setCurrentUserId] = useState("");
   const [canSend, setCanSend] = useState(false);
+  const [notificationRefreshVersion, setNotificationRefreshVersion] = useState(0);
+
+  useEffect(() => {
+    function handleNotificationRefresh(event: Event) {
+      const href = (event as CustomEvent<{ href?: string }>).detail?.href;
+      if (!href) return;
+      const target = new URL(href, window.location.origin);
+      if (target.pathname === window.location.pathname) {
+        setNotificationRefreshVersion((version) => version + 1);
+      }
+    }
+    window.addEventListener("app:notification-refresh", handleNotificationRefresh);
+    return () => window.removeEventListener("app:notification-refresh", handleNotificationRefresh);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -81,7 +95,7 @@ export default function MessageConversationPage({ params }: { params: Promise<{ 
     }
 
     return () => { mounted = false; };
-  }, [params]);
+  }, [notificationRefreshVersion, params]);
 
   if (loading) {
     return (
@@ -115,6 +129,7 @@ export default function MessageConversationPage({ params }: { params: Promise<{ 
       </header>
       <section className="rounded-2xl border border-border bg-card p-3 shadow-sm sm:p-5">
         <ProjectChat
+          key={`${projectId}:${notificationRefreshVersion}`}
           projectId={projectId}
           currentUserId={currentUserId}
           canSend={canSend && !history}

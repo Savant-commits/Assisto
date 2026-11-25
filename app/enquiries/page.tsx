@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, MessageCircle, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -150,6 +150,9 @@ function formatHomeAddress(address: SavedHomeAddress | null, profileCity: string
 
 export default function EnquiriesPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const enquiryParam = searchParams.get("enquiry");
   const { location: selectedLocation } = useLocation();
   const [loading, setLoading] = useState(true);
   const [isProvider, setIsProvider] = useState(false);
@@ -177,17 +180,29 @@ export default function EnquiriesPage() {
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [unreadByProject, setUnreadByProject] = useState<Record<string, number>>({});
   const [actionToast, setActionToast] = useState<{ message: string; actionLabel: string; view: "sent" | "received"; tab: "active" | "history"; enquiryId: number } | null>(null);
-  const [highlightedEnquiry, setHighlightedEnquiry] = useState<{ view: "sent" | "received"; enquiryId: number } | null>(null);
+  const [highlightedEnquiry, setHighlightedEnquiry] = useState<{ view: "sent" | "received"; enquiryId: string | number } | null>(null);
+  const [unavailableToast, setUnavailableToast] = useState(false);
+  const [pendingScrollEnquiry, setPendingScrollEnquiry] = useState<{ view: "sent" | "received"; enquiryId: string | number } | null>(null);
 
   const mountedRef = useRef(true);
   const unreadDebounceRef = useRef<number | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unavailableToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deepLinkHandledRef = useRef<string | null>(null);
+  const deepLinkInFlightRef = useRef<string | null>(null);
   const completionToastKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => () => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    if (unavailableToastTimeoutRef.current) clearTimeout(unavailableToastTimeoutRef.current);
+  }, []);
+
+  const showUnavailableToast = useCallback(() => {
+    setUnavailableToast(true);
+    if (unavailableToastTimeoutRef.current) clearTimeout(unavailableToastTimeoutRef.current);
+    unavailableToastTimeoutRef.current = setTimeout(() => setUnavailableToast(false), 5000);
   }, []);
 
   function showActionToast(message: string, actionLabel: string, targetView: "sent" | "received", tab: "active" | "history", enquiryId: number) {
@@ -249,6 +264,7 @@ export default function EnquiriesPage() {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
       router.push(`/login?redirect=/enquiries`);
+      setLoading(false);
       return;
     }
 
@@ -409,11 +425,120 @@ export default function EnquiriesPage() {
 
   useEffect(() => {
     mountedRef.current = true;
-    load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
     return () => {
+      clearTimeout(initialLoad);
       mountedRef.current = false;
     };
   }, [load]);
+
+  const processEnquiryDeepLink = useCallback(async (requestedId: string, sourceHref: string) => {
+    if (deepLinkInFlightRef.current === requestedId) return;
+    deepLinkInFlightRef.current = requestedId;
+    try {
+      const targetUrl = new URL(sourceHref, window.location.origin);
+      const clearQueryParam = () => {
+        targetUrl.searchParams.delete("enquiry");
+        router.replace(`${pathname}${targetUrl.searchParams.size ? `?${targetUrl.searchParams.toString()}` : ""}`, { scroll: false });
+      };
+      await load();
+      if (!requestedId.trim()) {
+        deepLinkHandledRef.current = requestedId;
+        showUnavailableToast();
+        clearQueryParam();
+        return;
+      }
+
+      const supabase = createClient();
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+      const { data: enquiry, error } = user
+        ? await supabase.from("enquiries")
+            .select("id,status,customer_id,provider_id")
+            .eq("id", requestedId)
+            .maybeSingle()
+        : { data: null, error: null };
+      const targetView: "sent" | "received" | null = enquiry && user
+        ? enquiry.customer_id === user.id
+          ? "sent"
+          : enquiry.provider_id === user.id
+            ? "received"
+            : null
+        : null;
+
+      deepLinkHandledRef.current = requestedId;
+      if (error || !enquiry || !targetView) {
+        showUnavailableToast();
+        clearQueryParam();
+        return;
+      }
+
+      const targetTab = enquiry.status === "sent"
+        ? "pending"
+        : ["accepted", "confirmed"].includes(enquiry.status)
+          ? "active"
+          : ["completed", "declined", "cancelled"].includes(enquiry.status)
+            ? "history"
+            : null;
+      if (!targetTab) {
+        showUnavailableToast();
+        clearQueryParam();
+        return;
+      }
+
+      setView(targetView);
+      setHistoryFilter("all");
+      if (targetView === "sent") setSentTab(targetTab);
+      else setReceivedTab(targetTab);
+      const highlight = { view: targetView, enquiryId: String(enquiry.id) };
+      setHighlightedEnquiry(highlight);
+      setPendingScrollEnquiry(highlight);
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = setTimeout(() => setHighlightedEnquiry(null), 3500);
+      clearQueryParam();
+    } finally {
+      deepLinkInFlightRef.current = null;
+    }
+  }, [load, pathname, router, showUnavailableToast]);
+
+  useEffect(() => {
+    if (!enquiryParam || loading || deepLinkHandledRef.current === enquiryParam) return;
+    void processEnquiryDeepLink(enquiryParam, window.location.href);
+  }, [enquiryParam, loading, processEnquiryDeepLink]);
+
+  useEffect(() => {
+    function handleNotificationRefresh(event: Event) {
+      const href = (event as CustomEvent<{ href?: string }>).detail?.href;
+      if (!href) return;
+      const targetUrl = new URL(href, window.location.origin);
+      if (targetUrl.pathname !== "/enquiries") return;
+      const targetId = targetUrl.searchParams.get("enquiry");
+      if (targetId) {
+        deepLinkHandledRef.current = null;
+        void processEnquiryDeepLink(targetId, targetUrl.href);
+      } else {
+        void load();
+      }
+    }
+    window.addEventListener("app:notification-refresh", handleNotificationRefresh);
+    return () => window.removeEventListener("app:notification-refresh", handleNotificationRefresh);
+  }, [load, processEnquiryDeepLink]);
+
+  useEffect(() => {
+    if (!pendingScrollEnquiry || loading) return;
+    const frame = window.requestAnimationFrame(() => {
+      const element = document.getElementById(`enquiry-${pendingScrollEnquiry.view}-${pendingScrollEnquiry.enquiryId}`);
+      setPendingScrollEnquiry(null);
+      if (!element) {
+        setHighlightedEnquiry(null);
+        showUnavailableToast();
+        return;
+      }
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      element.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, pendingScrollEnquiry, showUnavailableToast]);
 
   // Realtime subscription to update unread counts when project_messages change
   useEffect(() => {
@@ -645,6 +770,8 @@ export default function EnquiriesPage() {
         <p className="text-sm text-muted-foreground">Track messages, decisions, and work in progress.</p>
       </div>
 
+      {unavailableToast && <p role="status" aria-live="polite" className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-[70] mx-auto max-w-lg rounded-2xl border border-border bg-card p-4 text-center text-sm font-medium text-card-foreground shadow-lifted">This request is no longer available</p>}
+
       {isProvider && (
         <div role="group" aria-label="Enquiry direction" className="mb-6 flex w-full max-w-sm rounded-full border border-border bg-card p-1 shadow-sm">
           <button
@@ -820,9 +947,9 @@ export default function EnquiriesPage() {
               const key = `sent-${enq.id}`;
               const providerProfile = enq.providers?.profiles;
               const providerName = enq.providers?.business_name || providerProfile?.full_name || "Provider";
-              const isHighlighted = highlightedEnquiry?.view === "sent" && highlightedEnquiry.enquiryId === enq.id;
+              const isHighlighted = highlightedEnquiry?.view === "sent" && String(highlightedEnquiry.enquiryId) === String(enq.id);
               return (
-                <article key={enq.id} className={`rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
+                <article id={`enquiry-sent-${enq.id}`} key={enq.id} className={`scroll-mt-24 rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
                   <div className="flex min-w-0 items-center gap-3">
                     <Avatar src={providerProfile?.avatar_url} name={providerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
                     <div className="min-w-0 flex-1">
@@ -1018,7 +1145,7 @@ export default function EnquiriesPage() {
             const key = `received-${enq.id}`;
             const review = receivedReviewsByEnquiry[String(enq.id)] ?? null;
             const customerName = enq.profiles?.full_name || "Anonymous";
-            const isHighlighted = highlightedEnquiry?.view === "received" && highlightedEnquiry.enquiryId === enq.id;
+            const isHighlighted = highlightedEnquiry?.view === "received" && String(highlightedEnquiry.enquiryId) === String(enq.id);
             const safeCustomerSummary: CustomerSummary = {
               fullName: enq.profiles?.full_name ?? null,
               avatarUrl: enq.profiles?.avatar_url ?? null,
@@ -1026,7 +1153,7 @@ export default function EnquiriesPage() {
               createdAt: enq.profiles?.created_at ?? null,
             };
             return (
-              <article key={enq.id} className={`rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
+              <article id={`enquiry-received-${enq.id}`} key={enq.id} className={`scroll-mt-24 rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
                 <div className="flex min-w-0 items-center gap-3">
                   <button type="button" onClick={() => { setCustomerSummary(safeCustomerSummary); setIsCustomerSummaryOpen(true); }} aria-label={`View ${customerName}'s public details`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Avatar src={enq.profiles?.avatar_url} name={customerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
