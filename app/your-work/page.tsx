@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -29,6 +29,9 @@ const SORT_OPTIONS = [
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_PORTFOLIO_ITEMS = 30;
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm"] as const;
+const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES];
 
 type MediaFilter = (typeof FILTERS)[number]["value"];
 type SortDirection = (typeof SORT_OPTIONS)[number]["value"];
@@ -71,12 +74,24 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatAcceptedTypes(types: readonly string[]) {
+  return types.map((type) => {
+    const subtype = type.split("/")[1] ?? type;
+    if (subtype === "jpeg") return "JPEG";
+    if (subtype === "png") return "PNG";
+    if (subtype === "webp") return "WebP";
+    if (subtype === "webm") return "WebM";
+    if (subtype === "quicktime") return "QuickTime";
+    return subtype.toUpperCase();
+  }).join(", ");
+}
+
 function validateStagedFile(file: File) {
-  const isVideo = ["video/mp4", "video/quicktime", "video/webm"].includes(file.type);
-  const isImage = ["image/jpeg", "image/png", "image/webp"].includes(file.type);
+  const isVideo = ACCEPTED_VIDEO_TYPES.includes(file.type as (typeof ACCEPTED_VIDEO_TYPES)[number]);
+  const isImage = ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number]);
 
   if (!isImage && !isVideo) {
-    return { media_type: "image" as const, error: "Choose a JPEG, PNG, or WebP image, or an MP4, QuickTime, or WebM video." };
+    return { media_type: "image" as const, error: `Choose a ${formatAcceptedTypes(ACCEPTED_IMAGE_TYPES)} image, or a ${formatAcceptedTypes(ACCEPTED_VIDEO_TYPES)} video.` };
   }
 
   const limit = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
@@ -130,7 +145,12 @@ function SortablePortfolioCard({
           className="group relative block aspect-[4/3] w-full overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:aspect-square"
         >
           {item.media_type === "video" ? (
-            <video src={item.image_url} muted playsInline preload="metadata" tabIndex={-1} aria-hidden="true" className="h-full w-full object-cover" />
+            <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true">
+              <span className="grid justify-items-center gap-1.5">
+                <span className="grid size-11 place-items-center rounded-full border border-border bg-background text-foreground"><Play className="ml-0.5 size-5 fill-current" /></span>
+                <span className="rounded-full border border-border bg-background/90 px-2.5 py-0.5 text-xs font-medium text-foreground">Video</span>
+              </span>
+            </span>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.image_url} alt={item.caption || item.description || "Portfolio item"} loading="lazy" decoding="async" className="h-full w-full object-cover" />
@@ -148,7 +168,7 @@ function SortablePortfolioCard({
               type="button"
               {...attributes}
               {...listeners}
-              className="inline-flex min-h-8 items-center rounded-full border border-border bg-background/95 px-2.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+              className="inline-flex min-h-11 items-center rounded-full border border-border bg-background/95 px-3 text-xs font-medium text-foreground shadow-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Reorder portfolio item"
             >
               ⋮⋮
@@ -157,7 +177,7 @@ function SortablePortfolioCard({
           <button
             type="button"
             onClick={() => setIsEditing((current) => !current)}
-            className="inline-flex min-h-8 items-center rounded-full border border-border bg-background/95 px-2.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+            className="inline-flex min-h-11 items-center rounded-full border border-border bg-background/95 px-3 text-xs font-medium text-foreground shadow-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Edit caption"
           >
             Edit
@@ -167,7 +187,7 @@ function SortablePortfolioCard({
             onClick={() => {
               if (window.confirm("Delete this work sample? This action cannot be undone.")) void onDelete(item.id);
             }}
-            className="inline-flex min-h-8 items-center rounded-full border border-destructive/30 bg-destructive/10 px-2.5 text-xs font-medium text-destructive shadow-sm hover:bg-destructive/20"
+            className="inline-flex min-h-11 items-center rounded-full border border-destructive/30 bg-destructive/10 px-3 text-xs font-medium text-destructive shadow-sm hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Delete portfolio item"
           >
             Delete
@@ -183,18 +203,19 @@ function SortablePortfolioCard({
             maxLength={200}
             onChange={(event) => setDraftCaption(event.target.value)}
             placeholder="Add a note for this project"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0"
+            className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-0"
           />
           {draftCaption.length > 160 && (
             <p className="text-right text-xs text-muted-foreground">{draftCaption.length}/200</p>
           )}
           <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setIsEditing(false)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsEditing(false)} className="min-h-11">
               Cancel
             </Button>
             <Button
               type="button"
               size="sm"
+              className="min-h-11"
               onClick={async () => {
                 await onSaveCaption(item.id, draftCaption);
                 setIsEditing(false);
@@ -229,11 +250,13 @@ export default function PortfolioPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [mediaViewerIndex, setMediaViewerIndex] = useState<number | null>(null);
   const [mediaViewerTrigger, setMediaViewerTrigger] = useState<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const successToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stagedUploadsRef = useRef<StagedPortfolioFile[]>([]);
+  const dragDepthRef = useRef(0);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -308,8 +331,7 @@ export default function PortfolioPage() {
     };
   }, [loadPortfolioItems, router]);
 
-  function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
+  function stageFiles(files: File[]) {
     if (files.length === 0) return;
 
     let availableSlots = MAX_PORTFOLIO_ITEMS - items.length - stagedUploads.filter(
@@ -317,7 +339,6 @@ export default function PortfolioPage() {
     ).length;
     if (availableSlots <= 0) {
       setError("You've reached the limit of 30 portfolio items.");
-      event.target.value = "";
       return;
     }
 
@@ -343,7 +364,31 @@ export default function PortfolioPage() {
 
     setStagedUploads((current) => [...current, ...newEntries]);
     setError(newEntries.length < selectedEntries.length ? "You've reached the limit of 30 portfolio items." : null);
+  }
+
+  function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
+    stageFiles(Array.from(event.target.files ?? []));
     event.target.value = "";
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+  }
+
+  function handleFileDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
+    if (uploadingBatch) return;
+    stageFiles(Array.from(event.dataTransfer.files));
   }
 
   function removeStagedFile(fileId: string) {
@@ -470,7 +515,7 @@ export default function PortfolioPage() {
             )
           );
         } catch (err: unknown) {
-          const message = friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Upload failed.");
+          const message = friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Upload failed. Please check your connection and try again.");
           setStagedUploads((current) =>
             current.map((item) =>
               item.id === stagedFile.id
@@ -610,8 +655,29 @@ export default function PortfolioPage() {
         </p>
       </div>
 
-      <div className="mb-8 rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm sm:p-6">
-        <h2 className="mb-4 font-medium">Upload your work</h2>
+      <div
+        onDragEnter={handleDragEnter}
+        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+        onDragLeave={handleDragLeave}
+        onDrop={handleFileDrop}
+        className={`mb-8 rounded-2xl border bg-card p-4 text-card-foreground shadow-sm transition-colors motion-reduce:transition-none sm:p-6 ${isDraggingFiles ? "border-primary bg-primary/5 ring-2 ring-primary/30" : "border-border"}`}
+      >
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-semibold">Add photos or videos of your work</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {formatAcceptedTypes(ACCEPTED_IMAGE_TYPES)} images up to {formatFileSize(MAX_IMAGE_SIZE_BYTES)} each; {formatAcceptedTypes(ACCEPTED_VIDEO_TYPES)} videos up to {formatFileSize(MAX_VIDEO_SIZE_BYTES)} each.
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={() => hasValidQueuedFiles ? void handleUploadStagedFiles() : fileInputRef.current?.click()}
+            disabled={uploadingBatch}
+            className="min-h-11 w-full rounded-full text-base sm:w-auto sm:min-w-32"
+          >
+            {uploadingBatch ? "Uploading…" : "Upload"}
+          </Button>
+        </div>
 
         <div className="space-y-4">
           <div className="space-y-3">
@@ -619,23 +685,13 @@ export default function PortfolioPage() {
               ref={fileInputRef}
               type="file"
               id="portfolio-upload-files"
-              accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
+              accept={ACCEPTED_FILE_TYPES.join(",")}
               multiple
               onChange={handleFileSelection}
               disabled={uploadingBatch}
               className="sr-only"
             />
-            <Button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingBatch}
-              className="min-h-12 w-full rounded-xl text-base sm:w-auto sm:px-6"
-            >
-              Choose photos or videos
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              Select multiple JPEG, PNG, or WebP photos (up to 10 MB each) and MP4, QuickTime, or WebM videos (up to 50 MB each, about 10 seconds).
-            </p>
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingBatch} className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">Choose more files</button>
           </div>
 
           {stagedUploads.length > 0 && (
@@ -645,7 +701,7 @@ export default function PortfolioPage() {
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="relative aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {item.media_type === "video" ? (
-                        <video src={item.previewUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                        <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true"><span className="grid justify-items-center gap-1"><Play className="size-6 fill-current" /><span className="text-[10px] font-medium">Video</span></span></span>
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
@@ -664,7 +720,7 @@ export default function PortfolioPage() {
                           onClick={() => removeStagedFile(item.id)}
                           disabled={uploadingBatch || item.status === "uploading"}
                           aria-label={`Remove ${item.file.name}`}
-                          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <X aria-hidden="true" className="size-4" />
                         </button>
@@ -683,7 +739,7 @@ export default function PortfolioPage() {
                         }}
                         placeholder="Caption this file"
                         disabled={uploadingBatch || item.status === "uploading"}
-                        className="mt-2 min-h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                        className="mt-2 min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                       />
                       {item.caption.length > 160 && (
                         <p className="mt-1 text-right text-xs text-muted-foreground">{item.caption.length}/200</p>
@@ -699,8 +755,13 @@ export default function PortfolioPage() {
                           </div>
                           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                             <div
-                              className="h-full rounded-full bg-foreground transition-all"
+                              className="h-full rounded-full bg-foreground transition-all motion-reduce:transition-none"
                               style={{ width: `${item.progress}%` }}
+                              role="progressbar"
+                              aria-label={`Uploading ${item.file.name}`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={item.progress}
                             />
                           </div>
                         </div>
@@ -714,19 +775,10 @@ export default function PortfolioPage() {
             </div>
           )}
 
-          <div className="space-y-2">
-            <Button
-              type="button"
-              onClick={handleUploadStagedFiles}
-              disabled={uploadingBatch || !hasValidQueuedFiles}
-              className="min-h-12 w-full rounded-xl text-base sm:w-auto sm:min-w-40"
-            >
-              {uploadingBatch ? "Uploading…" : "Upload"}
-            </Button>
-            {!hasValidQueuedFiles && !uploadingBatch && <p className="text-xs text-muted-foreground">Choose at least one valid file to enable Upload.</p>}
-          </div>
+          {isDraggingFiles && <p role="status" className="rounded-xl border border-dashed border-primary bg-primary/5 p-4 text-center text-sm font-medium text-primary">Drop files to add them to your work samples</p>}
+          {!hasValidQueuedFiles && !uploadingBatch && <p className="text-xs text-muted-foreground">Choose files or drop them here to get started, then select Upload.</p>}
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
           {success && <p role="status" className="text-sm text-primary">{success}</p>}
         </div>
       </div>
@@ -740,6 +792,7 @@ export default function PortfolioPage() {
                 <Button
                   type="button"
                   variant="outline"
+                  className="min-h-11"
                   onClick={() => {
                     setItems(reorderSnapshot.map((item) => ({ ...item })));
                     setReorderMode(false);
@@ -749,7 +802,7 @@ export default function PortfolioPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="button" variant="outline" onClick={handleDoneReorder}>
+                <Button type="button" variant="outline" className="min-h-11" onClick={handleDoneReorder}>
                   Done
                 </Button>
               </>
@@ -757,6 +810,7 @@ export default function PortfolioPage() {
               <Button
                 type="button"
                 variant="outline"
+                className="min-h-11"
                 onClick={() => {
                   setReorderSnapshot(items.map((item) => ({ ...item })));
                   setReorderMode(true);
@@ -778,7 +832,7 @@ export default function PortfolioPage() {
                     key={option.value}
                     type="button"
                     onClick={() => setMediaFilter(option.value)}
-                    className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
+                    className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isActive ? "bg-foreground text-background" : ""}`}
                   >
                     {option.label}
                   </button>
@@ -793,7 +847,7 @@ export default function PortfolioPage() {
                     key={option.value}
                     type="button"
                     onClick={() => setSortDirection(option.value)}
-                    className={`rounded-full border px-3 py-1 text-sm ${isActive ? "bg-foreground text-background" : ""}`}
+                    className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isActive ? "bg-foreground text-background" : ""}`}
                   >
                     {option.label}
                   </button>

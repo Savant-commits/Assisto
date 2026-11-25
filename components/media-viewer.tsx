@@ -200,6 +200,8 @@ export default function MediaViewer({ open, items, providerName, initialIndex, t
                 externalScale={index === activeIndex ? zoom : undefined}
                 onScaleChange={index === activeIndex ? handleZoomChange : undefined}
                 onSingleTap={index === activeIndex ? () => setControlsVisible((visible) => !visible) : undefined}
+                onSwipeLeft={index === activeIndex ? () => goTo(index + 1) : undefined}
+                onSwipeRight={index === activeIndex ? () => goTo(index - 1) : undefined}
                 className="absolute inset-0 flex items-center justify-center overflow-hidden"
               >
                 <img

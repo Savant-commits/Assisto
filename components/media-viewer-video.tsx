@@ -21,13 +21,8 @@ type IosVideo = HTMLVideoElement & {
   webkitEnterFullscreen?: () => void;
 };
 
-const DOUBLE_TAP_MS = 280;
-const DOUBLE_TAP_DISTANCE = 28;
-
 export default function MediaViewerVideo({ item, activeIndex, itemCount, onPrevious, onNext, onClose }: Props) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const tapRef = React.useRef<{ x: number; y: number; at: number } | null>(null);
-  const tapTimerRef = React.useRef<number | null>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
 
   const unlockOrientation = React.useCallback(() => {
@@ -78,7 +73,6 @@ export default function MediaViewerVideo({ item, activeIndex, itemCount, onPrevi
       document.removeEventListener("webkitfullscreenchange", handleFullscreenStart);
       video?.removeEventListener("webkitbeginfullscreen", handleFullscreenStart);
       video?.removeEventListener("webkitendfullscreen", handleFullscreenEnd);
-      if (tapTimerRef.current !== null) window.clearTimeout(tapTimerRef.current);
       video?.pause();
       try {
         if (document.fullscreenElement === video) void document.exitFullscreen().catch(() => {});
@@ -104,42 +98,8 @@ export default function MediaViewerVideo({ item, activeIndex, itemCount, onPrevi
     syncFullscreen();
   }
 
-  function handleSurfacePointerUp(event: React.PointerEvent<HTMLDivElement>) {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    if (event.target instanceof Element && event.target.closest("button, input")) return;
-    const video = videoRef.current;
-    if (!video) return;
-    const bounds = video.getBoundingClientRect();
-    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return;
-    // Let the browser-owned native control strip handle taps in its bottom area.
-    if (event.clientY >= bounds.bottom - 56) return;
-    const previous = tapRef.current;
-    const now = Date.now();
-    const isDoubleTap = previous !== null && now - previous.at <= DOUBLE_TAP_MS &&
-      Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <= DOUBLE_TAP_DISTANCE;
-    if (isDoubleTap) {
-      if (tapTimerRef.current !== null) window.clearTimeout(tapTimerRef.current);
-      tapTimerRef.current = null;
-      tapRef.current = null;
-      event.preventDefault();
-      void enterFullscreen();
-      return;
-    }
-    tapRef.current = { x: event.clientX, y: event.clientY, at: now };
-    if (tapTimerRef.current !== null) window.clearTimeout(tapTimerRef.current);
-    tapTimerRef.current = window.setTimeout(() => {
-      const video = videoRef.current;
-      if (video) {
-        if (video.paused) void video.play().catch(() => {});
-        else video.pause();
-      }
-      tapTimerRef.current = null;
-      tapRef.current = null;
-    }, DOUBLE_TAP_MS);
-  }
-
   return (
-    <div className="absolute inset-0 z-20 overflow-hidden bg-neutral-950 text-white">
+    <div className="absolute inset-0 z-20 h-[100dvh] w-[100dvw] overflow-hidden bg-neutral-950 text-white">
       <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <span className="rounded-full bg-black/75 px-3 py-1 text-xs text-white" aria-live="polite">{activeIndex + 1} / {itemCount}</span>
         <button type="button" aria-label="Close media viewer" onClick={onClose} className="inline-flex size-11 items-center justify-center rounded-full bg-black/75 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
@@ -156,11 +116,7 @@ export default function MediaViewerVideo({ item, activeIndex, itemCount, onPrevi
         </button>
       </div>
 
-      <div
-        onPointerUp={handleSurfacePointerUp}
-        className="absolute inset-0 flex items-center justify-center px-2 py-16"
-        aria-label="Video area. Tap to play or pause; double-tap for fullscreen."
-      >
+      <div className="absolute inset-x-0 top-[max(3.5rem,env(safe-area-inset-top))] bottom-[calc(4.5rem+env(safe-area-inset-bottom))] flex items-center justify-center px-2 landscape:top-[max(2.75rem,env(safe-area-inset-top))] landscape:bottom-[calc(3.5rem+env(safe-area-inset-bottom))]">
         <video
           ref={videoRef}
           src={item.image_url ?? undefined}
@@ -172,7 +128,7 @@ export default function MediaViewerVideo({ item, activeIndex, itemCount, onPrevi
         />
       </div>
 
-      <footer className="absolute inset-x-0 bottom-0 z-40 flex items-end justify-center gap-3 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <footer className="absolute inset-x-0 bottom-0 z-40 flex min-h-14 items-center justify-center gap-3 bg-black/35 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 landscape:min-h-12">
         {item.description?.trim() && <p className="max-w-[70%] truncate rounded-full bg-black/65 px-3 py-2 text-center text-sm text-white/90">{item.description.trim()}</p>}
         <button type="button" aria-label={isFullscreen ? "Video fullscreen" : "Enter video fullscreen"} onClick={() => void enterFullscreen()} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-black/75 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
           <Maximize2 aria-hidden="true" className="size-4" />

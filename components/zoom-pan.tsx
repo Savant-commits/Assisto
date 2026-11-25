@@ -24,6 +24,8 @@ type Props = {
   onScaleChange?: (scale: number) => void;
   onSingleTap?: () => void;
   onDoubleTap?: (point: Point) => void;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
   className?: string;
 };
 
@@ -32,13 +34,13 @@ const MAX_SCALE = 4;
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_DISTANCE = 24;
 
-export default function ZoomPan({ children, resetKey, rotated = false, externalScale, onScaleChange, onSingleTap, onDoubleTap, className }: Props) {
+export default function ZoomPan({ children, resetKey, rotated = false, externalScale, onScaleChange, onSingleTap, onDoubleTap, onSwipeLeft, onSwipeRight, className }: Props) {
   const surfaceRef = React.useRef<HTMLDivElement>(null);
   const pointersRef = React.useRef(new Map<number, PointerInfo>());
   const gestureRef = React.useRef<Gesture | null>(null);
   const lastTapRef = React.useRef<{ at: number; x: number; y: number } | null>(null);
   const tapTimerRef = React.useRef<number | null>(null);
-  const callbackRef = React.useRef({ onScaleChange, onSingleTap, onDoubleTap });
+  const callbackRef = React.useRef({ onScaleChange, onSingleTap, onDoubleTap, onSwipeLeft, onSwipeRight });
   const [transform, setTransform] = React.useState<{ resetKey: string; scale: number; pan: Pan }>({ resetKey, scale: 1, pan: ZERO_PAN });
   const isCurrent = transform.resetKey === resetKey;
   const scale = externalScale ?? (isCurrent ? transform.scale : 1);
@@ -47,8 +49,8 @@ export default function ZoomPan({ children, resetKey, rotated = false, externalS
   const panRef = React.useRef<Pan>(ZERO_PAN);
 
   React.useEffect(() => {
-    callbackRef.current = { onScaleChange, onSingleTap, onDoubleTap };
-  }, [onDoubleTap, onScaleChange, onSingleTap]);
+    callbackRef.current = { onScaleChange, onSingleTap, onDoubleTap, onSwipeLeft, onSwipeRight };
+  }, [onDoubleTap, onScaleChange, onSingleTap, onSwipeLeft, onSwipeRight]);
 
   React.useEffect(() => {
     pointersRef.current.clear();
@@ -173,10 +175,9 @@ export default function ZoomPan({ children, resetKey, rotated = false, externalS
     const point = mapPoint(event.clientX, event.clientY);
     pointersRef.current.set(event.pointerId, { ...point, clientX: event.clientX, clientY: event.clientY });
     if (pointersRef.current.size === 1) {
-      const capture = scaleRef.current > 1;
-      if (capture) capturePointer(event.currentTarget, event.pointerId);
+      capturePointer(event.currentTarget, event.pointerId);
       gestureRef.current = {
-        kind: capture ? "pan" : "tap",
+        kind: scaleRef.current > 1 ? "pan" : "tap",
         scale: scaleRef.current,
         pan: panRef.current,
         start: point,
@@ -252,7 +253,7 @@ export default function ZoomPan({ children, resetKey, rotated = false, externalS
         lastTapRef.current = null;
         if (callbackRef.current.onDoubleTap) callbackRef.current.onDoubleTap(point);
         else if (scaleRef.current > 1) zoomAt(1);
-        else zoomAt(2, point);
+        else zoomAt(2.5, point);
       } else {
         lastTapRef.current = { at: now, x: event.clientX, y: event.clientY };
         if (tapTimerRef.current !== null) window.clearTimeout(tapTimerRef.current);
@@ -261,6 +262,13 @@ export default function ZoomPan({ children, resetKey, rotated = false, externalS
           tapTimerRef.current = null;
           lastTapRef.current = null;
         }, DOUBLE_TAP_MS);
+      }
+    } else if (singlePointer && gesture && gesture.scale === 1 && gesture.moved) {
+      const dx = event.clientX - gesture.clientStart.x;
+      const dy = event.clientY - gesture.clientStart.y;
+      if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        if (dx < 0) callbackRef.current.onSwipeLeft?.();
+        else callbackRef.current.onSwipeRight?.();
       }
     }
 
@@ -339,7 +347,7 @@ export default function ZoomPan({ children, resetKey, rotated = false, externalS
       onLostPointerCapture={handleLostPointerCapture}
       onKeyDown={handleKeyDown}
       className={className}
-      style={{ touchAction: scale > 1 ? "none" : "pan-x" }}
+      style={{ touchAction: "none" }}
     >
       <div
         className="h-full w-full will-change-transform transition-transform duration-75 motion-reduce:transition-none"
