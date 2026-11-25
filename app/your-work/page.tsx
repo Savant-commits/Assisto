@@ -146,19 +146,14 @@ function SortablePortfolioCard({
         >
           {item.media_type === "video" ? (
             <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true">
-              <span className="grid justify-items-center gap-1.5">
-                <span className="grid size-11 place-items-center rounded-full border border-border bg-background text-foreground"><Play className="ml-0.5 size-5 fill-current" /></span>
-                <span className="rounded-full border border-border bg-background/90 px-2.5 py-0.5 text-xs font-medium text-foreground">Video</span>
+              <span className="flex flex-col items-center gap-1.5">
+                <Play className="size-7 fill-current" />
+                <span className="text-xs font-medium">Video</span>
               </span>
             </span>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.image_url} alt={item.caption || item.description || "Portfolio item"} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-          )}
-          {item.media_type === "video" && (
-            <span className="absolute inset-0 grid place-items-center bg-black/15 text-white" aria-hidden="true">
-              <span className="grid size-11 place-items-center rounded-full bg-black/65 shadow-md"><Play className="ml-0.5 size-5 fill-current" /></span>
-            </span>
           )}
         </button>
 
@@ -701,12 +696,11 @@ export default function PortfolioPage() {
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="relative aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {item.media_type === "video" ? (
-                        <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true"><span className="grid justify-items-center gap-1"><Play className="size-6 fill-current" /><span className="text-[10px] font-medium">Video</span></span></span>
+                        <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true"><span className="flex flex-col items-center gap-1"><Play className="size-6 fill-current" /><span className="text-[10px] font-medium">Video</span></span></span>
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
                       )}
-                      {item.media_type === "video" && <span className="absolute inset-0 grid place-items-center text-white" aria-hidden="true"><Play className="size-6 fill-current drop-shadow" /></span>}
                     </div>
 
                     <div className="min-w-0 flex-1">

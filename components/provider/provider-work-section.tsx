@@ -127,11 +127,9 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
                   >
                     {isVideo ? (
                       <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true">
-                        <span className="grid justify-items-center gap-1.5">
-                          <span className="grid size-12 place-items-center rounded-full border border-border bg-background text-foreground shadow-soft">
-                            <Play aria-hidden="true" className="ml-0.5 size-6 fill-current" />
-                          </span>
-                          <span className="rounded-full border border-border bg-background/90 px-2.5 py-0.5 text-xs font-medium text-foreground">Video</span>
+                        <span className="flex flex-col items-center gap-1.5">
+                          <Play aria-hidden="true" className="size-8 fill-current" />
+                          <span className="text-xs font-medium">Video</span>
                         </span>
                       </span>
                     ) : (
@@ -143,13 +141,6 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
                         decoding="async"
                         className="h-full w-full object-cover"
                       />
-                    )}
-                    {isVideo && (
-                      <span className="absolute inset-0 grid place-items-center bg-black/15 text-white" aria-hidden="true">
-                        <span className="grid size-12 place-items-center rounded-full bg-black/65 shadow-md">
-                          <Play aria-hidden="true" className="ml-0.5 size-6 fill-current" />
-                        </span>
-                      </span>
                     )}
                   </button>
                   {caption && <p className="line-clamp-1 px-2 py-1.5 text-xs text-muted-foreground">{caption}</p>}

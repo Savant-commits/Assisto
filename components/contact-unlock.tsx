@@ -62,7 +62,6 @@ export function ContactUnlock({
   return (
     <div className="mt-2 flex items-center gap-3">
       <a href={`tel:+${digits}`} className="rounded-md bg-green-600 px-3 py-1 text-sm text-white">Call</a>
-      <a href={`https://wa.me/${digits}`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-emerald-500 px-3 py-1 text-sm text-white">WhatsApp</a>
     </div>
   );
 }

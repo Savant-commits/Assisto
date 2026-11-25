@@ -56,7 +56,11 @@ export function CompletionActions({
       }
 
     } catch (err: unknown) {
-      setError(friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Failed to mark complete"));
+      const errorRecord = err && typeof err === "object" ? err as { message?: string; code?: string } : null;
+      console.error("mark enquiry complete failed:", { code: errorRecord?.code, message: errorRecord?.message ?? (err instanceof Error ? err.message : String(err)) });
+      setError(errorRecord?.code === "23514" || errorRecord?.code === "42501"
+        ? "We couldn't mark this complete. Please try again in a moment."
+        : friendlyDbError(errorRecord, "Failed to mark complete"));
     } finally {
       setPending(false);
     }

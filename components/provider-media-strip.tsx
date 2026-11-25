@@ -35,9 +35,9 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
           >
             {item.media_type === "video" ? (
               <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true">
-                <span className="grid justify-items-center gap-1.5">
-                  <span className="grid size-10 place-items-center rounded-full border border-border bg-background text-foreground"><Play className="ml-0.5 size-5 fill-current" /></span>
-                  <span className="rounded-full border border-border bg-background/90 px-2.5 py-0.5 text-xs font-medium text-foreground">Video</span>
+                <span className="flex flex-col items-center gap-1.5">
+                  <Play className="size-7 fill-current" />
+                  <span className="text-xs font-medium">Video</span>
                 </span>
               </span>
             ) : (
