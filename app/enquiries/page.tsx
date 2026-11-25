@@ -259,6 +259,7 @@ export default function EnquiriesPage() {
   const deepLinkHandledRef = useRef<string | null>(null);
   const deepLinkInFlightRef = useRef<string | null>(null);
   const completionToastKeysRef = useRef<Set<string>>(new Set());
+  const reviewPromptedEnquiryIdsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => () => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -371,7 +372,7 @@ export default function EnquiriesPage() {
     }));
     const eligibleReviewEnquiries = await getEligibleEnquiriesForReview(supabase, userData.user.id);
     const eligibleReviewIds = new Set(eligibleReviewEnquiries.map((enquiry) => String(enquiry.id)));
-    const completedEnquiryIds = sentList.filter((enquiry) => enquiry.status === "completed").map((enquiry) => String(enquiry.id));
+    const completedEnquiryIds = sentList.filter((enquiry) => enquiry.customer_completed_at).map((enquiry) => String(enquiry.id));
     const reviewsMap: Record<string, ReviewRecord> = {};
 
     if (completedEnquiryIds.length > 0) {
@@ -675,29 +676,27 @@ export default function EnquiriesPage() {
     setCardError(key, null);
     try {
       const supabase = createClient();
+      if (status === "accepted") {
+        const { error } = await supabase.from("enquiries").update({ status: "confirmed" }).eq("id", id).eq("status", "sent");
+        if (error) {
+          setCardError(key, error.code === "23514"
+            ? "This enquiry has no timing details. Ask the customer to send a new enquiry."
+            : error.code === "42501"
+              ? "You can't accept this enquiry."
+              : friendlyDbError(error, "Unable to accept this enquiry."));
+          return;
+        }
+        await load();
+        setView("received");
+        setReceivedTab("active");
+        showActionToast("Enquiry accepted. Contact details and job location are now available.", "View in Active", "received", "active", id);
+        return;
+      }
       const nextReason = status === "declined" ? (declineReason?.trim() || null) : null;
       const { error } = await supabase.from("enquiries").update({ status, decline_reason: nextReason }).eq("id", id);
       if (error) throw error;
       setReceived((prev) => prev.map((p) => (p.id === id ? { ...p, status, decline_reason: status === "declined" ? nextReason : p.decline_reason } : p)));
-      if (status === "accepted") showActionToast("Enquiry accepted. Find it under Active.", "View Active", "received", "active", id);
-      else if (status === "declined") showActionToast("Enquiry declined. Moved to History.", "View History", "received", "history", id);
-    } catch (err: unknown) {
-      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
-    } finally {
-      setPending(key, false);
-    }
-  }
-
-  async function confirmAcceptedEnquiry(id: number) {
-    const key = `sent-${id}`;
-    setPending(key, true);
-    setCardError(key, null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from("enquiries").update({ status: "confirmed" }).eq("id", id);
-      if (error) throw error;
-      setSent((prev) => prev.map((enquiry) => enquiry.id === id ? { ...enquiry, status: "confirmed" } : enquiry));
-      showActionToast("Enquiry confirmed. Find it under Active.", "View Active", "sent", "active", id);
+      if (status === "declined") showActionToast("Enquiry declined. Moved to History.", "View History", "received", "history", id);
     } catch (err: unknown) {
       setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
     } finally {
@@ -1045,11 +1044,13 @@ export default function EnquiriesPage() {
                     </div>
                   )}
 
-                  {sentTab === "active" && (enq.status === "confirmed" || enq.status === "accepted") && (
-                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} hideWhenMissing={enq.status === "accepted"} /></div>
+                  {sentTab === "active" && enq.status === "confirmed" && (
+                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} /></div>
                   )}
 
-                  {(enq.status === "sent" || enq.status === "accepted") && (
+                  {enq.status === "accepted" && <p className="mt-3 text-sm text-muted-foreground">Accepted before the new flow. Confirmation is no longer needed.</p>}
+
+                  {enq.status === "sent" && (
                     <div className="mt-3">
                       <button
                         type="button"
@@ -1081,10 +1082,14 @@ export default function EnquiriesPage() {
                     </div>
                   )}
 
+                  {enq.status === "accepted" ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                      <button type="button" onClick={() => setCancellationTarget({ id: enq.id, view: "sent", role: "customer", fromStatus: enq.status })} className="inline-flex min-h-11 items-center rounded-full border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cancel enquiry</button>
+                    </div>
+                  ) : (
                   <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-                    {enq.status === "accepted" && <Button type="button" onClick={() => void confirmAcceptedEnquiry(enq.id)} disabled={!!pendingMap[key]} className="min-h-11 rounded-full px-4">{pendingMap[key] ? "Confirming…" : "Confirm"}</Button>}
-                    {(enq.status === "sent" || enq.status === "accepted" || enq.status === "confirmed") && <button type="button" onClick={() => setCancellationTarget({ id: enq.id, view: "sent", role: "customer", fromStatus: enq.status })} className="inline-flex min-h-11 items-center rounded-full border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{enq.status === "sent" ? "Withdraw enquiry" : "Cancel enquiry"}</button>}
-                    {enq.status === "confirmed" && <CompletionActions
+                    {(enq.status === "sent" || enq.status === "confirmed") && <button type="button" onClick={() => setCancellationTarget({ id: enq.id, view: "sent", role: "customer", fromStatus: enq.status })} className="inline-flex min-h-11 items-center rounded-full border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{enq.status === "sent" ? "Withdraw enquiry" : "Cancel enquiry"}</button>}
+                    {enq.status === "confirmed" && !enq.customer_completed_at && <CompletionActions
                         enquiryId={enq.id}
                         role="customer"
                         customerCompletedAt={enq.customer_completed_at}
@@ -1092,6 +1097,10 @@ export default function EnquiriesPage() {
                         onUpdated={(patch) => {
                           setSent((prev) => prev.map((p) => (p.id === enq.id ? { ...p, ...patch } : p)));
                           if (patch.customer_completed_at) {
+                            if (!reviewsByEnquiry[String(enq.id)] && !reviewPromptedEnquiryIdsRef.current.has(enq.id)) {
+                              reviewPromptedEnquiryIdsRef.current.add(enq.id);
+                              setActiveReviewPrompt({ enquiryId: enq.id, providerName, existingReview: null });
+                            }
                             const key = `customer:${enq.id}:${patch.customer_completed_at}`;
                             if (!completionToastKeysRef.current.has(key)) {
                               completionToastKeysRef.current.add(key);
@@ -1102,18 +1111,17 @@ export default function EnquiriesPage() {
                         }}
                         onReviewNeeded={(enquiryId) => {
                           const enquiry = sent.find((item) => item.id === enquiryId);
-                          if (!enquiry || reviewsByEnquiry[String(enquiryId)]) return;
-                          if (typeof window !== "undefined" && localStorage.getItem(getReviewDismissedKey(enquiryId)) === "true") return;
-                          const candidate = { enquiryId, providerName: enquiry.providers?.business_name || "Provider", existingReview: null };
-                          if (activeReviewPrompt?.enquiryId === enquiryId) return;
-                          setReviewPromptQueue((prev) => (prev.some((item) => item.enquiryId === enquiryId) ? prev : [...prev, candidate]));
-                          setActiveReviewPrompt((current) => current ?? candidate);
+                          if (!enquiry || reviewsByEnquiry[String(enquiryId)] || reviewPromptedEnquiryIdsRef.current.has(enquiryId)) return;
+                          reviewPromptedEnquiryIdsRef.current.add(enquiryId);
+                          setActiveReviewPrompt({ enquiryId, providerName: enquiry.providers?.business_name || providerName, existingReview: null });
                         }}
                       />}
-                    {enq.status === "completed" && <Button type="button" variant={reviewsByEnquiry[String(enq.id)] ? "outline" : "default"} onClick={() => setActiveReviewPrompt({ enquiryId: enq.id, providerName, existingReview: reviewsByEnquiry[String(enq.id)] ?? null })} className="min-h-11 rounded-full px-4">{reviewsByEnquiry[String(enq.id)] ? "View review" : "Leave a review"}</Button>}
-                    {enq.projects && <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message{(unreadByProject[enq.projects.id] ?? 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">{unreadByProject[enq.projects.id] > 9 ? "9+" : unreadByProject[enq.projects.id]}</span>}</Link>}
+                    {enq.customer_completed_at && reviewsByEnquiry[String(enq.id)] && <p role="status" className="inline-flex min-h-11 items-center px-2 text-sm font-medium text-primary">Thanks for your review</p>}
+                    {enq.customer_completed_at && !reviewsByEnquiry[String(enq.id)] && <Button type="button" onClick={() => setActiveReviewPrompt({ enquiryId: enq.id, providerName, existingReview: null })} className="min-h-11 rounded-full px-4">Leave a review</Button>}
+                    {enq.status !== "accepted" && enq.projects && <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message{(unreadByProject[enq.projects.id] ?? 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">{unreadByProject[enq.projects.id] > 9 ? "9+" : unreadByProject[enq.projects.id]}</span>}</Link>}
                     {enq.status === "confirmed" && <div className="[&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center [&_a]:rounded-full [&_a]:px-4"><ContactUnlock profileId={enq.providers?.id ?? ""} showUnavailable /></div>}
                   </div>
+                  )}
 
                   <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
                     <span>Sent {formatDateTime(enq.created_at)}</span>
@@ -1179,7 +1187,7 @@ export default function EnquiriesPage() {
                     {enq.cancel_reason_note && <p className="mt-1 whitespace-pre-line text-muted-foreground">{enq.cancel_reason_note}</p>}
                   </div>
                 )}
-                {(enq.status === "confirmed" || (receivedTab === "active" && enq.status === "accepted")) && <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="provider" hideWhenMissing={enq.status === "accepted"} /></div>}
+                {enq.status === "confirmed" && <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="provider" /></div>}
 
                 {receivedTab === "pending" && (
                   <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
@@ -1234,9 +1242,7 @@ export default function EnquiriesPage() {
                   </div>
                 )}
 
-                {receivedTab === "active" && enq.status === "accepted" && (
-                  <p className="mt-3 text-sm text-muted-foreground">Waiting for the customer to confirm.</p>
-                )}
+                {enq.status === "accepted" && <p className="mt-3 text-sm text-muted-foreground">Accepted before the new flow. Confirmation is no longer needed.</p>}
 
                 {enq.status === "confirmed" && (
                   <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
@@ -1266,11 +1272,10 @@ export default function EnquiriesPage() {
                 {enq.status === "accepted" && (
                   <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     <button type="button" onClick={() => setCancellationTarget({ id: enq.id, view: "received", role: "provider", fromStatus: enq.status })} className="inline-flex min-h-11 items-center rounded-full border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cancel enquiry</button>
-                    {enq.projects && <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message</Link>}
                   </div>
                 )}
 
-                {enq.status !== "confirmed" && enq.projects && (
+                {enq.status !== "confirmed" && enq.status !== "accepted" && enq.projects && (
                   <div className="mt-4 border-t border-border pt-3">
                     <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message{(unreadByProject[enq.projects.id] ?? 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">{unreadByProject[enq.projects.id] > 9 ? "9+" : unreadByProject[enq.projects.id]}</span>}</Link>
                   </div>

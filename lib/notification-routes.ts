@@ -20,6 +20,7 @@ export function getNotificationHref(
     case "enquiry_accepted":
     case "enquiry_declined":
     case "enquiry_confirmed":
+    case "enquiry_completion_pending":
     case "enquiry_completed":
     case "enquiry_cancelled":
       return relatedId ? `/enquiries?enquiry=${encodeURIComponent(relatedId)}` : null;

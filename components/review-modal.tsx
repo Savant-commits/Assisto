@@ -61,6 +61,13 @@ export function ReviewModal({ enquiryId, providerName, existingReview, onClose, 
       await onSubmitted();
       onClose();
     } catch (err: unknown) {
+      const errorText = err && typeof err === "object" && "message" in err && typeof err.message === "string"
+        ? err.message
+        : err instanceof Error ? err.message : "";
+      if (errorText.includes("Mark the job complete before leaving a review")) {
+        setError("Mark the job complete before leaving a review.");
+        return;
+      }
       setError(friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Unable to save your review right now."));
     } finally {
       setSubmitting(false);

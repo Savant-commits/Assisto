@@ -54,6 +54,7 @@ export function CompletionActions({
       if (refreshed.status === "completed" && role === "customer" && onReviewNeeded) {
         onReviewNeeded(enquiryId);
       }
+
     } catch (err: unknown) {
       setError(friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Failed to mark complete"));
     } finally {
