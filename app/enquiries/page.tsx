@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, MessageCircle, UserRound } from "lucide-react";
+import { ArrowRight, MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { EnquiryDirections } from "@/components/enquiry-directions";
 import { CompletionActions } from "@/components/completion-actions";
@@ -17,10 +18,7 @@ import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { one } from "@/lib/relations";
 import { useLocation } from "@/lib/location/provider";
 import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiries/customer-summary-sheet";
-import { ConfirmationStep } from "@/components/enquiries/confirmation-step";
-import type { EnquiryDetailsValue } from "@/components/enquiries/enquiry-details-fields";
 import { RequestDetailsEditor } from "@/components/enquiries/request-details-editor";
-import { saveEnquiryLocation } from "@/lib/enquiry-location";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -165,7 +163,6 @@ export default function EnquiriesPage() {
   const [historyFilter, setHistoryFilter] = useState<"all" | "completed" | "declined" | "cancelled">("all");
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [requestEditorOpen, setRequestEditorOpen] = useState<Record<number, boolean>>({});
-  const [confirmingWithdraw, setConfirmingWithdraw] = useState<Record<number, boolean>>({});
   const [confirmingDecline, setConfirmingDecline] = useState<Record<number, { open: boolean; reason: string }>>({});
   const [customerCity, setCustomerCity] = useState<string | null>(null);
   const [customerHomeAddress, setCustomerHomeAddress] = useState<SavedHomeAddress | null>(null);
@@ -596,23 +593,6 @@ export default function EnquiriesPage() {
     if (chatProjectId) router.replace(`/messages/${encodeURIComponent(chatProjectId)}`);
   }, [loading, router]);
 
-  async function updateSentStatus(id: number, status: string) {
-    const key = `sent-${id}`;
-    setPending(key, true);
-    setCardError(key, null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from("enquiries").update({ status }).eq("id", id);
-      if (error) throw error;
-      setSent((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
-      if (status === "cancelled") showActionToast("Enquiry cancelled. Moved to History.", "View History", "sent", "history", id);
-    } catch (err: unknown) {
-      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
-    } finally {
-      setPending(key, false);
-    }
-  }
-
   async function updateReceivedStatus(id: number, status: string, declineReason?: string | null) {
     const key = `received-${id}`;
     setPending(key, true);
@@ -627,49 +607,6 @@ export default function EnquiriesPage() {
       else if (status === "declined") showActionToast("Enquiry declined. Moved to History.", "View History", "received", "history", id);
     } catch (err: unknown) {
       setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Update failed"));
-    } finally {
-      setPending(key, false);
-    }
-  }
-
-  async function saveAcceptedEnquiryDetails(id: number, details: EnquiryDetailsValue) {
-    const key = `sent-${id}`;
-    setPending(key, true);
-    setCardError(key, null);
-    try {
-      const supabase = createClient();
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      if (!userData.user) throw new Error("Please sign in again to edit this enquiry.");
-
-      const locationSaveError = await saveEnquiryLocation(supabase, {
-        enquiryId: id,
-        customerId: userData.user.id,
-        addressText: details.addressText,
-        lat: details.lat,
-        lng: details.lng,
-      });
-      if (locationSaveError) throw locationSaveError;
-      const { error } = await supabase.from("enquiries").update({
-        is_asap: details.isAsap,
-        scheduled_start_at: details.isAsap ? null : details.scheduledStartAt,
-      }).eq("id", id);
-      if (error) throw error;
-      setSent((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? {
-                ...p,
-                is_asap: details.isAsap,
-                scheduled_start_at: details.isAsap ? null : details.scheduledStartAt,
-              }
-            : p
-        )
-      );
-      return true;
-    } catch (err: unknown) {
-      setCardError(key, friendlyDbError(err && typeof err === "object" ? err as { message?: string; code?: string } : null, "Unable to save the job details."));
-      return false;
     } finally {
       setPending(key, false);
     }
@@ -951,54 +888,27 @@ export default function EnquiriesPage() {
               return (
                 <article id={`enquiry-sent-${enq.id}`} key={enq.id} className={`scroll-mt-24 rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
                   <div className="flex min-w-0 items-center gap-3">
-                    <Avatar src={providerProfile?.avatar_url} name={providerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
+                    <Link href={`/providers/${enq.providers?.id ?? ""}`} aria-label={`View ${providerName}'s provider profile`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card">
+                      <Avatar src={providerProfile?.avatar_url} name={providerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
+                    </Link>
                     <div className="min-w-0 flex-1">
-                      <Link href={`/providers/${enq.providers?.id ?? ""}`} className="block truncate font-semibold text-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{providerName}</Link>
-                      {enq.customer_requirements?.description && <div className="mt-0.5 truncate text-sm text-muted-foreground">{enq.customer_requirements.description}</div>}
+                      <Link href={`/providers/${enq.providers?.id ?? ""}`} className="block min-h-11 truncate py-2 font-semibold text-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{providerName}</Link>
+                      <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Provider</span>
                     </div>
-                    <div className="flex flex-wrap items-start justify-end gap-2">
-                      {(sentTab === "active" || sentTab === "history") && enq.projects && (
-                        <Link
-                          href={`/messages/${encodeURIComponent(enq.projects.id)}`}
-                          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          aria-label={(() => {
-                            const count = unreadByProject[enq.projects.id] || 0;
-                            return count > 0 ? `Open chat, ${count} unread` : "Open chat";
-                          })()}
-                          title="Open chat"
-                        >
-                          <span className="relative">
-                            <MessageCircle size={20} />
-                            {(() => {
-                              const count = unreadByProject[enq.projects.id] || 0;
-                              if (count > 0) {
-                                return <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">{count > 9 ? "9+" : count}</span>;
-                              }
-                              return null;
-                            })()}
-                          </span>
-                        </Link>
-                      )}
-                      {sentTab === "active" && enq.status === "confirmed" && (
-                        <EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} />
-                      )}
-                      {statusBadge(enq.status)}
-                    </div>
+                    {statusBadge(enq.status)}
                   </div>
 
-                  <p title={enq.message || undefined} className="mt-4 line-clamp-1 text-sm text-foreground">{enq.message || "No message provided."}</p>
-                  <div className="mt-3 text-xs text-muted-foreground">
-                    Sent {formatDateTime(enq.created_at)}
-                    {sentTab === "history" && enq.updated_at && (
-                      <> · {enq.status === "completed" ? "Completed" : enq.status === "declined" ? "Declined" : "Cancelled"} {formatDateTime(enq.updated_at)}</>
-                    )}
-                  </div>
+                  <p title={enq.message || undefined} className="mt-4 whitespace-pre-line text-sm text-foreground">{enq.message || "No message provided."}</p>
+                  {scheduleLine(enq) && <p className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</p>}
                   {sentTab === "history" && enq.status === "declined" && enq.decline_reason && (
                     <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
                   )}
-                  {scheduleLine(enq) && <div className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</div>}
 
-                  {sentTab === "pending" && enq.status === "sent" && (
+                  {sentTab === "active" && enq.status === "confirmed" && (
+                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} /></div>
+                  )}
+
+                  {(enq.status === "sent" || enq.status === "accepted") && (
                     <div className="mt-3">
                       <button
                         type="button"
@@ -1030,76 +940,9 @@ export default function EnquiriesPage() {
                     </div>
                   )}
 
-                  {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && (
-                    <Link
-                      href={`/projects/${Array.isArray(enq.projects) ? enq.projects[0]?.id : enq.projects.id}`}
-                      className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      View Project ({Array.isArray(enq.projects) ? enq.projects[0]?.project_code : enq.projects.project_code})
-                    </Link>
-                  )}
-
-                  {sentTab === "pending" && enq.status === "sent" && (
-                    <div className="mt-4">
-                      {confirmingWithdraw[enq.id] ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm text-muted-foreground">Withdraw this enquiry?</span>
-                          <button
-                            onClick={() => {
-                              setConfirmingWithdraw((s) => ({ ...s, [enq.id]: false }));
-                              updateSentStatus(enq.id, "cancelled");
-                            }}
-                            disabled={!!pendingMap[key]}
-                            className="inline-flex min-h-11 items-center rounded-full bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {pendingMap[key] ? "Withdrawing…" : "Yes, withdraw"}
-                          </button>
-                          <button
-                            onClick={() => setConfirmingWithdraw((s) => ({ ...s, [enq.id]: false }))}
-                            className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            Never mind
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmingWithdraw((s) => ({ ...s, [enq.id]: true }))}
-                          className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          Withdraw
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {sentTab === "active" && enq.status === "accepted" && (
-                    <div className="mt-4">
-                      <ConfirmationStep
-                        key={enq.id}
-                        enquiryId={enq.id}
-                        isAsap={enq.is_asap ?? null}
-                        scheduledStartAt={enq.scheduled_start_at ?? null}
-                        homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
-                        homePin={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
-                          ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
-                          : null}
-                        homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
-                        fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress?.lng != null
-                          ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
-                          : resolveLocationFallbackCenter(customerCity || customerHomeAddress?.city || selectedLocation.city, selectedLocation)}
-                        today={todayLocal}
-                        saving={!!pendingMap[key]}
-                        error={errors[key] ?? null}
-                        onConfirm={() => void confirmAcceptedEnquiry(enq.id)}
-                        onSaveDetails={(details: EnquiryDetailsValue) => saveAcceptedEnquiryDetails(enq.id, details)}
-                      />
-                    </div>
-                  )}
-
-                  {sentTab === "active" && enq.status === "confirmed" && (
-                    <>
-                      <ContactUnlock profileId={enq.providers?.id ?? ""} showUnavailable />
-                      <CompletionActions
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                    {enq.status === "accepted" && <Button type="button" onClick={() => void confirmAcceptedEnquiry(enq.id)} disabled={!!pendingMap[key]} className="min-h-11 rounded-full px-4">{pendingMap[key] ? "Confirming…" : "Confirm"}</Button>}
+                    {enq.status === "confirmed" && <CompletionActions
                         enquiryId={enq.id}
                         role="customer"
                         customerCompletedAt={enq.customer_completed_at}
@@ -1124,9 +967,16 @@ export default function EnquiriesPage() {
                           setReviewPromptQueue((prev) => (prev.some((item) => item.enquiryId === enquiryId) ? prev : [...prev, candidate]));
                           setActiveReviewPrompt((current) => current ?? candidate);
                         }}
-                      />
-                    </>
-                  )}
+                      />}
+                    {enq.status === "completed" && <Button type="button" variant={reviewsByEnquiry[String(enq.id)] ? "outline" : "default"} onClick={() => setActiveReviewPrompt({ enquiryId: enq.id, providerName, existingReview: reviewsByEnquiry[String(enq.id)] ?? null })} className="min-h-11 rounded-full px-4">{reviewsByEnquiry[String(enq.id)] ? "View review" : "Leave a review"}</Button>}
+                    {enq.projects && <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message{(unreadByProject[enq.projects.id] ?? 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">{unreadByProject[enq.projects.id] > 9 ? "9+" : unreadByProject[enq.projects.id]}</span>}</Link>}
+                    {enq.status === "confirmed" && <div className="[&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center [&_a]:rounded-full [&_a]:px-4"><ContactUnlock profileId={enq.providers?.id ?? ""} showUnavailable /></div>}
+                  </div>
+
+                  <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                    <span>Sent {formatDateTime(enq.created_at)}</span>
+                    {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && <Link href={`/projects/${enq.projects.id}`} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">View Project ({enq.projects.project_code})</Link>}
+                  </footer>
 
                   {errors[key] && <p className="mt-2 text-sm text-destructive">{errors[key]}</p>}
                 </article>
@@ -1155,52 +1005,18 @@ export default function EnquiriesPage() {
             return (
               <article id={`enquiry-received-${enq.id}`} key={enq.id} className={`scroll-mt-24 rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow sm:p-5 ${isHighlighted ? "ring-2 ring-ring" : ""}`}>
                 <div className="flex min-w-0 items-center gap-3">
-                  <button type="button" onClick={() => { setCustomerSummary(safeCustomerSummary); setIsCustomerSummaryOpen(true); }} aria-label={`View ${customerName}'s public details`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <button type="button" onClick={() => { setCustomerSummary(safeCustomerSummary); setIsCustomerSummaryOpen(true); }} aria-label={`View ${customerName}'s public details`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card">
                     <Avatar src={enq.profiles?.avatar_url} name={customerName} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold text-foreground">{customerName}</span>
-                      {enq.customer_requirements?.description && <span className="mt-0.5 block truncate text-sm text-muted-foreground">{enq.customer_requirements.description}</span>}
-                    </span>
-                    <UserRound aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
                   </button>
-                  <div className="flex flex-wrap items-start justify-end gap-2">
-                    {(receivedTab === "active" || receivedTab === "history") && enq.projects && (
-                      <Link
-                        href={`/messages/${encodeURIComponent(enq.projects.id)}`}
-                        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-label={(() => {
-                          const count = unreadByProject[enq.projects.id] || 0;
-                          return count > 0 ? `Open chat, ${count} unread` : "Open chat";
-                        })()}
-                        title="Open chat"
-                      >
-                        <span className="relative">
-                          <MessageCircle size={20} />
-                          {(() => {
-                            const count = unreadByProject[enq.projects.id] || 0;
-                            if (count > 0) {
-                              return <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">{count > 9 ? "9+" : count}</span>;
-                            }
-                            return null;
-                          })()}
-                        </span>
-                      </Link>
-                    )}
-                    {receivedTab === "active" && enq.status === "confirmed" && (
-                      <EnquiryDirections enquiryId={enq.id} role="provider" />
-                    )}
-                    {statusBadge(enq.status)}
+                  <div className="min-w-0 flex-1">
+                    <button type="button" onClick={() => { setCustomerSummary(safeCustomerSummary); setIsCustomerSummaryOpen(true); }} className="block min-h-11 max-w-full truncate py-2 text-left font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{customerName}</button>
+                    <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Customer</span>
                   </div>
+                  {statusBadge(enq.status)}
                 </div>
 
-                <p title={enq.message || undefined} className="mt-4 line-clamp-1 text-sm text-foreground">{enq.message || "No message provided."}</p>
-                {receivedTab === "pending" && enq.profiles?.city && <p className="mt-2 text-sm text-muted-foreground">Area: {enq.profiles.city}</p>}
-                <div className="mt-3 text-xs text-muted-foreground">
-                  Sent {formatDateTime(enq.created_at)}
-                  {receivedTab === "history" && enq.updated_at && (
-                    <> · {enq.status === "completed" ? "Completed" : enq.status === "declined" ? "Declined" : "Cancelled"} {formatDateTime(enq.updated_at)}</>
-                  )}
-                </div>
+                <p title={enq.message || undefined} className="mt-4 whitespace-pre-line text-sm text-foreground">{enq.message || "No message provided."}</p>
+                {scheduleLine(enq) && <p className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</p>}
                 {receivedTab === "history" && enq.status === "completed" && review && (
                   <div className="mt-3 rounded-md border border-muted bg-muted/30 p-3">
                     <div className="flex items-center justify-between gap-2">
@@ -1213,19 +1029,10 @@ export default function EnquiriesPage() {
                 {receivedTab === "history" && enq.status === "declined" && enq.decline_reason && (
                   <div className="mt-2 text-sm text-muted-foreground">Reason: {enq.decline_reason}</div>
                 )}
-                {scheduleLine(enq) && <div className="mt-2 text-sm text-muted-foreground">{scheduleLine(enq)}</div>}
-
-                {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && (
-                  <Link
-                    href={`/projects/${enq.projects.id}`}
-                    className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    View Project ({enq.projects.project_code})
-                  </Link>
-                )}
+                {enq.status === "confirmed" && <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="provider" /></div>}
 
                 {receivedTab === "pending" && (
-                  <div className="mt-4 flex items-center gap-2">
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     <button
                       type="button"
                       onClick={() => updateReceivedStatus(enq.id, "accepted")}
@@ -1281,9 +1088,8 @@ export default function EnquiriesPage() {
                   <p className="mt-3 text-sm text-muted-foreground">Waiting for the customer to confirm.</p>
                 )}
 
-                {receivedTab === "active" && enq.status === "confirmed" && (
-                  <>
-                    <ContactUnlock profileId={enq.customer_id} showUnavailable />
+                {enq.status === "confirmed" && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     <CompletionActions
                       enquiryId={enq.id}
                       role="provider"
@@ -1301,8 +1107,21 @@ export default function EnquiriesPage() {
                         }
                       }}
                     />
-                  </>
+                    {enq.projects && <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message{(unreadByProject[enq.projects.id] ?? 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">{unreadByProject[enq.projects.id] > 9 ? "9+" : unreadByProject[enq.projects.id]}</span>}</Link>}
+                    <div className="[&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center [&_a]:rounded-full [&_a]:px-4"><ContactUnlock profileId={enq.customer_id} showUnavailable /></div>
+                  </div>
                 )}
+
+                {enq.status !== "confirmed" && enq.projects && (
+                  <div className="mt-4 border-t border-border pt-3">
+                    <Link href={`/messages/${encodeURIComponent(enq.projects.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessageCircle aria-hidden="true" className="size-4" />Message{(unreadByProject[enq.projects.id] ?? 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">{unreadByProject[enq.projects.id] > 9 ? "9+" : unreadByProject[enq.projects.id]}</span>}</Link>
+                  </div>
+                )}
+
+                <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                  <span>Sent {formatDateTime(enq.created_at)}</span>
+                  {(enq.status === "confirmed" || enq.status === "completed") && enq.projects && <Link href={`/projects/${enq.projects.id}`} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">View Project ({enq.projects.project_code})</Link>}
+                </footer>
 
                 {errors[key] && <p className="mt-2 text-sm text-destructive">{errors[key]}</p>}
               </article>

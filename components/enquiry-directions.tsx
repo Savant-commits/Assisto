@@ -34,6 +34,7 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [mapExpanded, setMapExpanded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -114,19 +115,9 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
 
   if (role === "customer") {
     return (
-      <div className="space-y-3">
-        {providerDirections && (
-          <a
-            href={providerDirections}
-            {...EXTERNAL_LINK_PROPS}
-            className="inline-flex whitespace-nowrap rounded-md border bg-background px-3 py-1.5 text-sm font-medium text-blue-700 underline"
-          >
-            Show directions
-          </a>
-        )}
-        <div className="rounded-md border border-muted p-3 text-sm">
+      <div className="rounded-xl border border-border bg-background/70 p-3 text-sm">
           <div className="flex items-center justify-between gap-3">
-            <p className="font-medium">Your job site</p>
+            <p className="font-medium text-foreground">Your job site</p>
             {!loading && location && !isEditing && (
               <button
                 type="button"
@@ -137,7 +128,7 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
                   setLng(location.lng ?? null);
                   setIsEditing(true);
                 }}
-                className="text-xs text-blue-700 underline"
+                className="inline-flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Edit
               </button>
@@ -209,12 +200,26 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
               </div>
             </form>
           ) : location ? (
-            <p className="mt-1 whitespace-pre-line text-muted-foreground">{location.address_text}</p>
+            <>
+              <p className="mt-1 whitespace-pre-line text-muted-foreground">{location.address_text}</p>
+              <button type="button" aria-expanded={mapExpanded} onClick={() => setMapExpanded((open) => !open)} className="mt-2 inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {mapExpanded ? "Hide map" : "Show map"}
+              </button>
+              {mapExpanded && (
+                <div className="mt-3 space-y-3">
+                  {providerDirections && <a href={providerDirections} {...EXTERNAL_LINK_PROPS} className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-primary underline-offset-4 hover:bg-muted hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show directions</a>}
+                  {location.lat !== null && location.lng !== null && (
+                    <div className="[&_button]:min-h-11 [&_button]:px-3">
+                      <LocationMap lat={location.lat} lng={location.lng} height={180} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
             <p className="mt-1 text-muted-foreground">No site location saved yet.</p>
           )}
           {!isEditing && error && <p className="mt-1 text-sm text-destructive" role="alert">{error}</p>}
-        </div>
       </div>
     );
   }
@@ -225,26 +230,24 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
     : directionsUrl({ address: location?.address_text });
 
   return (
-    <div className="space-y-2">
-      {jobSiteDirections && (
-        <a
-          href={jobSiteDirections}
-          {...EXTERNAL_LINK_PROPS}
-          className="inline-flex whitespace-nowrap rounded-md border bg-background px-3 py-1.5 text-sm font-medium text-blue-700 underline"
-        >
-          Show directions
-        </a>
-      )}
-      <div className="rounded-md border border-muted p-3 text-sm">
-        <p className="font-medium">Job site location</p>
+    <div className="rounded-xl border border-border bg-background/70 p-3 text-sm">
+        <p className="font-medium text-foreground">Job site location</p>
         {loading ? (
           <p className="mt-1 text-muted-foreground">Loading site location…</p>
         ) : location ? (
           <>
             <p className="mt-1 whitespace-pre-line text-muted-foreground">{location.address_text}</p>
-            {locationHasPin && location.lat !== null && location.lng !== null && (
-              <div className="mt-2">
-                <LocationMap lat={location.lat} lng={location.lng} height={160} />
+            <button type="button" aria-expanded={mapExpanded} onClick={() => setMapExpanded((open) => !open)} className="mt-2 inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {mapExpanded ? "Hide map" : "Show map"}
+            </button>
+            {mapExpanded && (
+              <div className="mt-3 space-y-3">
+                {jobSiteDirections && <a href={jobSiteDirections} {...EXTERNAL_LINK_PROPS} className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-primary underline-offset-4 hover:bg-muted hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show directions</a>}
+                {locationHasPin && location.lat !== null && location.lng !== null && (
+                  <div className="[&_button]:min-h-11 [&_button]:px-3">
+                    <LocationMap lat={location.lat} lng={location.lng} height={160} />
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -252,7 +255,6 @@ export function EnquiryDirections({ enquiryId, role, providerLocation }: Enquiry
           <p className="mt-1 text-muted-foreground">The customer hasn&apos;t shared a site location yet.</p>
         )}
         {error && <p className="mt-1 text-sm text-destructive" role="alert">{error}</p>}
-      </div>
     </div>
   );
 }

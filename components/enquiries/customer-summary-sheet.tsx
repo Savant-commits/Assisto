@@ -13,9 +13,6 @@ export type CustomerSummary = {
 export function CustomerSummarySheet({ open, customer, onClose }: { open: boolean; customer: CustomerSummary | null; onClose: () => void }) {
   if (!open || !customer) return null;
   const name = customer.fullName?.trim() || "Customer";
-  const memberSince = customer.createdAt
-    ? new Date(customer.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
-    : null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end bg-foreground/40 sm:items-center sm:justify-center sm:p-4" onMouseDown={(event) => {
@@ -33,7 +30,6 @@ export function CustomerSummarySheet({ open, customer, onClose }: { open: boolea
           <div className="min-w-0">
             <p className="truncate text-lg font-semibold text-foreground">{name}</p>
             <p className="mt-1 text-sm text-muted-foreground">{customer.city?.trim() || "Town not provided"}</p>
-            {memberSince && <p className="mt-1 text-sm text-muted-foreground">Member since {memberSince}</p>}
           </div>
         </div>
       </section>
