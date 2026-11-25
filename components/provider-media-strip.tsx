@@ -4,6 +4,7 @@ import * as React from "react";
 import { Play } from "lucide-react";
 import MediaViewer from "@/components/media-viewer";
 import type { ProviderPortfolioItem } from "@/lib/types";
+import { PROVIDER_MEDIA_GRID_GAP_CLASS, PROVIDER_MEDIA_TILE_CLASS } from "@/components/provider/provider-media-styles";
 
 type Props = { items: ProviderPortfolioItem[]; providerName: string };
 
@@ -19,7 +20,7 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
 
   return (
     <>
-      <div className="relative z-10 grid grid-cols-3 gap-1.5 px-4 pb-4">
+      <div className={`relative z-10 grid grid-cols-3 ${PROVIDER_MEDIA_GRID_GAP_CLASS} px-4 pb-4`}>
         {visibleItems.map((item, index) => (
           <button
             key={item.id}
@@ -30,7 +31,7 @@ export default function ProviderMediaStrip({ items, providerName }: Props) {
               setInitialIndex(index);
               setOpen(true);
             }}
-            className="group relative z-10 aspect-[4/3] min-w-0 overflow-hidden rounded-lg bg-neutral-900 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:aspect-square"
+            className={`group relative z-10 ${PROVIDER_MEDIA_TILE_CLASS} bg-neutral-900 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
           >
             {item.media_type === "video" ? (
               <>

@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import MediaViewer from "@/components/media-viewer";
 import type { ProviderPortfolioItem } from "@/lib/types";
+import { PROVIDER_MEDIA_GRID_GAP_CLASS, PROVIDER_MEDIA_TILE_CLASS } from "@/components/provider/provider-media-styles";
 
 type MediaFilter = "all" | "photos" | "videos";
 type Props = {
@@ -108,7 +109,7 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+          <div className={`grid grid-cols-2 ${PROVIDER_MEDIA_GRID_GAP_CLASS} sm:grid-cols-3`}>
             {visibleItems.map((item, index) => {
               const caption = item.caption?.trim() || item.description?.trim();
               const isVideo = item.media_type === "video";
@@ -122,18 +123,17 @@ export default function ProviderWorkSection({ items, providerName, mediaFilter, 
                       setTrigger(event.currentTarget);
                       setViewerOpen(true);
                     }}
-                    className="group relative block aspect-[4/3] w-full overflow-hidden bg-muted text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:aspect-square"
+                    className={`group relative block w-full ${PROVIDER_MEDIA_TILE_CLASS} bg-muted text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset`}
                   >
                     {isVideo ? (
-                      <video
-                        src={item.image_url ?? undefined}
-                        muted
-                        playsInline
-                        preload="metadata"
-                        tabIndex={-1}
-                        aria-hidden="true"
-                        className="h-full w-full object-cover"
-                      />
+                      <span className="absolute inset-0 grid place-items-center bg-muted text-muted-foreground" aria-hidden="true">
+                        <span className="grid justify-items-center gap-1.5">
+                          <span className="grid size-12 place-items-center rounded-full border border-border bg-background text-foreground shadow-soft">
+                            <Play aria-hidden="true" className="ml-0.5 size-6 fill-current" />
+                          </span>
+                          <span className="rounded-full border border-border bg-background/90 px-2.5 py-0.5 text-xs font-medium text-foreground">Video</span>
+                        </span>
+                      </span>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img

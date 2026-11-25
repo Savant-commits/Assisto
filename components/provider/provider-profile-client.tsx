@@ -892,13 +892,14 @@ export default function ProviderProfileClient({ id }: Props) {
 
       {currentUserId === provider.id ? (
         <section className="rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
-          <h2 className="font-display text-lg">This is how customers see your profile</h2>
+          <h2 className="font-display text-lg">This is your public profile</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Customers see this page when they find you.</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Link href="/your-work" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <BriefcaseBusiness aria-hidden="true" className="size-4" />Manage your work
-            </Link>
             <Link href="/profile" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <PencilLine aria-hidden="true" className="size-4" />Edit profile
+            </Link>
+            <Link href="/your-work" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <BriefcaseBusiness aria-hidden="true" className="size-4" />Manage your work
             </Link>
           </div>
         </section>
