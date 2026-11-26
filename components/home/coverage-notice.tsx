@@ -3,7 +3,7 @@ import AuthGatedLink from "@/components/auth/auth-gated-link";
 import { buttonVariants } from "@/components/ui/button";
 import { SectionError } from "@/components/home/section-error";
 import { CoverageNoticeDismiss } from "@/components/home/coverage-notice-dismiss";
-import { getCityProviders, getGeolocatedProviders } from "@/lib/home/queries";
+import { getCityProviders, getGeolocatedProviders, getHomeCityHint } from "@/lib/home/queries";
 import { distanceKm } from "@/lib/geo";
 import type { SelectedLocation } from "@/lib/location/types";
 
@@ -15,7 +15,7 @@ type CoverageData = {
 
 async function loadCoverageData(location: SelectedLocation): Promise<CoverageData | null | "error"> {
   try {
-    const areaName = location.city?.trim() || (location.source === "manual" ? location.locality.trim() : null);
+    const areaName = getHomeCityHint(location);
     if (areaName) {
       const localProviders = await getCityProviders(areaName);
       if (localProviders.length > 0) return null;

@@ -3,14 +3,14 @@ import AuthGatedLink from "@/components/auth/auth-gated-link";
 import { CategoryRail } from "@/components/home/category-rail";
 import { HomeEmptyState } from "@/components/home/home-empty-state";
 import { SectionError } from "@/components/home/section-error";
-import { getHomeCategories, getProvidersForLocation } from "@/lib/home/queries";
+import { getHomeCategories, getHomeCityHint, getProvidersForLocation } from "@/lib/home/queries";
 import type { SelectedLocation } from "@/lib/location/types";
 
-async function loadServiceData(location: SelectedLocation) {
+async function loadServiceData(location: SelectedLocation, city: string | null) {
   try {
     return await Promise.all([
       getHomeCategories(),
-      getProvidersForLocation(location.city),
+      getProvidersForLocation(city),
     ]);
   } catch {
     return null;
@@ -18,7 +18,8 @@ async function loadServiceData(location: SelectedLocation) {
 }
 
 export async function ServiceCategories({ location }: { location: SelectedLocation }) {
-  const result = await loadServiceData(location);
+  const city = getHomeCityHint(location);
+  const result = await loadServiceData(location, city);
   if (!result) return <SectionError label="Services" />;
   const [categories, providers] = result;
   if (categories.length === 0) {
@@ -59,7 +60,7 @@ export async function ServiceCategories({ location }: { location: SelectedLocati
             <Link href="/discover" className="inline-flex min-h-11 items-center rounded-full px-3 font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">View All</Link>
           </div>
         </div>
-        <CategoryRail categories={cards} city={location.city} label="Service categories" columns={5} />
+        <CategoryRail categories={cards} city={city} label="Service categories" columns={5} />
     </section>
   );
 }

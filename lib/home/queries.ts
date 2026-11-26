@@ -18,6 +18,24 @@ export type HomeProvider = {
   provider_categories: Array<{ category_id: string }> | null;
 };
 
+export function getHomeCityHint(location: {
+  city: string | null;
+  locality: string;
+  label: string;
+}): string | null {
+  const city = location.city?.trim();
+  if (city && !["selected location", "tamil nadu"].includes(city.toLocaleLowerCase())) return city;
+
+  const locality = location.locality.trim();
+  const label = location.label.trim();
+  if (!locality || ["selected location", "tamil nadu"].includes(locality.toLocaleLowerCase())) return null;
+  const normalizedLocality = locality.toLocaleLowerCase();
+  const normalizedLabel = label.toLocaleLowerCase();
+  return normalizedLabel === normalizedLocality || normalizedLabel.startsWith(`${normalizedLocality},`)
+    ? locality
+    : null;
+}
+
 export const getHomeCategories = cache(async (): Promise<HomeCategory[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase

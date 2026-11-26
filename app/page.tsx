@@ -5,11 +5,10 @@ import { HomeSectionSkeleton } from "@/components/home/home-section-skeleton";
 import { CoverageNotice } from "@/components/home/coverage-notice";
 import { HeroSection } from "@/components/home/hero-section";
 import { ServiceCategories } from "@/components/home/service-categories";
-import { PopularServices } from "@/components/home/popular-services";
 import { ProviderRecruitment } from "@/components/home/provider-recruitment";
 import { createClient } from "@/lib/supabase/server";
 import { getSelectedLocation } from "@/lib/location/server";
-import { getCityProviders } from "@/lib/home/queries";
+import { getCityProviders, getHomeCityHint } from "@/lib/home/queries";
 
 export default async function HomePage() {
   const [location, supabase, cookieStore] = await Promise.all([getSelectedLocation(), createClient(), cookies()]);
@@ -22,7 +21,7 @@ export default async function HomePage() {
     role = typeof profile?.role === "string" ? profile.role : null;
   }
   const hideRecruitment = role === "provider" || role === "admin";
-  const coverageArea = location.source === "manual" ? null : location.city;
+  const coverageArea = getHomeCityHint(location);
   let showCoverage = !coverageArea;
   if (coverageArea) {
     try {
@@ -47,9 +46,6 @@ export default async function HomePage() {
         </Suspense>
         <Suspense fallback={<HomeSectionSkeleton kind="categories" />}>
           <ServiceCategories location={location} />
-        </Suspense>
-        <Suspense fallback={<HomeSectionSkeleton kind="popular" />}>
-          <PopularServices location={location} />
         </Suspense>
         {!hideRecruitment && (
           <Suspense fallback={<HomeSectionSkeleton kind="recruitment" />}>
