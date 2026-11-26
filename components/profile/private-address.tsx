@@ -67,6 +67,7 @@ function fieldsFromGeocoded(location: GeocodedLocation): AddressFields {
 
 export function PrivateProfileAddress({
   profileId,
+  baseTown,
   isEditing,
   canEdit,
   onEdit,
@@ -74,6 +75,7 @@ export function PrivateProfileAddress({
   onSaved,
 }: {
   profileId: string;
+  baseTown: string | null;
   isEditing: boolean;
   canEdit: boolean;
   onEdit: () => void;
@@ -477,7 +479,7 @@ export function PrivateProfileAddress({
             <Button type="button" variant="outline" className="min-h-11" onClick={cancelAddressEdit} disabled={isSaving}>Cancel</Button>
             <Button type="submit" form="private-address-form" className="min-h-11" disabled={isSaving || isLookingUp}>{isSaving ? "Saving…" : "Save address"}</Button>
           </footer>
-          <LocationPicker open={isLocationPickerOpen} onOpenChange={setIsLocationPickerOpen} initial={coordinates} title="Choose your address on the map" confirmLabel="Use this location" onConfirm={(point, suggestion) => void fillFromCoordinates(point, suggestion)} />
+          <LocationPicker open={isLocationPickerOpen} onOpenChange={setIsLocationPickerOpen} initial={coordinates} baseTown={baseTown} title="Choose your address on the map" confirmLabel="Use this location" onConfirm={(point, suggestion) => void fillFromCoordinates(point, suggestion)} />
         </DialogContent>
       </Dialog>
     </>

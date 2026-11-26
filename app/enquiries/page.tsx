@@ -14,7 +14,6 @@ import { CompletionActions } from "@/components/completion-actions";
 import { ReviewModal } from "@/components/review-modal";
 import { getEligibleEnquiriesForReview } from "@/lib/reviews";
 import { friendlyDbError } from "@/lib/db-errors";
-import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { one } from "@/lib/relations";
 import { useLocation } from "@/lib/location/provider";
 import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiries/customer-summary-sheet";
@@ -179,16 +178,6 @@ function isHistoryFilterMatch(
 
 function getReviewDismissedKey(enquiryId: number) {
   return `reviews:dismissed:${enquiryId}`;
-}
-
-function resolveLocationFallbackCenter(cityName: string | null, selectedLocation: { lat: number | null; lng: number | null }) {
-  if (cityName && cityName in CITY_CENTERS) {
-    return CITY_CENTERS[cityName as keyof typeof CITY_CENTERS];
-  }
-  if (selectedLocation.lat !== null && selectedLocation.lng !== null) {
-    return { lat: selectedLocation.lat, lng: selectedLocation.lng };
-  }
-  return DEFAULT_MAP_CENTER;
 }
 
 type SavedHomeAddress = {
@@ -1045,7 +1034,7 @@ export default function EnquiriesPage() {
                   )}
 
                   {sentTab === "active" && enq.status === "confirmed" && (
-                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} /></div>
+                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} baseTown={customerCity} /></div>
                   )}
 
                   {enq.status === "accepted" && <p className="mt-3 text-sm text-muted-foreground">Accepted before the new flow. Confirmation is no longer needed.</p>}
@@ -1066,12 +1055,10 @@ export default function EnquiriesPage() {
                           scheduledStartAt={enq.scheduled_start_at ?? null}
                           homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
                           homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
+                          baseTown={customerCity}
                           homePin={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
                             ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
                             : null}
-                          fallbackCenter={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
-                            ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
-                            : resolveLocationFallbackCenter(customerCity || customerHomeAddress?.city || selectedLocation.city, selectedLocation)}
                           today={todayLocal}
                           onClose={() => setRequestEditorOpen((current) => ({ ...current, [enq.id]: false }))}
                           onSaved={(details) => setSent((current) => current.map((item) => item.id === enq.id

@@ -13,6 +13,8 @@ export type LeafletMapInnerProps = {
   zoom: number;
   marker?: MapPoint | null;
   onPick?: (lat: number, lng: number) => void;
+  onUserInteract?: () => void;
+  followCenter?: boolean;
   interactive: "inline" | "full" | "static";
   height?: number | string;
 };
@@ -72,11 +74,36 @@ function MapClickHandler({ onPick }: { onPick?: (lat: number, lng: number) => vo
   return null;
 }
 
+function MapCenterController({ center, zoom }: { center: MapPoint; zoom: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView([center.lat, center.lng], zoom, { animate: false });
+  }, [center.lat, center.lng, map, zoom]);
+  return null;
+}
+
+function MapInteractionHandler({ onUserInteract }: { onUserInteract?: () => void }) {
+  useMapEvents({
+    keydown(event) {
+      if ((event as L.LeafletEvent & { originalEvent?: Event }).originalEvent) onUserInteract?.();
+    },
+    dragstart(event) {
+      if ((event as L.LeafletEvent & { originalEvent?: Event }).originalEvent) onUserInteract?.();
+    },
+    zoomstart(event) {
+      if ((event as L.LeafletEvent & { originalEvent?: Event }).originalEvent) onUserInteract?.();
+    },
+  });
+  return null;
+}
+
 export function LeafletMapInner({
   center,
   zoom,
   marker,
   onPick,
+  onUserInteract,
+  followCenter = false,
   interactive,
   height = 320,
 }: LeafletMapInnerProps) {
@@ -119,6 +146,8 @@ export function LeafletMapInner({
         style={{ height: "100%", width: "100%" }}
       >
         <MapResizer />
+        {followCenter && <MapCenterController center={center} zoom={zoom} />}
+        {onUserInteract && <MapInteractionHandler onUserInteract={onUserInteract} />}
         {onPick && <MapClickHandler onPick={onPick} />}
         <TileLayer url={MAP_TILE_URL} attribution={MAP_ATTRIBUTION} />
         {visibleMarker && (

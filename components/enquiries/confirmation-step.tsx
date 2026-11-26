@@ -12,8 +12,8 @@ type Props = {
   scheduledStartAt: string | null;
   homeAddress: string;
   homeCity: string | null;
+  baseTown: string | null;
   homePin: Pin | null;
-  fallbackCenter: Pin;
   today: string;
   saving: boolean;
   error: string | null;
@@ -35,8 +35,8 @@ export function ConfirmationStep({
   scheduledStartAt,
   homeAddress,
   homeCity,
+  baseTown,
   homePin,
-  fallbackCenter,
   today,
   saving,
   error,
@@ -88,8 +88,8 @@ export function ConfirmationStep({
           <EnquiryDetailsFields
             homeAddress={homeAddress}
             homeCity={homeCity}
+            baseTown={baseTown}
             homePin={homePin}
-            fallbackCenter={fallbackCenter}
             today={today}
             initial={{
               isAsap: isAsap ?? true,

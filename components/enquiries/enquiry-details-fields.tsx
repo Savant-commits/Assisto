@@ -6,7 +6,6 @@ import { MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
-import { CITY_CENTERS } from "@/lib/maps";
 import type { GeocodedLocation } from "@/lib/location/types";
 
 type Pin = { lat: number; lng: number };
@@ -23,8 +22,8 @@ export type EnquiryDetailsValue = {
 type Props = {
   homeAddress: string;
   homeCity: string | null;
+  baseTown: string | null;
   homePin: Pin | null;
-  fallbackCenter: Pin;
   today: string;
   initial?: Partial<EnquiryDetailsValue>;
   onChange: (value: EnquiryDetailsValue) => void;
@@ -49,8 +48,8 @@ function localFutureDateTime(date: string, time: string) {
 export function EnquiryDetailsFields({
   homeAddress,
   homeCity,
+  baseTown,
   homePin,
-  fallbackCenter,
   today,
   initial,
   onChange,
@@ -68,8 +67,6 @@ export function EnquiryDetailsFields({
       : initial?.place === "different" ? null : homePin,
   );
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerCenter, setPickerCenter] = useState(fallbackCenter);
-  const [resolvingCenter, setResolvingCenter] = useState(false);
   const [lookingUpAddress, setLookingUpAddress] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const addressRevisionRef = useRef(0);
@@ -103,29 +100,8 @@ export function EnquiryDetailsFields({
     return () => window.clearInterval(timer);
   }, [when]);
 
-  async function openLocationPicker() {
-    setResolvingCenter(true);
-    let center = fallbackCenter;
-    const knownCenter = homeCity && homeCity in CITY_CENTERS
-      ? CITY_CENTERS[homeCity as keyof typeof CITY_CENTERS]
-      : null;
-    if (knownCenter) {
-      center = knownCenter;
-    } else if (homeCity?.trim() && homeCity.trim().length >= 3) {
-      try {
-        const response = await fetch(`/api/geocode/search?q=${encodeURIComponent(homeCity.trim())}`);
-        const payload = await response.json() as { results?: GeocodedLocation[] };
-        const result = payload.results?.find((item) => (item.city || item.locality).trim().toLocaleLowerCase() === homeCity.trim().toLocaleLowerCase());
-        if (response.ok && result && typeof result.lat === "number" && typeof result.lng === "number") {
-          center = { lat: result.lat, lng: result.lng };
-        }
-      } catch {
-        // Keep the available home-town fallback if lookup is unavailable.
-      }
-    }
-    setPickerCenter(center);
+  function openLocationPicker() {
     setPickerOpen(true);
-    setResolvingCenter(false);
   }
 
   async function handlePin(point: Pin, suggestion?: GeocodedLocation | null) {
@@ -223,14 +199,14 @@ export function EnquiryDetailsFields({
             {!addressText.trim() && <p className="text-sm text-destructive">Enter an address or area to continue.</p>}
             {lookingUpAddress && <p role="status" className="text-xs text-muted-foreground">Filling in the address suggestion… You can keep typing.</p>}
             {pin && <LocationMap lat={pin.lat} lng={pin.lng} height={180} />}
-            <button type="button" onClick={() => void openLocationPicker()} disabled={resolvingCenter} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-wait disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <MapPin aria-hidden="true" className="size-4" />{resolvingCenter ? "Opening map…" : pin ? "Change pin (optional)" : "Add map pin (optional)"}
+            <button type="button" onClick={openLocationPicker} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <MapPin aria-hidden="true" className="size-4" />{pin ? "Change pin (optional)" : "Add map pin (optional)"}
             </button>
             <LocationPicker
               open={pickerOpen}
               onOpenChange={setPickerOpen}
               initial={pin}
-              fallbackCenter={pickerCenter}
+              baseTown={baseTown}
               title="Different work location"
               confirmLabel="Use pin"
               lookupSuggestion={false}

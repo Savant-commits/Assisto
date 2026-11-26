@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, MapPin, Search, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { DEFAULT_LOCATION } from "@/lib/location/default";
+import { createClient } from "@/lib/supabase/client";
 import { useLocation } from "@/lib/location/provider";
 import type { GeocodedLocation, SelectedLocation } from "@/lib/location/types";
 
@@ -39,6 +39,8 @@ export default function LocationSelector() {
   const [status, setStatus] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [mapInitial, setMapInitial] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapBaseTown, setMapBaseTown] = useState<string | null>(null);
+  const mapBaseTownRequest = useRef(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const mapTriggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -155,6 +157,30 @@ export default function LocationSelector() {
     });
   }
 
+  async function openMapPicker() {
+    const requestId = ++mapBaseTownRequest.current;
+    setStatus(null);
+    setMapBaseTown(null);
+    setMapInitial(location.lat !== null && location.lng !== null ? { lat: location.lat, lng: location.lng } : null);
+    setMapOpen(true);
+
+    try {
+      const supabase = createClient();
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const [providerResult, profileResult] = await Promise.all([
+        supabase.from("providers").select("city").eq("id", userData.user.id).maybeSingle(),
+        supabase.from("profiles").select("city").eq("id", userData.user.id).maybeSingle(),
+      ]);
+      if (requestId !== mapBaseTownRequest.current) return;
+      const providerCity = providerResult.data?.city?.trim();
+      const profileCity = profileResult.data?.city?.trim();
+      setMapBaseTown(providerCity || profileCity || null);
+    } catch {
+      // The selected location/default centre is still available if account lookup fails.
+    }
+  }
+
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown" && results.length) {
       event.preventDefault();
@@ -266,11 +292,7 @@ export default function LocationSelector() {
               <button
                 ref={mapTriggerRef}
                 type="button"
-                onClick={() => {
-                  setStatus(null);
-                  setMapInitial(location.lat !== null && location.lng !== null ? { lat: location.lat, lng: location.lng } : null);
-                  setMapOpen(true);
-                }}
+                onClick={() => void openMapPicker()}
                 className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <MapPin aria-hidden="true" className="size-4" />
@@ -358,7 +380,7 @@ export default function LocationSelector() {
         open={mapOpen}
         onOpenChange={setMapOpen}
         initial={mapInitial}
-        fallbackCenter={{ lat: DEFAULT_LOCATION.lat ?? 11.3993, lng: DEFAULT_LOCATION.lng ?? 79.6914 }}
+        baseTown={mapBaseTown}
         title="Choose a location on the map"
         onConfirm={handleMapConfirm}
       />

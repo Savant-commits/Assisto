@@ -28,7 +28,6 @@ import ProviderWorkSection from "@/components/provider/provider-work-section";
 import ProviderLocationSection from "@/components/provider/provider-location-section";
 import ProviderReviewsSection from "@/components/provider/provider-reviews-section";
 import { EnquiryDetailsFields, type EnquiryDetailsValue } from "@/components/enquiries/enquiry-details-fields";
-import { CITY_CENTERS, DEFAULT_MAP_CENTER } from "@/lib/maps";
 import { useLocation } from "@/lib/location/provider";
 import { saveEnquiryLocation } from "@/lib/enquiry-location";
 
@@ -199,17 +198,13 @@ function EnquiryWidget({
   });
   const [homeAddress, setHomeAddress] = useState("");
   const [homeCity, setHomeCity] = useState<string | null>(null);
+  const [baseTown, setBaseTown] = useState<string | null>(null);
   const [homePin, setHomePin] = useState<{ lat: number; lng: number } | null>(null);
   const [today] = useState(() => {
     const now = new Date();
     return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
   });
   const { location: selectedLocation } = useLocation();
-  const fallbackCenter = homePin ?? (homeCity && homeCity in CITY_CENTERS
-    ? CITY_CENTERS[homeCity as keyof typeof CITY_CENTERS]
-    : selectedLocation.lat !== null && selectedLocation.lng !== null
-      ? { lat: selectedLocation.lat, lng: selectedLocation.lng }
-      : DEFAULT_MAP_CENTER);
   const onDetailsChange = useCallback((value: EnquiryDetailsValue) => setDetails(value), []);
 
   useEffect(() => {
@@ -234,6 +229,7 @@ function EnquiryWidget({
         .filter(Boolean);
       setHomeAddress(parts.filter((part, index) => parts.findIndex((other) => other.toLocaleLowerCase() === part.toLocaleLowerCase()) === index).join(", "));
       setHomeCity(city);
+      setBaseTown(typeof profileResult.data?.city === "string" ? profileResult.data.city.trim() || null : null);
       setHomePin(typeof address?.lat === "number" && typeof address.lng === "number" ? { lat: address.lat, lng: address.lng } : null);
     }
     void loadHomeLocation();
@@ -525,8 +521,8 @@ function EnquiryWidget({
         <EnquiryDetailsFields
           homeAddress={homeAddress}
           homeCity={homeCity}
+          baseTown={baseTown}
           homePin={homePin}
-          fallbackCenter={fallbackCenter}
           today={today}
           onChange={onDetailsChange}
         />

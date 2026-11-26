@@ -150,6 +150,7 @@ export default function ProfilePage() {
   const [isProvider, setIsProvider] = useState(false);
   const [providerListing, setProviderListing] = useState<ProviderListing>(emptyProviderListing);
   const [savedProviderListing, setSavedProviderListing] = useState<ProviderListing>(emptyProviderListing);
+  const [providerBaseCity, setProviderBaseCity] = useState<string | null>(null);
   const [providerLocationLabel, setProviderLocationLabel] = useState<{ coordinates: string; label: string } | null>(null);
   const [isSavingListing, setIsSavingListing] = useState(false);
   const [listingError, setListingError] = useState<string | null>(null);
@@ -219,7 +220,7 @@ export default function ProfilePage() {
       if (phoneError) logSupabaseError("profile phone lookup failed", phoneError);
       const { data: providerData, error: providerError } = await supabase
         .from("providers")
-        .select("id, headline, bio, locality, lat, lng, years_experience, provider_categories ( service_categories ( name ) )")
+        .select("id, city, headline, bio, locality, lat, lng, years_experience, provider_categories ( service_categories ( name ) )")
         .eq("id", userData.user.id)
         .maybeSingle();
       if (providerError) logSupabaseError("profile provider lookup failed", providerError);
@@ -238,6 +239,7 @@ export default function ProfilePage() {
         setAvatarUrl(profileData.avatar_url);
         setIsAdmin(profileData.role === "admin");
         setIsProvider(!!providerData);
+        setProviderBaseCity(typeof providerData?.city === "string" ? providerData.city.trim() || null : null);
         if (providerData) {
           const listing = {
             headline: providerData.headline ?? "",
@@ -610,6 +612,7 @@ export default function ProfilePage() {
         {profileId && <div className="md:col-span-2">
           <PrivateProfileAddress
             profileId={profileId}
+            baseTown={isProvider ? providerBaseCity || profile?.city || null : profile?.city || null}
             isEditing={activeEditor === "address"}
             canEdit={activeEditor === null || activeEditor === "address"}
             onEdit={() => setActiveEditor("address")}
@@ -698,7 +701,7 @@ export default function ProfilePage() {
                 open={isLocationPickerOpen}
                 onOpenChange={setIsLocationPickerOpen}
                 initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
-                fallbackCenter={cityCenter}
+                baseTown={providerBaseCity || profile?.city || null}
                 title="Business location"
                 confirmLabel="Confirm"
                 onConfirm={saveProviderLocation}
@@ -818,7 +821,7 @@ export default function ProfilePage() {
               open={isLocationPickerOpen}
               onOpenChange={setIsLocationPickerOpen}
               initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
-              fallbackCenter={cityCenter}
+              baseTown={providerBaseCity || profile?.city || null}
               title="Business location"
               confirmLabel="Confirm"
               onConfirm={saveProviderLocation}

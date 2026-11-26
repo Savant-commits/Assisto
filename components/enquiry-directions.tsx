@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { friendlyDbError } from "@/lib/db-errors";
-import { coordsDirectionsUrl, DEFAULT_MAP_CENTER, directionsUrl, CITY_CENTERS } from "@/lib/maps";
+import { coordsDirectionsUrl, directionsUrl } from "@/lib/maps";
 import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
 
@@ -17,6 +17,7 @@ type EnquiryDirectionsProps = {
   enquiryId: number;
   role: "customer" | "provider";
   hideWhenMissing?: boolean;
+  baseTown?: string | null;
   providerLocation?: {
     lat?: number | null;
     lng?: number | null;
@@ -25,7 +26,7 @@ type EnquiryDirectionsProps = {
   } | null;
 };
 
-export function EnquiryDirections({ enquiryId, role, providerLocation, hideWhenMissing = false }: EnquiryDirectionsProps) {
+export function EnquiryDirections({ enquiryId, role, providerLocation, hideWhenMissing = false, baseTown = null }: EnquiryDirectionsProps) {
   const [location, setLocation] = useState<EnquiryLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -104,10 +105,6 @@ export function EnquiryDirections({ enquiryId, role, providerLocation, hideWhenM
     }
   }
 
-  const fallbackCenter = providerLocation?.city && providerLocation.city in CITY_CENTERS
-    ? CITY_CENTERS[providerLocation.city as keyof typeof CITY_CENTERS]
-    : DEFAULT_MAP_CENTER;
-
   const providerHasPin = providerLocation?.lat != null && providerLocation.lng != null;
   const providerDirections = providerHasPin
     ? coordsDirectionsUrl(providerLocation.lat!, providerLocation.lng!)
@@ -173,7 +170,7 @@ export function EnquiryDirections({ enquiryId, role, providerLocation, hideWhenM
                 open={isPickerOpen}
                 onOpenChange={setIsPickerOpen}
                 initial={lat !== null && lng !== null ? { lat, lng } : null}
-                fallbackCenter={fallbackCenter}
+                baseTown={baseTown}
                 title="Job site location"
                 confirmLabel="Use this pin"
                 onConfirm={({ lat: nextLat, lng: nextLng }) => {
