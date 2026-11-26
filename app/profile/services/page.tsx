@@ -210,8 +210,8 @@ export default function ManageServicesPage() {
       </div>
 
       <div className="mt-8">
-        <Link href="/profile" className="text-sm text-blue-600 underline">
-          Back to profile
+        <Link href="/profile/provider" className="text-sm text-blue-600 underline">
+          Back to provider hub
         </Link>
       </div>
     </div>

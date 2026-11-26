@@ -5,7 +5,7 @@ import AppHeader from "@/components/shell/app-header";
 import BottomNav from "@/components/shell/bottom-nav";
 import { NotificationsProvider } from "@/components/notification-bell";
 
-const mainTabPaths = new Set(["/", "/discover", "/enquiries", "/messages", "/profile", "/settings"]);
+const mainTabPaths = new Set(["/", "/discover", "/enquiries", "/messages", "/profile", "/profile/provider", "/settings"]);
 
 export function RouteChrome({
   children,

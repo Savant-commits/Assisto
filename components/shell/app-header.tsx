@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Compass, House, LogIn, MessageCircle, Settings as SettingsIcon, UserRound, ClipboardList } from "lucide-react";
+import { Bell, BriefcaseBusiness, Compass, House, LogIn, MessageCircle, Settings as SettingsIcon, UserRound, ClipboardList } from "lucide-react";
 import { useNotifications } from "@/components/notification-bell";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
 import HomeSearchBar from "@/components/search/home-search-bar";
 import AuthGatedLink from "@/components/auth/auth-gated-link";
 import { useAuthGate } from "@/components/auth/auth-sheet";
 import AdminLink from "@/components/shell/admin-link";
+import { createClient } from "@/lib/supabase/client";
 
 type AppHeaderProps = {
   fullName?: string | null;
@@ -32,12 +33,39 @@ export default function AppHeader({ fullName, isLoggedIn }: AppHeaderProps) {
   const pathname = usePathname();
   const hidden = useScrollDirection(64, pathname ?? "/");
   const [hasFocus, setHasFocus] = useState(false);
+  const [hasProviderRow, setHasProviderRow] = useState(false);
   const notifications = useNotifications();
   const { requireAuth } = useAuthGate();
 
   const isHomeRoute = pathname === "/";
   const isSettingsRoute = pathname === "/settings";
+  const isProviderHubRoute = pathname === "/profile/provider";
   const compact = hidden && !hasFocus;
+
+  useEffect(() => {
+    let active = true;
+    async function checkProvider() {
+      await Promise.resolve();
+      if (!isLoggedIn) {
+        setHasProviderRow(false);
+        return;
+      }
+      const supabase = createClient();
+      const { data: userData } = await supabase.auth.getUser();
+      if (!active || !userData.user) {
+        if (active) setHasProviderRow(false);
+        return;
+      }
+      const { data: provider } = await supabase
+        .from("providers")
+        .select("id")
+        .eq("id", userData.user.id)
+        .maybeSingle();
+      if (active) setHasProviderRow(!!provider);
+    }
+    void checkProvider();
+    return () => { active = false; };
+  }, [isLoggedIn]);
 
   return (
     <>
@@ -79,6 +107,16 @@ export default function AppHeader({ fullName, isLoggedIn }: AppHeaderProps) {
 
           <div className="flex items-center gap-2">
             <AdminLink />
+            {isLoggedIn && hasProviderRow && (
+              <Link
+                href="/profile/provider"
+                aria-label="Provider hub"
+                aria-current={isProviderHubRoute ? "page" : undefined}
+                className={`inline-flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isProviderHubRoute ? "bg-accent text-primary" : "text-foreground hover:bg-muted"}`}
+              >
+                <BriefcaseBusiness aria-hidden="true" className="size-5" />
+              </Link>
+            )}
             {isLoggedIn ? (
               <button
                 type="button"

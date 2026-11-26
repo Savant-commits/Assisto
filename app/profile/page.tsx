@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -46,22 +47,26 @@ type Profile = {
 };
 
 type ProviderListing = {
+  business_name: string;
   headline: string;
   bio: string;
   locality: string;
   lat: number | null;
   lng: number | null;
   years_experience: number | null;
+  service_edit_credits: number;
   categories: string[];
 };
 
 const emptyProviderListing: ProviderListing = {
+  business_name: "",
   headline: "",
   bio: "",
   locality: "",
   lat: null,
   lng: null,
   years_experience: null,
+  service_edit_credits: 0,
   categories: [],
 };
 
@@ -138,7 +143,9 @@ async function resizeAvatar(file: File): Promise<Blob | null> {
 
 export default function ProfilePage() {
   const phoneVerificationRequired = usePhoneVerificationRequired();
+  const pathname = usePathname();
   const router = useRouter();
+  const isProviderHubRoute = pathname === "/profile/provider";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -220,7 +227,7 @@ export default function ProfilePage() {
       if (phoneError) logSupabaseError("profile phone lookup failed", phoneError);
       const { data: providerData, error: providerError } = await supabase
         .from("providers")
-        .select("id, city, headline, bio, locality, lat, lng, years_experience, provider_categories ( service_categories ( name ) )")
+        .select("id, city, business_name, headline, bio, locality, lat, lng, years_experience, service_edit_credits, provider_categories ( service_categories ( name ) )")
         .eq("id", userData.user.id)
         .maybeSingle();
       if (providerError) logSupabaseError("profile provider lookup failed", providerError);
@@ -242,12 +249,14 @@ export default function ProfilePage() {
         setProviderBaseCity(typeof providerData?.city === "string" ? providerData.city.trim() || null : null);
         if (providerData) {
           const listing = {
+            business_name: providerData.business_name ?? "",
             headline: providerData.headline ?? "",
             bio: providerData.bio ?? "",
             locality: providerData.locality ?? "",
             lat: providerData.lat ?? null,
             lng: providerData.lng ?? null,
             years_experience: providerData.years_experience ?? null,
+            service_edit_credits: providerData.service_edit_credits ?? 0,
             categories: (providerData.provider_categories ?? []).flatMap((providerCategory) => {
               const serviceCategory = Array.isArray(providerCategory.service_categories)
                 ? providerCategory.service_categories[0]
@@ -266,6 +275,10 @@ export default function ProfilePage() {
       mounted = false;
     };
   }, [form, router]);
+
+  useEffect(() => {
+    if (!loading && isProviderHubRoute && !isProvider) router.replace("/profile");
+  }, [isProvider, isProviderHubRoute, loading, router]);
 
   async function onSubmit(values: FormValues) {
     setError(null);
@@ -294,6 +307,7 @@ export default function ProfilePage() {
     setListingError(null);
     setListingSuccess(null);
 
+    const businessName = providerListing.business_name.trim();
     const headline = providerListing.headline.trim();
     const bio = providerListing.bio.trim();
     const locality = providerListing.locality.trim();
@@ -311,6 +325,7 @@ export default function ProfilePage() {
       const { error: updateError } = await supabase
         .from("providers")
         .update({
+          business_name: businessName || null,
           headline: headline || null,
           bio: bio || null,
           locality: locality || null,
@@ -325,11 +340,12 @@ export default function ProfilePage() {
 
       setProviderListing((current) => ({
         ...current,
+        business_name: businessName,
         headline,
         bio,
         locality,
       }));
-      setSavedProviderListing((current) => ({ ...current, headline, bio, locality }));
+      setSavedProviderListing((current) => ({ ...current, business_name: businessName, headline, bio, locality }));
       setListingSuccess("Business listing saved.");
       setActiveEditor(null);
     } catch (saveError: unknown) {
@@ -510,6 +526,137 @@ export default function ProfilePage() {
     </main>
   );
 
+  if (isProviderHubRoute && !isProvider) {
+    return (
+      <main aria-label="Loading provider hub" aria-busy="true" className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6">
+        <div className="h-10 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+      </main>
+    );
+  }
+
+  if (isProviderHubRoute && isProvider && profileId) {
+    const providerCity = providerBaseCity || profile?.city || savedFormValues.city || "Cuddalore";
+    const cityCenter = providerCity in CITY_CENTERS ? CITY_CENTERS[providerCity as keyof typeof CITY_CENTERS] : DEFAULT_MAP_CENTER;
+    const hasLocation = providerListing.lat !== null && providerListing.lng !== null;
+    const isEditingProvider = activeEditor === "provider";
+
+    return (
+      <main className="mx-auto w-full max-w-5xl space-y-4 px-4 py-8 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6 md:py-10">
+        <header className="mb-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">Provider hub</h1>
+            <Badge>Provider</Badge>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">Manage how customers see your business.</p>
+        </header>
+
+        <ProviderSummaryCard
+          providerId={profileId}
+          categories={providerListing.categories}
+          yearsExperience={providerListing.years_experience}
+          about={providerListing.bio}
+        />
+
+        <section aria-labelledby="provider-listing-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="provider-listing-heading" className="font-display text-xl">Provider listing</h2>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">Public business details</p>
+            </div>
+            {!isEditingProvider && <Button type="button" variant="outline" className="min-h-11" disabled={activeEditor !== null} onClick={() => { setProviderListing(savedProviderListing); setListingError(null); setListingSuccess(null); setActiveEditor("provider"); }}>Edit</Button>}
+          </div>
+          <form onSubmit={saveProviderListing} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="provider-business-name" className="mb-1 block text-sm font-medium">Business name</label>
+                <Input id="provider-business-name" value={providerListing.business_name} maxLength={150} readOnly={!isEditingProvider} onChange={(event) => { setProviderListing((current) => ({ ...current, business_name: event.target.value })); setListingSuccess(null); }} className="min-h-11 read-only:border-transparent read-only:bg-muted/40 read-only:px-0" />
+              </div>
+              <div>
+                <label htmlFor="provider-headline" className="mb-1 block text-sm font-medium">Headline</label>
+                <Input id="provider-headline" value={providerListing.headline} maxLength={150} readOnly={!isEditingProvider} onChange={(event) => { setProviderListing((current) => ({ ...current, headline: event.target.value })); setListingSuccess(null); }} className="min-h-11 read-only:border-transparent read-only:bg-muted/40 read-only:px-0" />
+                {isEditingProvider && providerListing.headline.length > 120 && <p className="mt-1 text-right text-xs text-muted-foreground">{providerListing.headline.length}/150</p>}
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="provider-bio" className="mb-1 block text-sm font-medium">Bio</label>
+                <Textarea id="provider-bio" value={providerListing.bio} maxLength={2000} rows={4} readOnly={!isEditingProvider} onChange={(event) => { setProviderListing((current) => ({ ...current, bio: event.target.value })); setListingSuccess(null); }} className="read-only:resize-none read-only:border-transparent read-only:bg-muted/40 read-only:px-0" />
+                {isEditingProvider && providerListing.bio.length > 1600 && <p className="mt-1 text-right text-xs text-muted-foreground">{providerListing.bio.length}/2000</p>}
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="provider-locality" className="mb-1 block text-sm font-medium">Based at (area or landmark)</label>
+                <Input id="provider-locality" value={providerListing.locality} maxLength={150} placeholder="Beach Road, Cuddalore" readOnly={!isEditingProvider} onChange={(event) => { setProviderListing((current) => ({ ...current, locality: event.target.value })); setListingSuccess(null); }} className="min-h-11 read-only:border-transparent read-only:bg-muted/40 read-only:px-0" />
+              </div>
+            </div>
+            {isEditingProvider && (
+              <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+                <Button type="submit" className="min-h-11" disabled={isSavingListing}>{isSavingListing ? "Saving…" : "Save listing"}</Button>
+                <Button type="button" variant="outline" className="min-h-11" onClick={handleCancelProviderEdit} disabled={isSavingListing}>Cancel</Button>
+              </div>
+            )}
+            {listingError && <p className="text-sm text-destructive" role="alert">{listingError}</p>}
+            {listingSuccess && <p className="text-sm text-primary" role="status">{listingSuccess}</p>}
+          </form>
+        </section>
+
+        <section aria-labelledby="business-location-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="business-location-heading" className="font-display text-xl">Business location</h2>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">Your business pin is public on your profile.</p>
+            </div>
+            <Button type="button" variant="outline" className="min-h-11" disabled={activeEditor !== null} onClick={() => setIsLocationPickerOpen(true)}>{hasLocation ? "Change location" : "Set location"}</Button>
+          </div>
+          {providerLocationLabel?.coordinates === `${providerListing.lat},${providerListing.lng}` && <p className="mb-2 truncate text-sm text-muted-foreground" title={providerLocationLabel.label}>{providerLocationLabel.label}</p>}
+          {hasLocation ? (
+            <LocationMap lat={providerListing.lat!} lng={providerListing.lng!} height={240} />
+          ) : (
+            <>
+              <LocationMap lat={cityCenter.lat} lng={cityCenter.lng} height={240} />
+              <p className="mt-2 text-sm text-muted-foreground">No business location set yet.</p>
+            </>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">For privacy, place a public pin at your shop or office rather than your home.</p>
+          <LocationPicker
+            open={isLocationPickerOpen}
+            onOpenChange={setIsLocationPickerOpen}
+            initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
+            baseTown={providerBaseCity || profile?.city || null}
+            title="Business location"
+            confirmLabel="Confirm"
+            onConfirm={saveProviderLocation}
+          />
+        </section>
+
+        <section aria-labelledby="provider-categories-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="provider-categories-heading" className="font-display text-xl">Categories &amp; services</h2>
+              <p className="mt-1 text-sm text-muted-foreground">These help customers find you for the right work.</p>
+            </div>
+            <Link href="/profile/services" className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Manage categories &amp; services</Link>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {providerListing.categories.length ? providerListing.categories.map((category) => (
+              <span key={category} className="inline-flex min-h-8 items-center rounded-full border border-border bg-muted/50 px-3 text-sm font-medium">{category}</span>
+            )) : <p className="text-sm text-muted-foreground">No categories selected.</p>}
+          </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            {providerListing.service_edit_credits > 0
+              ? `You have ${providerListing.service_edit_credits} service edit${providerListing.service_edit_credits === 1 ? "" : "s"} remaining.`
+              : "No service edits remaining. Contact support if you need to change your selections."}
+          </p>
+        </section>
+
+        <PhoneGateDialog
+          isOpen={isPhoneGateOpen}
+          onClose={() => setIsPhoneGateOpen(false)}
+          onVerified={() => { setIsPhoneGateOpen(false); void refreshPhoneDetails(); }}
+          initialPhone={phoneNumber || undefined}
+          bypassWhenVerificationDisabled={false}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6 md:py-10">
       <header className="mb-6 sm:mb-8">
@@ -621,16 +768,14 @@ export default function ProfilePage() {
           />
         </div>}
 
-        {isProvider && profileId && (
-          <ProviderSummaryCard
-            providerId={profileId}
-            categories={providerListing.categories}
-            yearsExperience={providerListing.years_experience}
-            about={providerListing.bio}
-          />
+        {isProvider && (
+          <Link href="/profile/provider" className="md:col-span-2 flex min-h-14 items-center justify-between gap-4 rounded-2xl border border-border bg-card px-5 py-3 text-card-foreground shadow-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <span className="font-medium">Provider hub</span>
+            <span aria-hidden="true" className="text-muted-foreground">→</span>
+          </Link>
         )}
 
-        {isProvider && (() => {
+        {isProvider && isProviderHubRoute && (() => {
           const providerCity = profile?.city || savedFormValues.city || "Cuddalore";
           const cityCenter = providerCity in CITY_CENTERS ? CITY_CENTERS[providerCity as keyof typeof CITY_CENTERS] : DEFAULT_MAP_CENTER;
           const hasLocation = providerListing.lat !== null && providerListing.lng !== null;
@@ -721,7 +866,7 @@ export default function ProfilePage() {
         initialPhone={phoneNumber || undefined}
         bypassWhenVerificationDisabled={false}
       />
-      {isProvider && (
+      {isProvider && isProviderHubRoute && (
         <section className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
           <h2 className="mb-2 font-medium text-blue-900">Categories &amp; services</h2>
           <p className="mb-4 text-sm text-blue-800">Manage which categories and services you offer so customers can find you for the right work.</p>
@@ -730,7 +875,7 @@ export default function ProfilePage() {
           </a>
         </section>
       )}
-      {isProvider && (() => {
+      {isProvider && isProviderHubRoute && (() => {
         const providerCity = profile?.city || savedFormValues.city || "Cuddalore";
         const cityCenter = providerCity in CITY_CENTERS ? CITY_CENTERS[providerCity as keyof typeof CITY_CENTERS] : DEFAULT_MAP_CENTER;
         const hasLocation = providerListing.lat !== null && providerListing.lng !== null;

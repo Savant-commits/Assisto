@@ -29,7 +29,7 @@ export default function BottomNav({ currentPath }: BottomNavProps) {
     >
       <ul className="mx-auto flex h-full max-w-xl items-stretch justify-around px-1">
         {items.map(({ label, href, Icon, requiresLogin }) => {
-          const active = currentPath === href || (href === "/messages" && currentPath.startsWith("/messages"));
+          const active = currentPath === href || (href === "/messages" && currentPath.startsWith("/messages")) || (href === "/profile" && currentPath === "/profile/provider");
           const className = `relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${active ? "text-primary" : "text-muted-foreground"}`;
 
           return (
