@@ -37,7 +37,7 @@ export const HERO_BANNERS: HeroBanner[] = [
     cta: "Explore interiors",
     href: "/discover?category=interior",
     image: "/images/hero/design-your-space.jpg",
-    categorySlugs: ["interior"],
+    categorySlugs: ["interior", "architecture-planning"],
     kind: "category",
   },
   {
@@ -47,7 +47,15 @@ export const HERO_BANNERS: HeroBanner[] = [
     cta: "Explore repairs",
     href: "/discover?category=renovation",
     image: "/images/hero/everyday-home-services.jpg",
-    categorySlugs: ["renovation"],
+    categorySlugs: [
+      "renovation",
+      "electrical",
+      "plumbing-water",
+      "electronics-appliances",
+      "tech-security",
+      "carpentry-furniture",
+      "cleaning-pest-control",
+    ],
     kind: "category",
   },
   {
@@ -57,7 +65,7 @@ export const HERO_BANNERS: HeroBanner[] = [
     cta: "Explore exterior work",
     href: "/discover?category=exterior",
     image: "/images/hero/home-improvement.jpg",
-    categorySlugs: ["exterior"],
+    categorySlugs: ["exterior", "solar-energy"],
     kind: "category",
   },
   {
