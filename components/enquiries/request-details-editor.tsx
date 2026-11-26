@@ -13,7 +13,6 @@ type Props = {
   scheduledStartAt: string | null;
   homeAddress: string;
   homeCity: string | null;
-  baseTown: string | null;
   homePin: Pin | null;
   today: string;
   onClose: () => void;
@@ -26,7 +25,6 @@ export function RequestDetailsEditor({
   scheduledStartAt,
   homeAddress,
   homeCity,
-  baseTown,
   homePin,
   today,
   onClose,
@@ -104,7 +102,6 @@ export function RequestDetailsEditor({
       <EnquiryDetailsFields
         homeAddress={homeAddress}
         homeCity={homeCity}
-        baseTown={baseTown}
         homePin={homePin}
         today={today}
         initial={initial}

@@ -22,7 +22,6 @@ export type EnquiryDetailsValue = {
 type Props = {
   homeAddress: string;
   homeCity: string | null;
-  baseTown: string | null;
   homePin: Pin | null;
   today: string;
   initial?: Partial<EnquiryDetailsValue>;
@@ -48,7 +47,6 @@ function localFutureDateTime(date: string, time: string) {
 export function EnquiryDetailsFields({
   homeAddress,
   homeCity,
-  baseTown,
   homePin,
   today,
   initial,
@@ -206,7 +204,6 @@ export function EnquiryDetailsFields({
               open={pickerOpen}
               onOpenChange={setPickerOpen}
               initial={pin}
-              baseTown={baseTown}
               title="Different work location"
               confirmLabel="Use pin"
               lookupSuggestion={false}

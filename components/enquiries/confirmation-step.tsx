@@ -12,7 +12,6 @@ type Props = {
   scheduledStartAt: string | null;
   homeAddress: string;
   homeCity: string | null;
-  baseTown: string | null;
   homePin: Pin | null;
   today: string;
   saving: boolean;
@@ -35,7 +34,6 @@ export function ConfirmationStep({
   scheduledStartAt,
   homeAddress,
   homeCity,
-  baseTown,
   homePin,
   today,
   saving,
@@ -88,7 +86,6 @@ export function ConfirmationStep({
           <EnquiryDetailsFields
             homeAddress={homeAddress}
             homeCity={homeCity}
-            baseTown={baseTown}
             homePin={homePin}
             today={today}
             initial={{

@@ -198,7 +198,6 @@ function EnquiryWidget({
   });
   const [homeAddress, setHomeAddress] = useState("");
   const [homeCity, setHomeCity] = useState<string | null>(null);
-  const [baseTown, setBaseTown] = useState<string | null>(null);
   const [homePin, setHomePin] = useState<{ lat: number; lng: number } | null>(null);
   const [today] = useState(() => {
     const now = new Date();
@@ -229,7 +228,6 @@ function EnquiryWidget({
         .filter(Boolean);
       setHomeAddress(parts.filter((part, index) => parts.findIndex((other) => other.toLocaleLowerCase() === part.toLocaleLowerCase()) === index).join(", "));
       setHomeCity(city);
-      setBaseTown(typeof profileResult.data?.city === "string" ? profileResult.data.city.trim() || null : null);
       setHomePin(typeof address?.lat === "number" && typeof address.lng === "number" ? { lat: address.lat, lng: address.lng } : null);
     }
     void loadHomeLocation();
@@ -521,7 +519,6 @@ function EnquiryWidget({
         <EnquiryDetailsFields
           homeAddress={homeAddress}
           homeCity={homeCity}
-          baseTown={baseTown}
           homePin={homePin}
           today={today}
           onChange={onDetailsChange}

@@ -154,7 +154,8 @@ export default function ProfilePage() {
   const [avatarStatus, setAvatarStatus] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isProvider, setIsProvider] = useState(false);
+  const [isProvider, setIsProvider] = useState<boolean | null>(null);
+  const [providerLookupError, setProviderLookupError] = useState<string | null>(null);
   const [providerListing, setProviderListing] = useState<ProviderListing>(emptyProviderListing);
   const [savedProviderListing, setSavedProviderListing] = useState<ProviderListing>(emptyProviderListing);
   const [providerBaseCity, setProviderBaseCity] = useState<string | null>(null);
@@ -210,7 +211,8 @@ export default function ProfilePage() {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("profile auth lookup failed", userError);
       if (!userData.user) {
-        router.push(`/login?redirect=/profile`);
+        setLoading(false);
+        router.push(`/login?redirect=${encodeURIComponent(isProviderHubRoute ? "/profile/provider" : "/profile")}`);
         return;
       }
       if (mounted) setProfileId(userData.user.id);
@@ -232,7 +234,15 @@ export default function ProfilePage() {
         .maybeSingle();
       if (providerError) logSupabaseError("profile provider lookup failed", providerError);
 
-      if (mounted && profileData) {
+      if (!mounted) return;
+      if (providerError) {
+        setProviderLookupError("Unable to verify provider access right now. Reload to try again.");
+      } else {
+        setIsProvider(!!providerData);
+        setProviderBaseCity(typeof providerData?.city === "string" ? providerData.city.trim() || null : null);
+      }
+
+      if (profileData) {
         const nextValues: FormValues = {
           full_name: profileData.full_name || "",
           city: profileData.city || "Cuddalore",
@@ -245,28 +255,26 @@ export default function ProfilePage() {
         form.reset(nextValues);
         setAvatarUrl(profileData.avatar_url);
         setIsAdmin(profileData.role === "admin");
-        setIsProvider(!!providerData);
-        setProviderBaseCity(typeof providerData?.city === "string" ? providerData.city.trim() || null : null);
-        if (providerData) {
-          const listing = {
-            business_name: providerData.business_name ?? "",
-            headline: providerData.headline ?? "",
-            bio: providerData.bio ?? "",
-            locality: providerData.locality ?? "",
-            lat: providerData.lat ?? null,
-            lng: providerData.lng ?? null,
-            years_experience: providerData.years_experience ?? null,
-            service_edit_credits: providerData.service_edit_credits ?? 0,
-            categories: (providerData.provider_categories ?? []).flatMap((providerCategory) => {
-              const serviceCategory = Array.isArray(providerCategory.service_categories)
-                ? providerCategory.service_categories[0]
-                : providerCategory.service_categories;
-              return serviceCategory?.name ? [serviceCategory.name] : [];
-            }),
-          };
-          setProviderListing(listing);
-          setSavedProviderListing(listing);
-        }
+      }
+      if (providerData) {
+        const listing = {
+          business_name: providerData.business_name ?? "",
+          headline: providerData.headline ?? "",
+          bio: providerData.bio ?? "",
+          locality: providerData.locality ?? "",
+          lat: providerData.lat ?? null,
+          lng: providerData.lng ?? null,
+          years_experience: providerData.years_experience ?? null,
+          service_edit_credits: providerData.service_edit_credits ?? 0,
+          categories: (providerData.provider_categories ?? []).flatMap((providerCategory) => {
+            const serviceCategory = Array.isArray(providerCategory.service_categories)
+              ? providerCategory.service_categories[0]
+              : providerCategory.service_categories;
+            return serviceCategory?.name ? [serviceCategory.name] : [];
+          }),
+        };
+        setProviderListing(listing);
+        setSavedProviderListing(listing);
       }
       setLoading(false);
     }
@@ -274,10 +282,10 @@ export default function ProfilePage() {
     return () => {
       mounted = false;
     };
-  }, [form, router]);
+  }, [form, isProviderHubRoute, router]);
 
   useEffect(() => {
-    if (!loading && isProviderHubRoute && !isProvider) router.replace("/profile");
+    if (!loading && isProviderHubRoute && isProvider === false) router.replace("/profile");
   }, [isProvider, isProviderHubRoute, loading, router]);
 
   async function onSubmit(values: FormValues) {
@@ -517,7 +525,15 @@ export default function ProfilePage() {
     }
   }
 
-  if (loading) return (
+  if (loading) return isProviderHubRoute ? (
+    <main aria-label="Loading provider hub" aria-busy="true" className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6">
+      <div className="mb-4 h-10 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+      <p className="mb-4 text-sm text-muted-foreground">Manage how customers see your business.</p>
+      <div className="space-y-4">
+        {[0, 1, 2, 3].map((item) => <div key={item} className="min-h-36 animate-pulse rounded-2xl border border-border bg-card motion-reduce:animate-none" />)}
+      </div>
+    </main>
+  ) : (
     <main aria-label="Loading profile" aria-busy="true" className="mx-auto w-full max-w-5xl space-y-5 px-4 py-8 md:px-6">
       <div className="h-10 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" />
       <div className="grid gap-4 md:grid-cols-2">
@@ -526,15 +542,30 @@ export default function ProfilePage() {
     </main>
   );
 
-  if (isProviderHubRoute && !isProvider) {
+  if (isProviderHubRoute && isProvider === null) {
+    if (providerLookupError) {
+      return (
+        <main className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6">
+          <section role="alert" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm">
+            <h1 className="font-display text-2xl">Provider hub</h1>
+            <p className="mt-2 text-sm text-muted-foreground">{providerLookupError}</p>
+            <Button type="button" variant="outline" className="mt-4 min-h-11" onClick={() => window.location.reload()}>Reload</Button>
+          </section>
+        </main>
+      );
+    }
     return (
       <main aria-label="Loading provider hub" aria-busy="true" className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6">
-        <div className="h-10 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        <div className="mb-4 h-10 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        <p className="mb-4 text-sm text-muted-foreground">Manage how customers see your business.</p>
+        <div className="space-y-4">
+          {[0, 1, 2, 3].map((item) => <div key={item} className="min-h-36 animate-pulse rounded-2xl border border-border bg-card motion-reduce:animate-none" />)}
+        </div>
       </main>
     );
   }
 
-  if (isProviderHubRoute && isProvider && profileId) {
+  if (isProviderHubRoute && isProvider === true && profileId) {
     const providerCity = providerBaseCity || profile?.city || savedFormValues.city || "Cuddalore";
     const cityCenter = providerCity in CITY_CENTERS ? CITY_CENTERS[providerCity as keyof typeof CITY_CENTERS] : DEFAULT_MAP_CENTER;
     const hasLocation = providerListing.lat !== null && providerListing.lng !== null;
@@ -619,7 +650,6 @@ export default function ProfilePage() {
             open={isLocationPickerOpen}
             onOpenChange={setIsLocationPickerOpen}
             initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
-            baseTown={providerBaseCity || profile?.city || null}
             title="Business location"
             confirmLabel="Confirm"
             onConfirm={saveProviderLocation}
@@ -759,7 +789,6 @@ export default function ProfilePage() {
         {profileId && <div className="md:col-span-2">
           <PrivateProfileAddress
             profileId={profileId}
-            baseTown={isProvider ? providerBaseCity || profile?.city || null : profile?.city || null}
             isEditing={activeEditor === "address"}
             canEdit={activeEditor === null || activeEditor === "address"}
             onEdit={() => setActiveEditor("address")}
@@ -846,7 +875,6 @@ export default function ProfilePage() {
                 open={isLocationPickerOpen}
                 onOpenChange={setIsLocationPickerOpen}
                 initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
-                baseTown={providerBaseCity || profile?.city || null}
                 title="Business location"
                 confirmLabel="Confirm"
                 onConfirm={saveProviderLocation}
@@ -966,7 +994,6 @@ export default function ProfilePage() {
               open={isLocationPickerOpen}
               onOpenChange={setIsLocationPickerOpen}
               initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
-              baseTown={providerBaseCity || profile?.city || null}
               title="Business location"
               confirmLabel="Confirm"
               onConfirm={saveProviderLocation}

@@ -4,8 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { useLocation } from "@/lib/location/provider";
-import { DEFAULT_MAP_CENTER, formatCoords } from "@/lib/maps";
+import { DEFAULT_PIN_PICKER_VIEW, formatCoords } from "@/lib/maps";
 import type { MapPoint } from "@/components/map/leaflet-map-inner";
 import type { GeocodedLocation } from "@/lib/location/types";
 
@@ -26,31 +25,6 @@ function getServerSnapshot() {
   return false;
 }
 
-const townCenterCache = new Map<string, Promise<MapPoint | null>>();
-
-function getTownCenter(town: string): Promise<MapPoint | null> {
-  const key = town.trim().toLocaleLowerCase();
-  const cached = townCenterCache.get(key);
-  if (cached) return cached;
-
-  const request = fetch(`/api/geocode/search?q=${encodeURIComponent(town.trim())}`)
-    .then(async (response) => {
-      if (!response.ok) return null;
-      const payload = await response.json() as { results?: GeocodedLocation[] };
-      const results = payload.results ?? [];
-      const exactTown = results.find((result) =>
-        [result.city, result.locality, result.name].some((value) => value?.trim().toLocaleLowerCase() === key)
-      );
-      const result = exactTown ?? results[0];
-      return result && typeof result.lat === "number" && typeof result.lng === "number"
-        ? { lat: result.lat, lng: result.lng }
-        : null;
-    })
-    .catch(() => null);
-  townCenterCache.set(key, request);
-  return request;
-}
-
 function suggestedArea(location: GeocodedLocation) {
   return location.suburb ?? location.district ??
     (location.locality && location.locality !== location.city && location.locality !== location.street ? location.locality : null) ??
@@ -61,8 +35,6 @@ type LocationPickerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initial?: { lat: number; lng: number } | null;
-  baseTown?: string | null;
-  fallbackCenter?: { lat: number; lng: number };
   title?: string;
   confirmLabel?: string;
   lookupSuggestion?: boolean;
@@ -72,48 +44,28 @@ type LocationPickerProps = {
 export function LocationPicker({
   ...props
 }: LocationPickerProps) {
-  const { location } = useLocation();
-  const { initial = null, baseTown = null } = props;
-  const fallbackCenter = props.fallbackCenter ?? (location.lat !== null && location.lng !== null
-    ? { lat: location.lat, lng: location.lng }
-    : DEFAULT_MAP_CENTER);
-
+  const { initial = null } = props;
   const pickerKey = [props.open, initial?.lat ?? "", initial?.lng ?? ""].join(":");
-  return <LocationPickerContent key={pickerKey} {...props} baseTown={baseTown} fallbackCenter={fallbackCenter} />;
+  return <LocationPickerContent key={pickerKey} {...props} />;
 }
 
 function LocationPickerContent({
   open,
   onOpenChange,
   initial = null,
-  baseTown = null,
-  fallbackCenter = DEFAULT_MAP_CENTER,
   title = "Choose a location",
   confirmLabel = "Confirm",
   lookupSuggestion = true,
   onConfirm,
 }: LocationPickerProps) {
-  const [center, setCenter] = useState<MapPoint>(initial ?? fallbackCenter);
-  const [zoom, setZoom] = useState(initial ? 15 : 12);
+  const [center, setCenter] = useState<MapPoint>(initial ?? DEFAULT_PIN_PICKER_VIEW.center);
+  const [zoom] = useState(initial ? 15 : DEFAULT_PIN_PICKER_VIEW.zoom);
   const [picked, setPicked] = useState<MapPoint | null>(initial ?? null);
   const [pickedSuggestion, setPickedSuggestion] = useState<GeocodedLocation | null>(null);
   const [isLookingUpLabel, setIsLookingUpLabel] = useState(Boolean(initial && lookupSuggestion));
   const [status, setStatus] = useState<string | null>(null);
   const userInteracted = useRef(false);
   const mounted = useSyncExternalStore(subscribeToNothing, getClientSnapshot, getServerSnapshot);
-
-  useEffect(() => {
-    if (!open || initial || !baseTown?.trim()) return;
-    let active = true;
-    void getTownCenter(baseTown).then((townCenter) => {
-      if (!active || userInteracted.current || !townCenter) return;
-      setCenter(townCenter);
-      setZoom(12);
-    });
-    return () => {
-      active = false;
-    };
-  }, [baseTown, initial, open]);
 
   useEffect(() => {
     if (!open) return;

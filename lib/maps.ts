@@ -9,6 +9,11 @@ export const MAP_ATTRIBUTION = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION || DEFAUL
 
 export const DEFAULT_MAP_CENTER = { lat: DEFAULT_LOCATION.lat!, lng: DEFAULT_LOCATION.lng! } as const;
 
+export const DEFAULT_PIN_PICKER_VIEW = {
+  center: { lat: 11.3993, lng: 79.6914 },
+  zoom: 13,
+} as const;
+
 export const CITY_CENTERS = {
   Chidambaram: DEFAULT_MAP_CENTER,
 } as const;

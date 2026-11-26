@@ -1034,7 +1034,7 @@ export default function EnquiriesPage() {
                   )}
 
                   {sentTab === "active" && enq.status === "confirmed" && (
-                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} baseTown={customerCity} /></div>
+                    <div className="mt-4"><EnquiryDirections enquiryId={enq.id} role="customer" providerLocation={enq.providers} /></div>
                   )}
 
                   {enq.status === "accepted" && <p className="mt-3 text-sm text-muted-foreground">Accepted before the new flow. Confirmation is no longer needed.</p>}
@@ -1055,7 +1055,6 @@ export default function EnquiriesPage() {
                           scheduledStartAt={enq.scheduled_start_at ?? null}
                           homeAddress={formatHomeAddress(customerHomeAddress, customerCity, selectedLocation.city || selectedLocation.locality)}
                           homeCity={customerCity || customerHomeAddress?.city || selectedLocation.city || selectedLocation.locality}
-                          baseTown={customerCity}
                           homePin={customerHomeAddress?.lat != null && customerHomeAddress.lng != null
                             ? { lat: customerHomeAddress.lat, lng: customerHomeAddress.lng }
                             : null}
