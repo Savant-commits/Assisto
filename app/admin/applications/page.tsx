@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { ApplicationActions } from "@/components/application-actions";
+import { ApplicationActions, ApplicationApprovalToast } from "@/components/application-actions";
 import { ApplicationCallDialog, CallRecordingPlayer } from "@/components/application-call-dialog";
 import { CredentialReviewActions } from "@/components/credential-review-actions";
 import { getPhoneVerificationRequired } from "@/lib/phone-verification-required";
@@ -87,7 +87,7 @@ export default async function AdminApplicationsPage() {
 
   const { data: applications, error: applicationsError } = await supabase
     .from("provider_applications")
-    .select("id, user_id, professional_type, business_name, bio, city, years_experience, service_area_notes, created_at, status, call_status, call_notes, called_at, call_recording_path")
+    .select("id, user_id, professional_type, business_name, bio, city, years_experience, service_area_notes, areas_covered, service_ids, created_at, status, call_status, call_notes, called_at, call_recording_path")
     .eq("status", "pending")
     .order("created_at", { ascending: true });
   if (applicationsError) {
@@ -98,6 +98,20 @@ export default async function AdminApplicationsPage() {
       code: applicationsError.code,
     });
   }
+
+  const serviceIds = [...new Set((applications ?? []).flatMap((app) => app.service_ids ?? []))];
+  const { data: applicationServices, error: applicationServicesError } = serviceIds.length
+    ? await supabase.from("services").select("id,name").in("id", serviceIds)
+    : { data: [], error: null };
+  if (applicationServicesError) {
+    console.error("admin applications: failed to load selected service names", {
+      message: applicationServicesError.message,
+      details: applicationServicesError.details,
+      hint: applicationServicesError.hint,
+      code: applicationServicesError.code,
+    });
+  }
+  const serviceNamesById = new Map((applicationServices ?? []).map((service) => [service.id, service.name]));
 
   const userIds = [...new Set((applications ?? []).map((app) => app.user_id))];
   const { data: applicantProfiles, error: applicantProfilesError } = userIds.length
@@ -145,11 +159,19 @@ export default async function AdminApplicationsPage() {
         code: phoneError.code,
       });
     }
-    return { ...app, applicantPhone: phoneError ? null : phone };
+    return {
+      ...app,
+      applicantPhone: phoneError ? null : phone,
+      serviceNames: ((app.service_ids ?? []) as string[]).flatMap((serviceId: string) => {
+        const name = serviceNamesById.get(serviceId);
+        return name ? [name] : [];
+      }),
+    };
   }));
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
+      <ApplicationApprovalToast />
       <h1 className="mb-1 text-2xl font-semibold">Provider applications</h1>
       <p className="mb-6 text-muted-foreground">
         {applications?.length ?? 0} pending review
@@ -173,6 +195,10 @@ export default async function AdminApplicationsPage() {
               label: getCredentialType(credential)?.label ?? "Credential",
               filePath: credential.file_path,
             }));
+            const hasServiceIds = (app.service_ids ?? []).length > 0;
+            const displayedServices = hasServiceIds
+              ? app.serviceNames
+              : (app.service_area_notes ?? "").split(",").map((service: string) => service.trim()).filter(Boolean);
 
             return (
               <div key={app.id} className="min-w-0 rounded-lg border p-4">
@@ -193,6 +219,16 @@ export default async function AdminApplicationsPage() {
                   <ApplicationActions applicationId={app.id} callVerified={callStatus === "verified"} />
                 </div>
                 <p className="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">{app.bio}</p>
+                <div className="mt-2 space-y-1 text-sm">
+                  <p className="break-words [overflow-wrap:anywhere]">
+                    <span className="font-medium">Services you offer:</span> {displayedServices.join(", ") || "None listed"}
+                  </p>
+                  {hasServiceIds && (
+                    <p className="break-words [overflow-wrap:anywhere]">
+                      <span className="font-medium">Areas you cover:</span> {app.areas_covered?.trim() || "Not stated"}
+                    </p>
+                  )}
+                </div>
                 <div className="mt-4 rounded-md bg-muted/50 p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -224,6 +260,9 @@ export default async function AdminApplicationsPage() {
                     businessName={app.business_name}
                     yearsExperience={app.years_experience}
                     serviceAreaNotes={app.service_area_notes}
+                    serviceIds={app.service_ids ?? []}
+                    serviceNames={app.serviceNames}
+                    areasCovered={app.areas_covered}
                     bio={app.bio}
                     credentials={credentialDialogDetails}
                   />

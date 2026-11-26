@@ -29,7 +29,8 @@ const schema = z.object({
   years_experience: z.coerce.number().min(0).max(60),
   bio: z.string().min(30, "Tell customers who you are and what you do — at least a few sentences"),
   city: z.enum(["Cuddalore", "Chidambaram"]),
-  service_area_notes: z.string().optional(),
+  areas_covered: z.string().optional(),
+  service_ids: z.array(z.string().uuid()).min(1, "Select at least one service"),
 });
 
 type FormValues = z.output<typeof schema>;
@@ -39,6 +40,9 @@ type ExistingApplication = {
   status: string;
   rejection_reason?: string | null;
 };
+
+type ServiceCategory = { id: string; name: string; sort_order: number | null };
+type Service = { id: string; name: string; category_id: string | null };
 
 function logLookupError(label: string, error: { message: string; code?: string; details?: string; hint?: string }) {
   console.error(label, {
@@ -61,7 +65,8 @@ export default function ApplyForm() {
       years_experience: 0,
       bio: "",
       city: "Cuddalore",
-      service_area_notes: "",
+      areas_covered: "",
+      service_ids: [],
     },
   });
 
@@ -73,34 +78,11 @@ export default function ApplyForm() {
   const [existingApp, setExistingApp] = useState<ExistingApplication | null>(null);
   const [isProvider, setIsProvider] = useState(false);
   const [loading, setLoading] = useState(true);
-  const servicesList = [
-    "Architecture",
-    "Interior Design",
-    "Home Design",
-    "Commercial Design",
-    "Landscape Design",
-    "Construction",
-    "Renovation",
-    "Structural Engineering",
-    "Electrical Work",
-    "Plumbing",
-    "Painting",
-    "Flooring",
-    "Waterproofing",
-    "Carpentry",
-    "Furniture",
-    "3D Visualization",
-    "Project Management",
-    "Site Supervision",
-    "Cost Estimation",
-    "Building Approval",
-    "Property Consultation",
-    "Vastu Consultation",
-    "Electonics assistance",
-    "Tech assistance",
-    "Home Automation",
-  ];
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
+  const [servicesError, setServicesError] = useState<string | null>(null);
+  const [servicesRetry, setServicesRetry] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -137,6 +119,46 @@ export default function ApplyForm() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadServices() {
+      setServicesLoading(true);
+      setServicesError(null);
+      try {
+        const supabase = createClient();
+        const [serviceResult, categoryResult] = await Promise.all([
+          supabase.from("services").select("id,name,category_id").order("name"),
+          supabase.from("service_categories").select("id,name,sort_order").order("sort_order").order("name"),
+        ]);
+
+        if (!mounted) return;
+        if (serviceResult.error || categoryResult.error) {
+          const error = serviceResult.error ?? categoryResult.error;
+          if (error) logLookupError("apply: service list lookup failed", error);
+          setServicesError("Could not load services. Please try again.");
+          setServicesLoading(false);
+          return;
+        }
+
+        setServices((serviceResult.data ?? []) as Service[]);
+        setServiceCategories((categoryResult.data ?? []) as ServiceCategory[]);
+        setServicesLoading(false);
+      } catch (error: unknown) {
+        if (!mounted) return;
+        const lookupError = error instanceof Error ? error : { message: String(error) };
+        logLookupError("apply: service list lookup failed", lookupError);
+        setServicesError("Could not load services. Please try again.");
+        setServicesLoading(false);
+      }
+    }
+
+    void loadServices();
+    return () => {
+      mounted = false;
+    };
+  }, [servicesRetry]);
 
   async function submitApplication(values: FormValues) {
     if (isSubmitting) return;
@@ -183,12 +205,16 @@ export default function ApplyForm() {
         return;
       }
 
-      // Store selected services as a comma-separated list inside `service_area_notes`.
-      const servicesText = selectedServices.join(", ");
-
       const { error } = await supabase
         .from("provider_applications")
-        .insert({ ...values, user_id: userId, status: "pending", service_area_notes: servicesText })
+        .insert({
+          ...values,
+          user_id: userId,
+          status: "pending",
+          service_ids: values.service_ids,
+          areas_covered: values.areas_covered?.trim() || null,
+          service_area_notes: null,
+        })
         .select("id,status")
         .single();
 
@@ -344,7 +370,7 @@ export default function ApplyForm() {
 
             <FormField
               control={form.control}
-              name="service_area_notes"
+              name="areas_covered"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Areas you cover (optional)</FormLabel>
@@ -356,24 +382,86 @@ export default function ApplyForm() {
               )}
             />
 
-            <div>
-              <p className="mb-2 font-medium">Services (select all that apply)</p>
-              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-auto border rounded-md p-2">
-                {servicesList.map((s) => (
-                  <label key={s} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedServices.includes(s)}
-                      onChange={(e) => {
-                        if (e.target.checked) setSelectedServices((p) => [...p, s]);
-                        else setSelectedServices((p) => p.filter((x) => x !== s));
-                      }}
-                    />
-                    <span>{s}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            <FormField
+              control={form.control}
+              name="service_ids"
+              render={({ field }) => {
+                const selectedIds = field.value ?? [];
+                const uncategorizedServices = services.filter(
+                  (service) => !service.category_id || !serviceCategories.some((category) => category.id === service.category_id)
+                );
+
+                return (
+                  <FormItem>
+                    <FormLabel>Services (select all that apply)</FormLabel>
+                    {servicesLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading services…</p>
+                    ) : servicesError ? (
+                      <div className="flex items-center gap-3">
+                        <p className="text-sm text-destructive" role="alert">{servicesError}</p>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setServicesRetry((attempt) => attempt + 1)}>
+                          Retry
+                        </Button>
+                      </div>
+                    ) : services.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No services are available right now.</p>
+                    ) : (
+                      <FormControl>
+                        <div className="max-h-64 space-y-3 overflow-auto rounded-md border p-3">
+                          {serviceCategories.map((category) => {
+                            const categoryServices = services.filter((service) => service.category_id === category.id);
+                            if (!categoryServices.length) return null;
+                            return (
+                              <fieldset key={category.id}>
+                                <legend className="mb-1 text-sm font-medium">{category.name}</legend>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {categoryServices.map((service) => (
+                                    <label key={service.id} className="flex items-center gap-2 text-sm">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedIds.includes(service.id)}
+                                        onChange={(event) => field.onChange(
+                                          event.target.checked
+                                            ? [...selectedIds, service.id]
+                                            : selectedIds.filter((id) => id !== service.id)
+                                        )}
+                                      />
+                                      <span>{service.name}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </fieldset>
+                            );
+                          })}
+                          {uncategorizedServices.length > 0 && (
+                            <fieldset>
+                              <legend className="mb-1 text-sm font-medium">Other services</legend>
+                              <div className="grid grid-cols-2 gap-2">
+                                {uncategorizedServices.map((service) => (
+                                  <label key={service.id} className="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedIds.includes(service.id)}
+                                      onChange={(event) => field.onChange(
+                                        event.target.checked
+                                          ? [...selectedIds, service.id]
+                                          : selectedIds.filter((id) => id !== service.id)
+                                      )}
+                                    />
+                                    <span>{service.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </fieldset>
+                          )}
+                        </div>
+                      </FormControl>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
+            />
 
             {submitError && <p className="text-sm text-destructive">{submitError}</p>}
 
@@ -382,7 +470,7 @@ export default function ApplyForm() {
                 ? "After you apply, someone from Assisto will call you on your verified number to confirm your details."
                 : "After you apply, someone from Assisto will call you to confirm your details."}
             </p>
-            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || isSubmitting}>
+            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || isSubmitting || servicesLoading || !!servicesError || services.length === 0}>
               {isSubmitting ? "Submitting…" : "Submit application"}
             </Button>
             </form>

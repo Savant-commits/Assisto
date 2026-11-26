@@ -25,6 +25,125 @@ async function requireAdmin() {
   return userData.user.id;
 }
 
+type ApplicationService = { id: string; category_id: string | null };
+export type ApprovalResult = {
+  servicesLinked: number;
+  categoriesLinked: number;
+  unmatchedLabels: string[];
+  failedWrites: number;
+};
+
+async function linkApplicationServices(
+  admin: ReturnType<typeof createAdminClient>,
+  application: { id: string; user_id: string; service_ids?: string[] | null; service_area_notes?: string | null }
+): Promise<ApprovalResult> {
+  const result: ApprovalResult = {
+    servicesLinked: 0,
+    categoriesLinked: 0,
+    unmatchedLabels: [],
+    failedWrites: 0,
+  };
+  const servicesById = new Map<string, ApplicationService>();
+  const requestedIds = [...new Set(application.service_ids ?? [])];
+
+  if (requestedIds.length > 0) {
+    try {
+      const { data, error } = await admin
+        .from("services")
+        .select("id,category_id")
+        .in("id", requestedIds);
+      if (error) {
+        console.warn("approveApplication: failed to load selected services", { applicationId: application.id, error });
+        result.unmatchedLabels.push(...requestedIds.map((id) => `Service ID ${id}`));
+      } else {
+        for (const service of (data ?? []) as ApplicationService[]) servicesById.set(service.id, service);
+        const foundIds = new Set(servicesById.keys());
+        result.unmatchedLabels.push(...requestedIds.filter((id) => !foundIds.has(id)).map((id) => `Service ID ${id}`));
+      }
+    } catch (error: unknown) {
+      console.warn("approveApplication: service lookup threw", { applicationId: application.id, error });
+      result.unmatchedLabels.push(...requestedIds.map((id) => `Service ID ${id}`));
+    }
+  } else {
+    const labels = (application.service_area_notes ?? "")
+      .split(",")
+      .map((label) => label.trim())
+      .filter(Boolean);
+
+    for (const label of labels) {
+      try {
+        const escapedLabel = label.replace(/[\\%_]/g, "\\$&");
+        const { data, error } = await admin
+          .from("services")
+          .select("id,category_id")
+          .ilike("name", escapedLabel)
+          .limit(1);
+        if (error) {
+          console.warn("approveApplication: legacy service lookup failed", { applicationId: application.id, label, error });
+          result.unmatchedLabels.push(label);
+          continue;
+        }
+
+        const service = (data ?? [])[0] as ApplicationService | undefined;
+        if (!service) {
+          result.unmatchedLabels.push(label);
+          continue;
+        }
+        servicesById.set(service.id, service);
+      } catch (error: unknown) {
+        console.warn("approveApplication: legacy service lookup threw", { applicationId: application.id, label, error });
+        result.unmatchedLabels.push(label);
+      }
+    }
+  }
+
+  const serviceRows = [...servicesById.keys()].map((serviceId) => ({
+    provider_id: application.user_id,
+    service_id: serviceId,
+  }));
+  if (serviceRows.length) {
+    try {
+      const { error } = await admin
+        .from("provider_services")
+        .upsert(serviceRows, { onConflict: "provider_id,service_id" });
+      if (error) {
+        console.warn("approveApplication: failed to upsert provider services", { applicationId: application.id, error });
+        result.failedWrites += 1;
+      } else {
+        result.servicesLinked = serviceRows.length;
+      }
+    } catch (error: unknown) {
+      console.warn("approveApplication: provider service upsert threw", { applicationId: application.id, error });
+      result.failedWrites += 1;
+    }
+  }
+
+  const categoryIds = [...new Set([...servicesById.values()].flatMap((service) => service.category_id ? [service.category_id] : []))];
+  const categoryRows = categoryIds.map((categoryId) => ({
+    provider_id: application.user_id,
+    category_id: categoryId,
+  }));
+  if (categoryRows.length) {
+    try {
+      const { error } = await admin
+        .from("provider_categories")
+        .upsert(categoryRows, { onConflict: "provider_id,category_id" });
+      if (error) {
+        console.warn("approveApplication: failed to upsert provider categories", { applicationId: application.id, error });
+        result.failedWrites += 1;
+      } else {
+        result.categoriesLinked = categoryRows.length;
+      }
+    } catch (error: unknown) {
+      console.warn("approveApplication: provider category upsert threw", { applicationId: application.id, error });
+      result.failedWrites += 1;
+    }
+  }
+
+  result.unmatchedLabels = [...new Set(result.unmatchedLabels)];
+  return result;
+}
+
 export async function approveApplication(applicationId: string) {
   const adminId = await requireAdmin();
   const admin = createAdminClient();
@@ -54,9 +173,8 @@ export async function approveApplication(applicationId: string) {
     throw new Error("Call the applicant and record a verified result before approving.");
   }
 
-  // Two writes, same intent as one unit: mark reviewed, create the public
-  // provider row. If the second write fails the application is left
-  // 'pending' with reviewed_at set — safe to retry, won't half-publish.
+  // Mark reviewed first, then create the public provider row. Restore the
+  // application to pending if provider creation fails so an admin can retry.
   const { data: updatedApplication, error: appUpdateError } = await admin
     .from("provider_applications")
     .update({
@@ -91,81 +209,25 @@ export async function approveApplication(applicationId: string) {
   });
 
   if (providerError) {
+    const { data: rolledBackApplication, error: rollbackError } = await admin
+      .from("provider_applications")
+      .update({ status: "pending", reviewed_by: null, reviewed_at: null })
+      .eq("id", applicationId)
+      .eq("status", "approved")
+      .select("id")
+      .maybeSingle();
+
+    if (rollbackError || !rolledBackApplication) {
+      console.error("approveApplication: failed to restore application after provider insert failure", rollbackError);
+      throw new Error(`${providerError.message}; application could not be restored to pending`);
+    }
     if (providerError.message.includes("CALL_NOT_VERIFIED")) {
       throw new Error("Call the applicant and record a verified result before approving.");
     }
     throw providerError;
   }
 
-  // Parse service labels from the application and insert matching
-  // provider_services / provider_categories rows using the admin client.
-  // Failures here should not roll back provider creation; log and continue.
-  try {
-    const raw = application.service_area_notes || "";
-    const labels = raw
-      .split(",")
-      .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 0);
-
-    // Track which category_ids we've already inserted this run to avoid duplicates
-    const insertedCategoryIds = new Set<number>();
-
-    for (const label of labels) {
-      try {
-        // Find a service by case-insensitive name match
-        const { data: svcMatches, error: svcErr } = await admin
-          .from("services")
-          .select("id,category_id,name")
-          .ilike("name", label)
-          .limit(1);
-
-        if (svcErr) {
-          console.warn("approveApplication: error looking up service", { applicationId, label, error: svcErr });
-          continue;
-        }
-
-        const svc = svcMatches?.[0];
-        if (!svc) {
-          console.warn(`approveApplication: no service match for application ${application.id}: "${label}"`);
-          continue;
-        }
-
-        // Upsert provider_services (provider_id, service_id)
-        const { error: upsertSvcErr } = await admin
-          .from("provider_services")
-          .upsert(
-            { provider_id: application.user_id, service_id: svc.id },
-            { onConflict: "provider_id,service_id" }
-          );
-
-        if (upsertSvcErr) {
-          console.warn("approveApplication: failed to insert provider_services", { applicationId, label, error: upsertSvcErr });
-        }
-
-        // Ensure provider_categories row exists for this service's category
-        const catId = svc.category_id;
-        if (catId && !insertedCategoryIds.has(catId)) {
-          const { error: upsertCatErr } = await admin
-            .from("provider_categories")
-            .upsert(
-              { provider_id: application.user_id, category_id: catId },
-              { onConflict: "provider_id,category_id" }
-            );
-
-          if (upsertCatErr) {
-            console.warn("approveApplication: failed to insert provider_categories", { applicationId, label, error: upsertCatErr });
-          } else {
-            insertedCategoryIds.add(catId);
-          }
-        }
-      } catch (innerErr: unknown) {
-        console.warn("approveApplication: error processing label", { applicationId, label, error: innerErr instanceof Error ? innerErr.message : String(innerErr) });
-        // continue to next label
-      }
-    }
-  } catch (err: unknown) {
-    console.warn("approveApplication: failed parsing/inserting service labels", { applicationId, error: err instanceof Error ? err.message : String(err) });
-  }
+  const serviceResult = await linkApplicationServices(admin, application);
 
   const { error: roleUpdateError } = await admin
     .from("profiles")
@@ -175,6 +237,7 @@ export async function approveApplication(applicationId: string) {
 
   revalidatePath("/admin/applications");
   revalidatePath("/discover");
+  return serviceResult;
 }
 
 export async function rejectApplication(applicationId: string, reason: string) {

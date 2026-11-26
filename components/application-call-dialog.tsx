@@ -17,6 +17,9 @@ type Props = {
   businessName: string | null;
   yearsExperience: number | null;
   serviceAreaNotes: string | null;
+  serviceIds: string[];
+  serviceNames: string[];
+  areasCovered: string | null;
   bio: string | null;
   credentials: { id: string; label: string; filePath: string | null }[];
 };
@@ -57,6 +60,9 @@ export function ApplicationCallDialog({
   businessName,
   yearsExperience,
   serviceAreaNotes,
+  serviceIds,
+  serviceNames,
+  areasCovered,
   bio,
   credentials,
 }: Props) {
@@ -70,6 +76,9 @@ export function ApplicationCallDialog({
   const [recording, setRecording] = useState<File | null>(null);
   const [recordingConsent, setRecordingConsent] = useState(false);
   const [recordingError, setRecordingError] = useState<string | null>(null);
+  const displayedServices = serviceIds.length
+    ? serviceNames
+    : (serviceAreaNotes ?? "").split(",").map((service) => service.trim()).filter(Boolean);
 
   function onRecordingChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -244,7 +253,10 @@ export function ApplicationCallDialog({
               <li>Did you apply as <strong>{professionalType}</strong> in <strong>{city}</strong>?</li>
               <li>Business name: <strong>{businessName?.trim() || "No business name given"}</strong>. Correct?</li>
               <li><strong>{yearsExperience == null ? "Not stated" : `${yearsExperience} ${yearsExperience === 1 ? "year" : "years"}`}</strong> of professional experience. Correct?</li>
-              <li>Services you offer: <strong>{serviceAreaNotes?.split(",").map((service) => service.trim()).filter(Boolean).join(", ") || "None listed"}</strong>. Correct?</li>
+              <li>Services you offer: <strong>{displayedServices.join(", ") || "None listed"}</strong>. Correct?</li>
+              {serviceIds.length > 0 && (
+                <li>Areas you cover: <strong>{areasCovered?.trim() || "Not stated"}</strong>. Correct?</li>
+              )}
               <li>
                 <p>About you:</p>
                 <div className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap rounded border bg-background p-2 text-muted-foreground break-words [overflow-wrap:anywhere]">{bio || "Not stated"}</div>

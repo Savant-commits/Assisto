@@ -19,8 +19,8 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "Invalid application ID" }, { status: 400 });
     }
 
-    await approveApplication(id);
-    return NextResponse.json({ ok: true });
+    const result = await approveApplication(id);
+    return NextResponse.json({ ok: true, ...result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "";
     if (message === "Not signed in") {
