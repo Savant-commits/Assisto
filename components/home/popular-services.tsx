@@ -2,7 +2,7 @@ import { CategoryRail } from "@/components/home/category-rail";
 import { HomeEmptyState } from "@/components/home/home-empty-state";
 import { SectionError } from "@/components/home/section-error";
 import { createClient } from "@/lib/supabase/server";
-import { getCityProviders, getHomeCategories } from "@/lib/home/queries";
+import { getHomeCategories, getProvidersForLocation } from "@/lib/home/queries";
 import type { SelectedLocation } from "@/lib/location/types";
 
 type PopularRow = { slug?: unknown; name?: unknown; scope?: unknown };
@@ -12,7 +12,7 @@ async function loadPopularData(location: SelectedLocation): Promise<{ cards: Pop
   try {
     const [categories, providers, supabase] = await Promise.all([
       getHomeCategories(),
-      getCityProviders(location.city),
+      getProvidersForLocation(location.city),
       createClient(),
     ]);
     const { data, error } = await supabase.rpc("popular_categories", {

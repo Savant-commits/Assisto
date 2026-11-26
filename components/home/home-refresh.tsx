@@ -33,10 +33,12 @@ export function HomeRefresh({ children }: { children: React.ReactNode }) {
     };
     document.addEventListener("visibilitychange", refreshIfStale);
     window.addEventListener("focus", refreshIfStale);
+    const refreshInterval = window.setInterval(refreshIfStale, REFRESH_INTERVAL);
     return () => {
       media.removeEventListener("change", update);
       document.removeEventListener("visibilitychange", refreshIfStale);
       window.removeEventListener("focus", refreshIfStale);
+      window.clearInterval(refreshInterval);
     };
   }, [router]);
 

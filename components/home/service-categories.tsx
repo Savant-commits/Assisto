@@ -3,14 +3,14 @@ import AuthGatedLink from "@/components/auth/auth-gated-link";
 import { CategoryRail } from "@/components/home/category-rail";
 import { HomeEmptyState } from "@/components/home/home-empty-state";
 import { SectionError } from "@/components/home/section-error";
-import { getCityProviders, getHomeCategories } from "@/lib/home/queries";
+import { getHomeCategories, getProvidersForLocation } from "@/lib/home/queries";
 import type { SelectedLocation } from "@/lib/location/types";
 
 async function loadServiceData(location: SelectedLocation) {
   try {
     return await Promise.all([
       getHomeCategories(),
-      getCityProviders(location.city),
+      getProvidersForLocation(location.city),
     ]);
   } catch {
     return null;

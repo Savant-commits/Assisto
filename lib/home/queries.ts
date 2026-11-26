@@ -69,3 +69,7 @@ export const getGeolocatedProviders = cache(async (): Promise<HomeProvider[]> =>
     if (batch.length < 1000) return providers;
   }
 });
+
+export async function getProvidersForLocation(city: string | null): Promise<HomeProvider[]> {
+  return city?.trim() ? getCityProviders(city) : getGeolocatedProviders();
+}

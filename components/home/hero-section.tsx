@@ -1,14 +1,14 @@
 import { HeroCarousel } from "@/components/home/hero-carousel";
 import { SectionError } from "@/components/home/section-error";
 import { HERO_BANNERS } from "@/lib/home/hero-banners";
-import { getCityProviders, getHomeCategories } from "@/lib/home/queries";
+import { getHomeCategories, getProvidersForLocation } from "@/lib/home/queries";
 import type { SelectedLocation } from "@/lib/location/types";
 
 async function loadHeroBanners(location: SelectedLocation, hideRecruitment: boolean) {
   try {
     const [categories, providers] = await Promise.all([
       getHomeCategories(),
-      getCityProviders(location.city),
+      getProvidersForLocation(location.city),
     ]);
     const categorySlugs = new Set(categories.map((category) => category.slug));
     const activeProviderCategoryIds = new Set(
