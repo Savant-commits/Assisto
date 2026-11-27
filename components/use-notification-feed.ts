@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 
 export type NotificationItem = {
@@ -33,6 +34,15 @@ export function useNotificationFeed() {
     const supabase = createClient();
     try {
       const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError && isAuthSessionMissingError(userError)) {
+        if (mounted.current && currentRequestId === requestId.current) {
+          setUserId(null);
+          setUnreadCount(0);
+          setUnreadMessageCount(0);
+          setNotifications([]);
+        }
+        return;
+      }
       if (userError) throw userError;
       const uid = userData.user?.id ?? null;
       if (!uid) {
