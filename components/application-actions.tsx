@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ConfirmDialog from "@/components/confirm-dialog";
+import { AppToast } from "@/components/app-toast";
 
 type Props = { applicationId: string; callVerified: boolean };
 type ApprovalNotice = {
@@ -42,39 +43,26 @@ export function ApplicationApprovalToast() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!notice) return;
-    const timeout = window.setTimeout(() => setNotice(null), 8000);
-    return () => window.clearTimeout(timeout);
-  }, [notice]);
-
   if (!notice) return null;
   const hasWarnings = notice.unmatchedLabels.length > 0 || notice.failedWrites > 0;
 
   return (
-    <div
+    <AppToast
       role={hasWarnings ? "alert" : "status"}
-      className={`fixed bottom-5 left-1/2 z-50 w-[min(90vw,36rem)] -translate-x-1/2 rounded-md px-4 py-3 text-sm shadow-lg ${
-        hasWarnings ? "bg-amber-100 text-amber-950 dark:bg-amber-950 dark:text-amber-100" : "bg-green-600 text-white"
-      }`}
+      duration={8000}
+      position="bottom"
+      className={`max-w-[min(90vw,36rem)] rounded-md text-sm shadow-lg ${hasWarnings ? "bg-amber-100 text-amber-950 dark:bg-amber-950 dark:text-amber-100" : "border-transparent bg-green-600 text-white"}`}
+      onDismiss={() => setNotice(null)}
     >
-      <p className="font-medium">
-        Application approved. Linked {notice.servicesLinked} services and {notice.categoriesLinked} categories.
-      </p>
+      <p className="font-medium">Application approved. Linked {notice.servicesLinked} services and {notice.categoriesLinked} categories.</p>
       {hasWarnings && (
         <div className="mt-1">
           <p className="font-medium">Some service mappings need attention; approval was not blocked.</p>
-          {notice.unmatchedLabels.length > 0 && (
-            <p className="mt-1 break-words [overflow-wrap:anywhere]">
-              Could not map: {notice.unmatchedLabels.join(", ")}.
-            </p>
-          )}
-          {notice.failedWrites > 0 && (
-            <p>{notice.failedWrites} service or category write{notice.failedWrites === 1 ? "" : "s"} failed.</p>
-          )}
+          {notice.unmatchedLabels.length > 0 && <p className="mt-1 break-words [overflow-wrap:anywhere]">Could not map: {notice.unmatchedLabels.join(", ")}.</p>}
+          {notice.failedWrites > 0 && <p>{notice.failedWrites} service or category write{notice.failedWrites === 1 ? "" : "s"} failed.</p>}
         </div>
       )}
-    </div>
+    </AppToast>
   );
 }
 

@@ -1,26 +1,21 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, Check, MoreHorizontal, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import { getNotificationHref } from "@/lib/notification-routes";
 import { groupNotifications } from "@/lib/notification-groups";
-
-type Notification = {
-  id: string;
-  title: string;
-  body?: string | null;
-  is_read: boolean;
-  type?: string | null;
-  related_id?: string | null;
-  created_at?: string | null;
-};
+import { useNotificationFeed, type NotificationItem } from "@/components/use-notification-feed";
+import { NotificationToaster } from "@/components/notification-toaster";
 
 export type NotificationTab = "all";
 
 type NotificationsContextValue = {
+  userId: string | null;
+  loaded: boolean;
+  notifications: NotificationItem[];
   unreadCount: number;
   unreadMessageCount: number;
   isOpen: boolean;
@@ -49,12 +44,20 @@ function relativeTime(iso?: string | null) {
 }
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
+  const {
+    unreadCount,
+    setUnreadCount,
+    unreadMessageCount,
+    setUnreadMessageCount,
+    notifications,
+    setNotifications,
+    userId,
+    loading,
+  } = useNotificationFeed();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NotificationTab>("all");
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
 
   const openPanel = useCallback((tab: NotificationTab) => {
     setActiveTab(tab);
@@ -63,73 +66,18 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const closePanel = useCallback(() => setIsOpen(false), []);
 
   useEffect(() => {
-    let mounted = true;
-    const supabase = createClient();
-
-    async function load() {
-      setLoading(true);
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) {
-          if (mounted) {
-            setUnreadCount(0);
-            setUnreadMessageCount(0);
-            setNotifications([]);
-          }
-          return;
-        }
-
-        const uid = userData.user.id;
-        const [unreadResult, messageUnreadResult, notificationResult] = await Promise.all([
-          supabase
-            .from("notifications")
-            .select("id", { count: "exact", head: true })
-            .eq("recipient_id", uid)
-            .eq("is_read", false),
-          supabase
-            .from("notifications")
-            .select("id", { count: "exact", head: true })
-            .eq("recipient_id", uid)
-            .eq("is_read", false)
-            .eq("type", "project_message"),
-          supabase
-            .from("notifications")
-            .select("id,title,body,is_read,type,related_id,created_at")
-            .eq("recipient_id", uid)
-            .order("created_at", { ascending: false })
-            .limit(50),
-        ]);
-
-        if (mounted) {
-          setUnreadCount(unreadResult.count || 0);
-          setUnreadMessageCount(messageUnreadResult.count || 0);
-          setNotifications((notificationResult.data as Notification[] | null) || []);
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-
-    void load();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
-        window.setTimeout(() => void load(), 0);
-      }
+    if (pathname !== "/") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("notifications") !== "open") return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      openPanel("all");
+      url.searchParams.delete("notifications");
+      router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
     });
-    const interval = setInterval(() => void load(), 30000);
-
-    function onVisible() {
-      if (document.visibilityState === "visible") void load();
-    }
-
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, []);
+    return () => { active = false; };
+  }, [openPanel, pathname, router]);
 
   const markAsRead = useCallback(async (id: string) => {
     const notification = notifications.find((item) => item.id === id);
@@ -141,7 +89,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
     const supabase = createClient();
     await supabase.from("notifications").update({ is_read: true }).eq("id", id);
-  }, [notifications]);
+  }, [notifications, setNotifications, setUnreadCount, setUnreadMessageCount]);
 
   const deleteNotification = useCallback(async (id: string) => {
     const notification = notifications.find((item) => item.id === id);
@@ -154,7 +102,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         setUnreadMessageCount((count) => Math.max(0, count - 1));
       }
     }
-  }, [notifications]);
+  }, [notifications, setNotifications, setUnreadCount, setUnreadMessageCount]);
 
   const markAll = useCallback(async () => {
     const supabase = createClient();
@@ -164,20 +112,24 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
     setUnreadCount(0);
     setUnreadMessageCount(0);
-  }, []);
+  }, [setNotifications, setUnreadCount, setUnreadMessageCount]);
 
-  const contextValue: NotificationsContextValue = {
+  const contextValue = useMemo<NotificationsContextValue>(() => ({
+    userId,
+    loaded: !loading,
+    notifications,
     unreadCount,
     unreadMessageCount,
     isOpen,
     activeTab,
     openPanel,
     closePanel,
-  };
+  }), [activeTab, closePanel, isOpen, loading, notifications, openPanel, unreadCount, unreadMessageCount, userId]);
 
   return (
     <NotificationsContext.Provider value={contextValue}>
       {children}
+      <NotificationToaster />
       <NotificationsPanel
         isOpen={isOpen}
         notifications={notifications}
@@ -203,7 +155,7 @@ function NotificationsPanel({
   onDelete,
 }: {
   isOpen: boolean;
-  notifications: Notification[];
+  notifications: NotificationItem[];
   loading: boolean;
   unreadCount: number;
   onClose: () => void;
@@ -224,7 +176,7 @@ function NotificationsPanel({
     return () => previouslyFocused?.focus();
   }, [isOpen]);
 
-  async function openNotification(notification: Notification) {
+  async function openNotification(notification: NotificationItem) {
     if (!notification.is_read) void onMarkAsRead(notification.id);
     onClose();
     const href = getNotificationHref(notification, { currentPathname: pathname });

@@ -147,7 +147,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           {children}
         </RouteChrome>
         </PullToRefresh>
-        {userData.user && <BanGate />}
+        {userData.user && <BanGate userId={userData.user.id} />}
         </PhoneVerificationRequiredProvider>
         </AuthSheetProvider>
         </LocationProvider>

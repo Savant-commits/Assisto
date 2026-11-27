@@ -22,7 +22,7 @@ function formatDateTime(dateStr: string | null | undefined) {
   });
 }
 
-export default function BanGate() {
+export default function BanGate({ userId }: { userId: string }) {
   const [activeBan, setActiveBan] = useState<ActiveBan | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [supabase] = useState(() => createClient());
@@ -31,10 +31,12 @@ export default function BanGate() {
     async function checkBan() {
       try {
         const { data, error } = await supabase.rpc("my_active_ban");
-        if (error) return;
-        setActiveBan((data as ActiveBan | null) ?? null);
+        const ban = error ? null : (data as ActiveBan | null) ?? null;
+        setActiveBan(ban);
+        window.dispatchEvent(new CustomEvent("app:ban-status", { detail: { userId, banned: Boolean(ban) } }));
       } catch {
         // Ignore failed checks so a temporary outage never trips the lock screen.
+        window.dispatchEvent(new CustomEvent("app:ban-status", { detail: { userId, banned: false } }));
       }
     }
 
@@ -56,7 +58,7 @@ export default function BanGate() {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [activeBan, signingOut, supabase]);
+  }, [activeBan, signingOut, supabase, userId]);
 
   useEffect(() => {
     if (!activeBan) return;
