@@ -87,7 +87,7 @@ export function HeroCarousel({ banners }: { banners: HeroBanner[] }) {
     <section ref={sectionRef} role="region" aria-label="Featured ways to use Assisto" aria-roledescription="carousel" aria-live="off" className="relative" onMouseEnter={() => setEngaged(true)} onMouseLeave={() => { if (!sectionRef.current?.contains(document.activeElement)) setEngaged(false); }} onFocusCapture={() => setEngaged(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) resumeAfterInteraction(); }} onTouchStart={() => setEngaged(true)} onTouchEnd={resumeAfterTouch}>
       <div ref={trackRef} className="scrollbar-none flex snap-x snap-mandatory overflow-x-auto rounded-3xl" onPointerDown={(event) => { if (event.pointerType !== "mouse") setEngaged(true); }}>
         {banners.map((banner, index) => (
-          <article key={banner.id} role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${banners.length}`} className="relative isolate aspect-[4/5] w-full shrink-0 snap-start overflow-hidden rounded-3xl bg-forest md:aspect-[16/9]">
+          <article key={banner.id} role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${banners.length}`} className="relative isolate h-[clamp(240px,46dvh,380px)] w-full shrink-0 snap-start overflow-hidden rounded-3xl bg-forest md:h-[clamp(360px,52vh,520px)] lg:h-[clamp(420px,60vh,640px)]">
             {!imageErrors.includes(banner.id) && (
               <Image
                 src={banner.image}
@@ -101,19 +101,19 @@ export function HeroCarousel({ banners }: { banners: HeroBanner[] }) {
               />
             )}
             <div aria-hidden="true" className="image-scrim absolute inset-0 -z-0" />
-            <div className="relative z-10 flex h-full max-w-3xl flex-col items-start justify-end p-6 text-white sm:p-10 md:p-14">
-              <div className="image-copy-backdrop max-w-2xl rounded-xl px-4 py-3">
-                <h2 className="font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl md:text-6xl">{banner.headline}</h2>
-                <p className="mt-4 text-base leading-relaxed sm:text-lg">{banner.support}</p>
+            <div className="relative z-10 flex h-full max-w-3xl flex-col items-start justify-end p-4 text-white sm:p-8 lg:p-12">
+              <div className="image-copy-backdrop max-w-2xl rounded-xl px-3 py-2 sm:px-4 sm:py-3">
+                <h2 className="font-display text-2xl leading-[1.05] tracking-tight min-[390px]:text-3xl sm:text-4xl md:text-5xl lg:text-6xl">{banner.headline}</h2>
+                <p className="mt-2 text-sm leading-snug sm:mt-4 sm:text-base lg:text-lg">{banner.support}</p>
               </div>
-              <Link href={banner.href} className="mt-6 inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-full bg-background px-5 font-semibold text-foreground shadow-soft transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-forest">
+              <Link href={banner.href} className="mt-3 inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-full bg-background px-4 text-sm font-semibold text-foreground shadow-soft transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-forest sm:mt-5 sm:px-5 sm:text-base">
                 {banner.cta}<span aria-hidden="true">→</span>
               </Link>
             </div>
           </article>
         ))}
       </div>
-      <div className="mt-3 flex min-h-11 items-center justify-between gap-3">
+      <div className="mt-0 flex min-h-11 items-center justify-between gap-3 sm:mt-3">
         <div className="flex items-center gap-1" aria-label="Choose a featured slide">
           {banners.map((banner, index) => (
             <button key={banner.id} type="button" aria-label={`Show slide ${index + 1} of ${banners.length}: ${banner.headline}`} aria-current={index === activeIndex ? "true" : undefined} onClick={() => scrollTo(index)} className="inline-flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

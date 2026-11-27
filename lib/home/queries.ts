@@ -18,6 +18,14 @@ export type HomeProvider = {
   provider_categories: Array<{ category_id: string }> | null;
 };
 
+export type LocallyOfferedService = {
+  id: string;
+  slug: string;
+  name: string;
+  sort_order: number;
+  providerCount: number;
+};
+
 export function getHomeCityHint(location: {
   city: string | null;
   locality: string;
@@ -86,6 +94,71 @@ export const getGeolocatedProviders = cache(async (): Promise<HomeProvider[]> =>
     providers.push(...batch);
     if (batch.length < 1000) return providers;
   }
+});
+
+export const getLocallyOfferedServices = cache(async (city: string | null): Promise<LocallyOfferedService[]> => {
+  const normalizedCity = city?.trim().toLocaleLowerCase() || null;
+  const cityPattern = normalizedCity ? `%${normalizedCity.replace(/[\\%_]/g, "\\$&")}%` : null;
+  const supabase = await createClient();
+  const serviceCounts = new Map<string, {
+    id: string;
+    slug: string;
+    name: string;
+    sort_order: number;
+    providerIds: Set<string>;
+  }>();
+
+  for (let offset = 0; ; offset += 1000) {
+    let query = supabase
+      .from("provider_services")
+      .select("provider_id,services!inner(id,slug,name,sort_order,is_active),providers!inner(id,city,is_active)")
+      .eq("services.is_active", true)
+      .eq("providers.is_active", true)
+      .order("provider_id")
+      .order("service_id")
+      .range(offset, offset + 999);
+    if (cityPattern) query = query.ilike("providers.city", cityPattern);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const batch = (data ?? []) as Array<{
+      provider_id: string;
+      services?: { id?: string; slug?: string; name?: string; sort_order?: number | null; is_active?: boolean } |
+        Array<{ id?: string; slug?: string; name?: string; sort_order?: number | null; is_active?: boolean }> | null;
+      providers?: { id?: string; city?: string | null; is_active?: boolean } |
+        Array<{ id?: string; city?: string | null; is_active?: boolean }> | null;
+    }>;
+
+    for (const row of batch) {
+      const service = Array.isArray(row.services) ? row.services[0] : row.services;
+      const provider = Array.isArray(row.providers) ? row.providers[0] : row.providers;
+      const providerId = provider?.id ?? row.provider_id;
+      if (
+        !service?.id || !service.slug || !service.name ||
+        !providerId || service.is_active !== true || provider?.is_active !== true
+      ) continue;
+      if (normalizedCity && provider.city?.trim().toLocaleLowerCase() !== normalizedCity) continue;
+
+      const current = serviceCounts.get(service.id) ?? {
+        id: service.id,
+        slug: service.slug,
+        name: service.name,
+        sort_order: service.sort_order ?? 0,
+        providerIds: new Set<string>(),
+      };
+      current.providerIds.add(providerId);
+      serviceCounts.set(service.id, current);
+    }
+
+    if (batch.length < 1000) break;
+  }
+
+  return [...serviceCounts.values()]
+    .map(({ providerIds, ...service }) => ({ ...service, providerCount: providerIds.size }))
+    .filter((service) => service.providerCount > 0)
+    .sort((a, b) => b.providerCount - a.providerCount || a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+    .slice(0, 12);
 });
 
 export async function getProvidersForLocation(city: string | null): Promise<HomeProvider[]> {
