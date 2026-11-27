@@ -151,6 +151,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const isProviderHubRoute = pathname === "/profile/provider";
   const [loading, setLoading] = useState(true);
+  const [pullRefreshVersion, setPullRefreshVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
@@ -210,6 +211,15 @@ export default function ProfilePage() {
       controller.abort();
     };
   }, [providerListing.lat, providerListing.lng]);
+
+  useEffect(() => {
+    const handlePullRefresh = () => {
+      if (loading || activeEditor !== null || isUploading || isPhoneGateOpen || isLocationPickerOpen) return;
+      setPullRefreshVersion((version) => version + 1);
+    };
+    window.addEventListener("app:pull-refresh", handlePullRefresh);
+    return () => window.removeEventListener("app:pull-refresh", handlePullRefresh);
+  }, [activeEditor, isLocationPickerOpen, isPhoneGateOpen, isUploading, loading]);
 
   useEffect(() => {
     let mounted = true;
@@ -311,7 +321,7 @@ export default function ProfilePage() {
     return () => {
       mounted = false;
     };
-  }, [form, isProviderHubRoute, router]);
+  }, [form, isProviderHubRoute, pullRefreshVersion, router]);
 
   useEffect(() => {
     if (!loading && isProviderHubRoute && isProvider === false) router.replace("/profile");

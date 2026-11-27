@@ -165,10 +165,13 @@ export default function MessagesPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "project_messages" }, () => { void load(); })
       .subscribe();
     const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    const onPullRefresh = () => { void load(); };
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("app:pull-refresh", onPullRefresh);
     return () => {
       clearTimeout(initialLoad);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("app:pull-refresh", onPullRefresh);
       void supabase.removeChannel(channel);
     };
   }, [load]);

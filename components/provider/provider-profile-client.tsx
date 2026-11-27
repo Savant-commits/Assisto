@@ -573,6 +573,15 @@ export default function ProviderProfileClient({ id }: Props) {
   const [enquiryFormOpen, setEnquiryFormOpen] = useState(false);
   const [actionBarDismissed, setActionBarDismissed] = useState(false);
 
+  useEffect(() => {
+    const handlePullRefresh = () => {
+      if (loading || reviewPickerOpen || reviewModalEnquiryId !== null || enquiryFormOpen) return;
+      setLoadAttempt((attempt) => attempt + 1);
+    };
+    window.addEventListener("app:pull-refresh", handlePullRefresh);
+    return () => window.removeEventListener("app:pull-refresh", handlePullRefresh);
+  }, [enquiryFormOpen, loading, reviewModalEnquiryId, reviewPickerOpen]);
+
   const refreshProfileReviews = useCallback(async () => {
     const { data: reviewsData, error: reviewsError } = await supabase
       .from("reviews")

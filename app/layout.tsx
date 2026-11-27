@@ -16,6 +16,7 @@ import { RouteChrome } from "@/components/shell/route-chrome";
 import { getSelectedLocation } from "@/lib/location/server";
 import { LocationProvider } from "@/lib/location/provider";
 import { AuthSheetProvider } from "@/components/auth/auth-sheet";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -140,10 +141,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <LocationProvider key={JSON.stringify(selectedLocation)} initialLocation={selectedLocation}>
         <AuthSheetProvider initialIsAuthenticated={!!userData.user}>
         <PhoneVerificationRequiredProvider required={phoneVerificationRequired}>
+        <PullToRefresh>
         <RouteChrome fullName={profile?.full_name} isLoggedIn={!!userData.user}>
           {phoneVerificationRequired && userData.user && profile?.role !== "admin" && !profile?.phone_verified_at && <PhoneVerifyBanner />}
           {children}
         </RouteChrome>
+        </PullToRefresh>
         {userData.user && <BanGate />}
         </PhoneVerificationRequiredProvider>
         </AuthSheetProvider>

@@ -235,6 +235,7 @@ function SortablePortfolioCard({
 
 export default function PortfolioPage() {
   const router = useRouter();
+  const [providerId, setProviderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [stagedUploads, setStagedUploads] = useState<StagedPortfolioFile[]>([]);
@@ -313,6 +314,7 @@ export default function PortfolioPage() {
         return;
       }
 
+      if (mounted) setProviderId(userData.user.id);
       const portfolioItems = await loadPortfolioItems(userData.user.id);
 
       if (mounted) {
@@ -326,6 +328,15 @@ export default function PortfolioPage() {
       mounted = false;
     };
   }, [loadPortfolioItems, router]);
+
+  useEffect(() => {
+    const handlePullRefresh = () => {
+      if (!providerId || loading || uploadingBatch || reorderMode || mediaViewerIndex !== null || stagedUploads.length > 0) return;
+      void loadPortfolioItems(providerId).then(setItems);
+    };
+    window.addEventListener("app:pull-refresh", handlePullRefresh);
+    return () => window.removeEventListener("app:pull-refresh", handlePullRefresh);
+  }, [loadPortfolioItems, loading, mediaViewerIndex, providerId, reorderMode, stagedUploads.length, uploadingBatch]);
 
   function stageFiles(files: File[]) {
     if (files.length === 0) return;

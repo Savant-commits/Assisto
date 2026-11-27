@@ -646,6 +646,17 @@ export default function EnquiriesPage() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [load]);
 
+  useEffect(() => {
+    const handlePullRefresh = () => {
+      const hasOpenDeclineDialog = Object.values(confirmingDecline).some((item) => item.open);
+      const hasOpenRequestEditor = Object.values(requestEditorOpen).some(Boolean);
+      if (isCustomerSummaryOpen || activeReviewPrompt || cancellationTarget || hasOpenDeclineDialog || hasOpenRequestEditor) return;
+      void load();
+    };
+    window.addEventListener("app:pull-refresh", handlePullRefresh);
+    return () => window.removeEventListener("app:pull-refresh", handlePullRefresh);
+  }, [activeReviewPrompt, cancellationTarget, confirmingDecline, isCustomerSummaryOpen, load, requestEditorOpen]);
+
   function setPending(key: string, v: boolean) {
     setPendingMap((s) => ({ ...s, [key]: v }));
   }
