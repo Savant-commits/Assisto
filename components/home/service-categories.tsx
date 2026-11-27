@@ -1,6 +1,6 @@
 import Link from "next/link";
 import AuthGatedLink from "@/components/auth/auth-gated-link";
-import { CategoryRail } from "@/components/home/category-rail";
+import { HomeImageCard } from "@/components/home/image-card";
 import { HomeEmptyState } from "@/components/home/home-empty-state";
 import { SectionError } from "@/components/home/section-error";
 import { getHomeCategories, getHomeCityHint, getLocallyOfferedServices, getProvidersForLocation, type LocallyOfferedService } from "@/lib/home/queries";
@@ -31,7 +31,7 @@ function OfferedServiceChips({ services, city }: { services: LocallyOfferedServi
   );
 }
 
-async function loadServiceData(location: SelectedLocation, city: string | null) {
+async function loadServiceData(city: string | null) {
   try {
     return await Promise.all([
       getHomeCategories(),
@@ -44,7 +44,7 @@ async function loadServiceData(location: SelectedLocation, city: string | null) 
 
 export async function ServiceCategories({ location }: { location: SelectedLocation }) {
   const city = getHomeCityHint(location);
-  const result = await loadServiceData(location, city);
+  const result = await loadServiceData(city);
   if (!result) return <SectionError label="Services" />;
   const [categories, providers] = result;
   let offeredServices: LocallyOfferedService[] = [];
@@ -55,10 +55,10 @@ export async function ServiceCategories({ location }: { location: SelectedLocati
   }
   if (categories.length === 0) {
     return (
-      <section aria-labelledby="services-heading" className="min-h-64 space-y-4 lg:min-h-[22rem]">
-        <div>
-          <h2 id="services-heading" className="font-display text-3xl">Services</h2>
-          <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" className="mt-2 inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Describe what you need</AuthGatedLink>
+      <section aria-labelledby="services-heading" className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="services-heading" className="font-display text-3xl">All services</h2>
+          <Link href="/discover" className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">View All</Link>
         </div>
         <OfferedServiceChips services={offeredServices} city={city} />
         <HomeEmptyState />
@@ -77,24 +77,47 @@ export async function ServiceCategories({ location }: { location: SelectedLocati
     }
   }
   const cards = categories.map((category) => ({
+    id: category.id,
     slug: category.slug,
     name: category.name,
+    sortOrder: category.sort_order ?? 0,
     providerCount: counts.get(category.id) ?? 0,
   }));
+  const locallyAvailable = cards
+    .filter((category) => category.providerCount > 0)
+    .sort((a, b) => b.providerCount - a.providerCount || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  const otherCategories = cards.filter((category) => category.providerCount === 0);
+  const imageCard = (category: (typeof cards)[number], size: "featured" | "compact") => (
+    <HomeImageCard
+      key={category.slug}
+      image={`/images/categories/${category.slug}.jpg`}
+      title={category.name}
+      href={buildDiscoverUrl({ category: category.slug, city })}
+      caption={size === "featured" ? `${category.providerCount} ${city ? `in ${city}` : "across Tamil Nadu"}` : undefined}
+      size={size}
+      highlighted={size === "featured"}
+    />
+  );
   return (
-    <section aria-labelledby="services-heading" className="min-h-64 space-y-4 lg:min-h-[22rem]">
+    <section aria-labelledby="services-heading" className="space-y-4">
         <div className="flex items-center justify-between gap-3 sm:items-end sm:gap-4">
-          <div>
-            <h2 id="services-heading" className="font-display text-3xl">Services</h2>
-            <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" className="mt-2 hidden min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex">Describe what you need</AuthGatedLink>
-          </div>
+          <h2 id="services-heading" className="font-display text-3xl">All services</h2>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             <Link href="/discover" className="inline-flex min-h-11 items-center rounded-full px-3 font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">View All</Link>
           </div>
         </div>
         <OfferedServiceChips services={offeredServices} city={city} />
-        <CategoryRail categories={cards} city={city} label="Service categories" columns={5} />
-        <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden">Describe what you need</AuthGatedLink>
+        {locallyAvailable.length > 0 && (
+          <section aria-label="Services available near you" className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+            {locallyAvailable.map((category) => imageCard(category, "featured"))}
+          </section>
+        )}
+        {otherCategories.length > 0 && (
+          <section aria-label={locallyAvailable.length > 0 ? "More services" : "Service categories"} className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            {otherCategories.map((category) => imageCard(category, "compact"))}
+          </section>
+        )}
+        <AuthGatedLink href="/requirements/new" actionLabel="to create a requirement" className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Describe what you need</AuthGatedLink>
     </section>
   );
 }

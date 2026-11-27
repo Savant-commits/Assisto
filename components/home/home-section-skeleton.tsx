@@ -16,23 +16,29 @@ export function HomeSectionSkeleton({
   }
   if (kind === "categories" || kind === "popular") {
     const count = kind === "categories" ? 5 : 6;
-    return (
-      <section aria-hidden="true" className="min-h-64 space-y-4">
-        {kind === "categories" ? (
-          <div className="flex items-center justify-between gap-3 sm:items-end sm:gap-4">
-            <div>
-              <div className="skeleton h-9 w-36 rounded-lg" />
-              <div className="skeleton mt-2 hidden h-11 w-40 rounded-full sm:block" />
-            </div>
+    if (kind === "categories") {
+      return (
+        <section aria-hidden="true" className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="skeleton h-9 w-36 rounded-lg" />
             <div className="skeleton h-11 w-20 rounded-full" />
           </div>
-        ) : <div className="skeleton h-8 w-52 rounded-lg" />}
-        {kind === "categories" && (
           <div className="flex h-11 items-center gap-2 overflow-hidden">
             <div className="skeleton h-4 w-28 shrink-0 rounded-md" />
             {[36, 28, 32, 24].map((width, index) => <div key={index} className="skeleton h-11 shrink-0 rounded-full" style={{ width: `${width * 4}px` }} />)}
           </div>
-        )}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+            {[0, 1].map((index) => <div key={index} className="skeleton aspect-[4/5] rounded-2xl border border-forest/45" />)}
+          </div>
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            {[0, 1, 2, 3, 4, 5].map((index) => <div key={index} className="skeleton aspect-[4/5] rounded-2xl" />)}
+          </div>
+        </section>
+      );
+    }
+    return (
+      <section aria-hidden="true" className="min-h-64 space-y-4">
+        <div className="skeleton h-8 w-52 rounded-lg" />
         <div className={`scrollbar-none grid grid-flow-col auto-cols-[43%] snap-x snap-mandatory gap-3 overflow-hidden lg:grid-flow-row ${count === 5 ? "lg:grid-cols-5" : "lg:grid-cols-6"}`}>
           {Array.from({ length: count }, (_, index) => (
             <div key={index} className="skeleton aspect-[4/5] rounded-2xl" />
