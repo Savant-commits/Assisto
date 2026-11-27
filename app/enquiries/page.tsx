@@ -647,11 +647,14 @@ export default function EnquiriesPage() {
   }, [load]);
 
   useEffect(() => {
-    const handlePullRefresh = () => {
+    const handlePullRefresh = (event: Event) => {
       const hasOpenDeclineDialog = Object.values(confirmingDecline).some((item) => item.open);
       const hasOpenRequestEditor = Object.values(requestEditorOpen).some(Boolean);
-      if (isCustomerSummaryOpen || activeReviewPrompt || cancellationTarget || hasOpenDeclineDialog || hasOpenRequestEditor) return;
-      void load();
+      const register = (event as CustomEvent<{ register?: (promise: Promise<unknown>) => void }>).detail?.register;
+      const reload = isCustomerSummaryOpen || activeReviewPrompt || cancellationTarget || hasOpenDeclineDialog || hasOpenRequestEditor
+        ? Promise.resolve()
+        : load();
+      register?.(reload);
     };
     window.addEventListener("app:pull-refresh", handlePullRefresh);
     return () => window.removeEventListener("app:pull-refresh", handlePullRefresh);

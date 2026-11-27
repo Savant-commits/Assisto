@@ -572,10 +572,17 @@ export default function ProviderProfileClient({ id }: Props) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [enquiryFormOpen, setEnquiryFormOpen] = useState(false);
   const [actionBarDismissed, setActionBarDismissed] = useState(false);
+  const pullRefreshResolverRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const handlePullRefresh = () => {
-      if (loading || reviewPickerOpen || reviewModalEnquiryId !== null || enquiryFormOpen) return;
+    const handlePullRefresh = (event: Event) => {
+      const register = (event as CustomEvent<{ register?: (promise: Promise<unknown>) => void }>).detail?.register;
+      if (reviewPickerOpen || reviewModalEnquiryId !== null || enquiryFormOpen) {
+        register?.(Promise.resolve());
+        return;
+      }
+      const reload = new Promise<void>((resolve) => { pullRefreshResolverRef.current = resolve; });
+      register?.(reload);
       setLoadAttempt((attempt) => attempt + 1);
     };
     window.addEventListener("app:pull-refresh", handlePullRefresh);
@@ -705,7 +712,12 @@ export default function ProviderProfileClient({ id }: Props) {
       }
     }
 
-    void load();
+    void load().catch((loadFailure: unknown) => {
+      logSupabaseError("provider profile refresh failed:", { message: loadFailure instanceof Error ? loadFailure.message : String(loadFailure) });
+    }).finally(() => {
+      pullRefreshResolverRef.current?.();
+      pullRefreshResolverRef.current = null;
+    });
 
     return () => {
       isMounted = false;

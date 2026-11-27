@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
@@ -152,6 +152,7 @@ export default function ProfilePage() {
   const isProviderHubRoute = pathname === "/profile/provider";
   const [loading, setLoading] = useState(true);
   const [pullRefreshVersion, setPullRefreshVersion] = useState(0);
+  const pullRefreshResolverRef = useRef<(() => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
@@ -213,8 +214,14 @@ export default function ProfilePage() {
   }, [providerListing.lat, providerListing.lng]);
 
   useEffect(() => {
-    const handlePullRefresh = () => {
-      if (loading || activeEditor !== null || isUploading || isPhoneGateOpen || isLocationPickerOpen) return;
+    const handlePullRefresh = (event: Event) => {
+      const register = (event as CustomEvent<{ register?: (promise: Promise<unknown>) => void }>).detail?.register;
+      if (activeEditor !== null || isUploading || isPhoneGateOpen || isLocationPickerOpen) {
+        register?.(Promise.resolve());
+        return;
+      }
+      const reload = new Promise<void>((resolve) => { pullRefreshResolverRef.current = resolve; });
+      register?.(reload);
       setPullRefreshVersion((version) => version + 1);
     };
     window.addEventListener("app:pull-refresh", handlePullRefresh);
@@ -317,7 +324,12 @@ export default function ProfilePage() {
       }
       setLoading(false);
     }
-    load();
+    void load().catch((loadFailure: unknown) => {
+      logSupabaseError("profile pull refresh failed", loadFailure instanceof Error ? { message: loadFailure.message } : { message: String(loadFailure) });
+    }).finally(() => {
+      pullRefreshResolverRef.current?.();
+      pullRefreshResolverRef.current = null;
+    });
     return () => {
       mounted = false;
     };

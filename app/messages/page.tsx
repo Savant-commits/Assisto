@@ -165,7 +165,10 @@ export default function MessagesPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "project_messages" }, () => { void load(); })
       .subscribe();
     const onVisible = () => { if (document.visibilityState === "visible") void load(); };
-    const onPullRefresh = () => { void load(); };
+    const onPullRefresh = (event: Event) => {
+      const register = (event as CustomEvent<{ register?: (promise: Promise<unknown>) => void }>).detail?.register;
+      register?.(load());
+    };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("app:pull-refresh", onPullRefresh);
     return () => {

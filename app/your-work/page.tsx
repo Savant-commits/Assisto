@@ -330,9 +330,13 @@ export default function PortfolioPage() {
   }, [loadPortfolioItems, router]);
 
   useEffect(() => {
-    const handlePullRefresh = () => {
-      if (!providerId || loading || uploadingBatch || reorderMode || mediaViewerIndex !== null || stagedUploads.length > 0) return;
-      void loadPortfolioItems(providerId).then(setItems);
+    const handlePullRefresh = (event: Event) => {
+      const register = (event as CustomEvent<{ register?: (promise: Promise<unknown>) => void }>).detail?.register;
+      if (!providerId || uploadingBatch || reorderMode || mediaViewerIndex !== null || stagedUploads.length > 0) {
+        register?.(Promise.resolve());
+        return;
+      }
+      register?.(loadPortfolioItems(providerId).then(setItems));
     };
     window.addEventListener("app:pull-refresh", handlePullRefresh);
     return () => window.removeEventListener("app:pull-refresh", handlePullRefresh);

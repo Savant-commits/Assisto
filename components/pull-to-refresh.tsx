@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 
@@ -8,10 +8,11 @@ const PULL_THRESHOLD = 72;
 const RESISTANCE = 0.55;
 const REFRESH_COOLDOWN_MS = 2000;
 const INDICATOR_SETTLE_MS = 550;
+const REFRESH_TIMEOUT_MS = 8000;
 
 function isVisible(element: Element): boolean {
   const style = window.getComputedStyle(element);
-  return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0 && element.getClientRects().length > 0;
+  return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0 && element.getClientRects().length > 0 && !element.closest('[aria-hidden="true"], [inert]');
 }
 
 function hasHorizontalScroller(target: Element, boundary: Element): boolean {
@@ -25,15 +26,30 @@ function hasHorizontalScroller(target: Element, boundary: Element): boolean {
 }
 
 function isBlockedByOverlay(): boolean {
-  return Array.from(document.querySelectorAll(
-    '[role="dialog"], [aria-modal="true"], [role="menu"], [role="listbox"], [aria-expanded="true"], [data-pull-refresh-block="open"], [class*="fixed"][class*="inset-0"]'
-  )).some(isVisible);
+  const modalSelectors = [
+    '[role="dialog"]',
+    '[role="alertdialog"]',
+    '[aria-modal="true"]',
+    '[role="menu"]',
+    '[role="listbox"]',
+    '[data-pull-refresh-block="open"]',
+    '[class*="fixed"][class*="inset-0"]',
+  ].join(",");
+  if (Array.from(document.querySelectorAll(modalSelectors)).some(isVisible)) return true;
+
+  return Array.from(document.querySelectorAll('[aria-expanded="true"][aria-controls]')).some((trigger) => {
+    if (!isVisible(trigger)) return false;
+    return (trigger.getAttribute("aria-controls") ?? "").split(/\s+/).some((id) => {
+      const controlled = document.getElementById(id);
+      return Boolean(controlled && isVisible(controlled));
+    });
+  });
 }
 
 function isBlockedTarget(target: EventTarget | null, root: HTMLElement): boolean {
   if (!(target instanceof Element)) return true;
   if (document.activeElement?.matches("input, textarea, select, [contenteditable='true']")) return true;
-  if (target.closest("input, textarea, select, [contenteditable='true'], .leaflet-container, [role='dialog'], [aria-modal='true'], [role='menu'], [role='listbox'], [aria-expanded='true'], [data-pull-refresh-block='open']")) return true;
+  if (target.closest("input, textarea, select, [contenteditable='true'], .leaflet-container, [role='dialog'], [aria-modal='true'], [role='menu'], [role='listbox'], [data-pull-refresh-block='open']")) return true;
   if (isBlockedByOverlay() || hasHorizontalScroller(target, root)) return true;
   return false;
 }
@@ -46,10 +62,70 @@ export function PullToRefresh({ children }: { children: React.ReactNode }) {
   const pullDistanceRef = useRef(0);
   const rawPullRef = useRef(0);
   const lastRefreshAt = useRef(0);
-  const settleTimer = useRef<number | null>(null);
+  const timeoutTimer = useRef<number | null>(null);
+  const minimumTimer = useRef<number | null>(null);
+  const refreshingRef = useRef(false);
+  const transitionWaiter = useRef<(() => void) | null>(null);
+  const transitionWasPending = useRef(false);
+  const cancelActiveCycle = useRef<(() => void) | null>(null);
+  const minimumWaiter = useRef<(() => void) | null>(null);
+  const previousPathname = useRef(pathname);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [isTransitionPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (isTransitionPending) {
+      transitionWasPending.current = true;
+      return;
+    }
+    if (transitionWasPending.current && transitionWaiter.current) {
+      transitionWasPending.current = false;
+      transitionWaiter.current();
+      transitionWaiter.current = null;
+    }
+  }, [isTransitionPending]);
+
+  const startRouterRefresh = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      transitionWaiter.current = resolve;
+      transitionWasPending.current = false;
+      startTransition(() => router.refresh());
+    });
+  }, [router, startTransition]);
+
+  const resetRefreshState = useCallback(() => {
+    refreshingRef.current = false;
+    setRefreshing(false);
+    setPullDistance(0);
+    pullDistanceRef.current = 0;
+    rawPullRef.current = 0;
+    touchStart.current = null;
+    transitionWaiter.current?.();
+    transitionWaiter.current = null;
+    transitionWasPending.current = false;
+    cancelActiveCycle.current?.();
+    cancelActiveCycle.current = null;
+    minimumWaiter.current?.();
+    minimumWaiter.current = null;
+    if (timeoutTimer.current !== null) window.clearTimeout(timeoutTimer.current);
+    if (minimumTimer.current !== null) window.clearTimeout(minimumTimer.current);
+  }, []);
+
+  useEffect(() => {
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
+    resetRefreshState();
+  }, [pathname, resetRefreshState]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") resetRefreshState();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [resetRefreshState]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -64,11 +140,12 @@ export function PullToRefresh({ children }: { children: React.ReactNode }) {
     if (!root || pathname.startsWith("/messages/")) return;
 
     const onTouchStart = (event: TouchEvent) => {
-      if (!window.matchMedia("(pointer: coarse)").matches || event.touches.length !== 1 || window.scrollY > 1 || isBlockedTarget(event.target, root)) {
+      const pageAtTop = window.scrollY <= 1 || document.documentElement.scrollTop <= 1;
+      if (!window.matchMedia("(pointer: coarse)").matches || event.touches.length !== 1 || !pageAtTop || isBlockedTarget(event.target, root)) {
         touchStart.current = null;
         return;
       }
-      if (Date.now() - lastRefreshAt.current < REFRESH_COOLDOWN_MS || refreshing) {
+      if (Date.now() - lastRefreshAt.current < REFRESH_COOLDOWN_MS || refreshingRef.current) {
         touchStart.current = null;
         return;
       }
@@ -80,7 +157,7 @@ export function PullToRefresh({ children }: { children: React.ReactNode }) {
     const onTouchMove = (event: TouchEvent) => {
       const start = touchStart.current;
       if (!start || event.touches.length !== 1) return;
-      if (window.scrollY > 1 || isBlockedByOverlay()) {
+      if ((window.scrollY > 1 && document.documentElement.scrollTop > 1) || isBlockedByOverlay()) {
         touchStart.current = null;
         pullDistanceRef.current = 0;
         rawPullRef.current = 0;
@@ -110,27 +187,48 @@ export function PullToRefresh({ children }: { children: React.ReactNode }) {
       setPullDistance(distance);
     };
 
-    const finishGesture = () => {
+    const finishGesture = async () => {
       const shouldRefresh = rawPullRef.current >= PULL_THRESHOLD && Date.now() - lastRefreshAt.current >= REFRESH_COOLDOWN_MS;
       touchStart.current = null;
       pullDistanceRef.current = 0;
       rawPullRef.current = 0;
       setPullDistance(0);
-      if (!shouldRefresh || refreshing) return;
+      if (!shouldRefresh || refreshingRef.current) return;
 
       lastRefreshAt.current = Date.now();
+      refreshingRef.current = true;
       setRefreshing(true);
-      window.dispatchEvent(new Event("app:pull-refresh"));
-      router.refresh();
-      if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
-      settleTimer.current = window.setTimeout(() => setRefreshing(false), INDICATOR_SETTLE_MS);
+      const startedAt = Date.now();
+      try {
+        const promises: Promise<unknown>[] = [];
+        window.dispatchEvent(new CustomEvent("app:pull-refresh", {
+          detail: { register: (promise: Promise<unknown>) => { promises.push(Promise.resolve(promise)); } },
+        }));
+
+        if (promises.length === 0) promises.push(startRouterRefresh());
+
+        const reloads = Promise.allSettled(promises);
+        const cancelled = new Promise<void>((resolve) => { cancelActiveCycle.current = resolve; });
+        const timeout = new Promise<void>((resolve) => {
+          timeoutTimer.current = window.setTimeout(resolve, REFRESH_TIMEOUT_MS);
+        });
+        const minimumVisible = new Promise<void>((resolve) => {
+          minimumWaiter.current = resolve;
+          minimumTimer.current = window.setTimeout(resolve, Math.max(0, INDICATOR_SETTLE_MS - (Date.now() - startedAt)));
+        });
+        await Promise.all([Promise.race([reloads, timeout, cancelled]), minimumVisible]);
+      } finally {
+        if (timeoutTimer.current !== null) window.clearTimeout(timeoutTimer.current);
+        if (minimumTimer.current !== null) window.clearTimeout(minimumTimer.current);
+        minimumWaiter.current = null;
+        cancelActiveCycle.current = null;
+        refreshingRef.current = false;
+        setRefreshing(false);
+      }
     };
 
     const cancelGesture = () => {
-      touchStart.current = null;
-      pullDistanceRef.current = 0;
-      rawPullRef.current = 0;
-      setPullDistance(0);
+      resetRefreshState();
     };
 
     root.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -142,9 +240,20 @@ export function PullToRefresh({ children }: { children: React.ReactNode }) {
       root.removeEventListener("touchmove", onTouchMove);
       root.removeEventListener("touchend", finishGesture);
       root.removeEventListener("touchcancel", cancelGesture);
-      if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
     };
-  }, [pathname, refreshing, router]);
+  }, [pathname, resetRefreshState, router, startRouterRefresh]);
+
+  useEffect(() => () => {
+    refreshingRef.current = false;
+    cancelActiveCycle.current?.();
+    cancelActiveCycle.current = null;
+    minimumWaiter.current?.();
+    minimumWaiter.current = null;
+    transitionWaiter.current?.();
+    transitionWaiter.current = null;
+    if (timeoutTimer.current !== null) window.clearTimeout(timeoutTimer.current);
+    if (minimumTimer.current !== null) window.clearTimeout(minimumTimer.current);
+  }, []);
 
   const indicatorDistance = reducedMotion ? 0 : pullDistance;
   return (
