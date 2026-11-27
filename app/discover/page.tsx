@@ -2,11 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ProviderCard } from "@/components/provider-card";
-import ServicePicker from "@/components/service-picker";
 import type { ProviderListItem, ProviderPortfolioItem, ProviderProfile, ServiceCategory } from "@/lib/types";
 import { one } from "@/lib/relations";
 import { getSelectedLocation } from "@/lib/location/server";
-import DiscoverSearchToggle from "@/components/discover/discover-search-toggle";
+import DiscoverSearch from "@/components/discover/discover-search";
 import DiscoverFilterStrip from "@/components/discover/discover-filter-strip";
 import DiscoverLocationChip from "@/components/discover/discover-location-chip";
 import { groupProviders, sameCity, type GeolocatedProvider } from "@/lib/discover/group-providers";
@@ -219,10 +218,8 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-0 pb-8">
-      <PageHeading title="Find a professional" description={`Browse verified professionals near ${effectiveCity}.`} />
-      <div className="sm:hidden [&>div>p]:hidden">
-        <DiscoverSearchToggle city={city} category={category} requirement={requirement} />
-      </div>
+      <PageHeading title="Find a professional" description={`Browse verified professionals near ${effectiveCity}.`} className="mb-3" />
+      <DiscoverSearch city={city} category={category} requirement={requirement} initialSlug={service} />
 
       <DiscoverFilterStrip
         locationChip={<DiscoverLocationChip variant="mobile" />}
@@ -233,9 +230,6 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
 
       <div className="mb-6 hidden flex-wrap items-center gap-2 sm:flex">
         <DiscoverLocationChip variant="desktop" />
-        <div className="mb-2 w-full sm:mb-0 sm:w-auto">
-          <ServicePicker initialSlug={service} category={category} city={city} requirement={requirement} />
-        </div>
         {categoryFilterItems.map((item) => (
           <a key={item.slug} href={item.href} className={`rounded-full border px-3 py-1 text-sm ${item.active ? "bg-foreground text-background" : ""}`}>
             {item.name}

@@ -34,7 +34,11 @@ export default function DiscoverSkeleton() {
         <SkeletonLine className="h-7 w-64" />
         <SkeletonLine className="h-4 w-80 max-w-full" />
       </div>
-      <div className="my-6 flex items-center gap-2 overflow-hidden">
+      <div className="my-3 flex h-11 items-center gap-2">
+        <SkeletonLine className="h-11 flex-1 rounded-lg" />
+        <SkeletonLine className="h-11 w-20 rounded-full" />
+      </div>
+      <div className="mb-6 flex items-center gap-2 overflow-hidden">
         <SkeletonLine className="h-10 w-40 shrink-0" />
         <SkeletonLine className="h-8 w-24 shrink-0" />
         <SkeletonLine className="h-8 w-28 shrink-0" />

@@ -12,9 +12,14 @@ type Props = {
   onSelect?: (service: Service | null) => void; // selected service object or null when free text
   initialSlug?: string;
   placeholder?: string;
+  ariaLabel?: string;
+  submitOnEnter?: boolean;
+  showClearButton?: boolean;
+  clearLabel?: string;
+  inputClassName?: string;
 };
 
-export default function ServiceCombobox({ value, onChange, onSelect, initialSlug, placeholder = "Service (e.g. Interior painting)" }: Props) {
+export default function ServiceCombobox({ value, onChange, onSelect, initialSlug, placeholder = "Service (e.g. Interior painting)", ariaLabel, submitOnEnter = false, showClearButton = false, clearLabel = "Clear selection", inputClassName = "pr-8" }: Props) {
   const [uncontrolledInput, setUncontrolledInput] = useState("");
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -90,8 +95,9 @@ export default function ServiceCombobox({ value, onChange, onSelect, initialSlug
   return (
     <div ref={ref} className="relative">
       <Input
+        aria-label={ariaLabel}
         placeholder={placeholder}
-        className="pr-8"
+        className={inputClassName}
         value={input}
         onChange={(e) => handleInputChange(e.target.value)}
         onFocus={() => setOpen(true)}
@@ -104,6 +110,7 @@ export default function ServiceCombobox({ value, onChange, onSelect, initialSlug
             e.preventDefault();
             setHighlight((h) => Math.max(h - 1, 0));
           } else if (e.key === "Enter") {
+            if (submitOnEnter) return;
             if (open && filtered[highlight]) {
               e.preventDefault();
               handleSelect(filtered[highlight]);
@@ -114,9 +121,10 @@ export default function ServiceCombobox({ value, onChange, onSelect, initialSlug
         }}
       />
 
-      {selected && (
+      {(showClearButton ? input.length > 0 : Boolean(selected)) && (
         <button
           type="button"
+          aria-label={clearLabel}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             if (value === undefined) {
