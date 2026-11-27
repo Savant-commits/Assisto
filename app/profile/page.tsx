@@ -162,6 +162,7 @@ export default function ProfilePage() {
   const [providerLookupError, setProviderLookupError] = useState<string | null>(null);
   const [providerListing, setProviderListing] = useState<ProviderListing>(emptyProviderListing);
   const [savedProviderListing, setSavedProviderListing] = useState<ProviderListing>(emptyProviderListing);
+  const [earnedExperienceYears, setEarnedExperienceYears] = useState(0);
   const [providerBaseCity, setProviderBaseCity] = useState<string | null>(null);
   const [providerLocationLabel, setProviderLocationLabel] = useState<{ coordinates: string; label: string } | null>(null);
   const [isSavingListing, setIsSavingListing] = useState(false);
@@ -271,6 +272,19 @@ export default function ProfilePage() {
         setIsAdmin(profileData.role === "admin");
       }
       if (providerData) {
+        let totalExperienceYears = providerData.years_experience ?? 0;
+        if (isProviderHubRoute) {
+          const { data: experienceData, error: experienceError } = await supabase.rpc("provider_experience_years", {
+            p_provider: providerData.id,
+          });
+          if (experienceError) {
+            logSupabaseError("provider experience RPC failed", experienceError);
+          } else if (typeof experienceData === "number") {
+            totalExperienceYears = experienceData;
+          }
+        }
+        if (!mounted) return;
+
         const listing = {
           business_name: providerData.business_name ?? "",
           headline: providerData.headline ?? "",
@@ -287,6 +301,7 @@ export default function ProfilePage() {
             return serviceCategory?.name ? [serviceCategory.name] : [];
           }),
         };
+        setEarnedExperienceYears(Math.max(0, totalExperienceYears - (listing.years_experience ?? 0)));
         setProviderListing(listing);
         setSavedProviderListing(listing);
       }
@@ -367,6 +382,17 @@ export default function ProfilePage() {
         return;
       }
 
+      const { data: experienceData, error: experienceError } = await supabase.rpc("provider_experience_years", {
+        p_provider: userData.user.id,
+      });
+      let totalExperienceYears = yearsExperience;
+      if (experienceError) {
+        logSupabaseError("provider experience refresh RPC failed", experienceError);
+      } else if (typeof experienceData === "number") {
+        totalExperienceYears = experienceData;
+      }
+      setEarnedExperienceYears(Math.max(0, totalExperienceYears - yearsExperience));
+
       setProviderListing((current) => ({
         ...current,
         business_name: businessName,
@@ -375,7 +401,7 @@ export default function ProfilePage() {
         bio,
         locality,
       }));
-      setSavedProviderListing((current) => ({ ...current, business_name: businessName, headline, bio, locality }));
+      setSavedProviderListing((current) => ({ ...current, business_name: businessName, headline, years_experience: yearsExperience, bio, locality }));
       setListingSuccess("Business listing saved.");
       setActiveEditor(null);
     } catch (saveError: unknown) {
@@ -616,6 +642,8 @@ export default function ProfilePage() {
     const cityCenter = providerCity in CITY_CENTERS ? CITY_CENTERS[providerCity as keyof typeof CITY_CENTERS] : DEFAULT_MAP_CENTER;
     const hasLocation = providerListing.lat !== null && providerListing.lng !== null;
     const isEditingProvider = activeEditor === "provider";
+    const declaredExperienceYears = providerListing.years_experience ?? 0;
+    const totalExperienceYears = declaredExperienceYears + earnedExperienceYears;
 
     return (
       <main className="mx-auto w-full max-w-5xl space-y-4 px-4 pt-0 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6">
@@ -661,6 +689,10 @@ export default function ProfilePage() {
                 ) : (
                   <p className="min-h-11 py-2 text-sm font-medium">{providerListing.years_experience === null ? "Not provided" : `${providerListing.years_experience} years`}</p>
                 )}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Customers see {totalExperienceYears} years: {declaredExperienceYears} you entered{earnedExperienceYears > 0 ? ` + ${earnedExperienceYears} earned on Assisto` : ""}.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Every 12 months in which you complete at least one job adds a year. Changing this number restarts the count.</p>
               </div>
               <div className="sm:col-span-2">
                 <label htmlFor="provider-bio" className="mb-1 block text-sm font-medium">Bio</label>

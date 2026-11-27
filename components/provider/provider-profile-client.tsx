@@ -46,6 +46,7 @@ type ProviderRecord = {
   headline: string | null;
   bio: string | null;
   years_experience: number | null;
+  customer_experience_years?: number | null;
   city: string | null;
   locality: string | null;
   is_verified: boolean | null;
@@ -620,13 +621,25 @@ export default function ProviderProfileClient({ id }: Props) {
 
       if (providerError) logSupabaseError("public provider profile query failed:", providerError);
 
+      let customerExperienceYears = providerData?.years_experience ?? null;
+      if (providerData) {
+        const { data: experienceData, error: experienceError } = await supabase.rpc("provider_experience_years", {
+          p_provider: providerData.id,
+        });
+        if (experienceError) {
+          logSupabaseError("provider experience RPC failed:", experienceError);
+        } else if (typeof experienceData === "number") {
+          customerExperienceYears = experienceData;
+        }
+      }
+
       if (!isMounted) return;
 
       const orderedPortfolio = [...((providerData?.provider_portfolio_items as ProviderRecord["provider_portfolio_items"]) ?? [])].sort(
         (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
       );
 
-      setProvider(providerData ? { ...providerData, provider_portfolio_items: orderedPortfolio } : null);
+      setProvider(providerData ? { ...providerData, customer_experience_years: customerExperienceYears, provider_portfolio_items: orderedPortfolio } : null);
       setProviderLoadError(Boolean(providerError));
 
       if (providerData) {
@@ -811,7 +824,7 @@ export default function ProviderProfileClient({ id }: Props) {
         isVerified={provider.is_verified}
         locality={provider.locality}
         city={provider.city}
-        yearsExperience={provider.years_experience}
+        yearsExperience={provider.customer_experience_years ?? provider.years_experience}
         headline={provider.headline}
         categories={categories}
         avgRating={provider.avg_rating}
