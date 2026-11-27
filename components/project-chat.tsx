@@ -242,6 +242,7 @@ export default function ProjectChat(props: ProjectChatProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isNearBottomRef = useRef(true);
   const prevMessageCountRef = useRef(0);
@@ -300,8 +301,8 @@ export default function ProjectChat(props: ProjectChatProps) {
   }, []);
 
   // Scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
   };
 
   useEffect(() => {
@@ -310,10 +311,30 @@ export default function ProjectChat(props: ProjectChatProps) {
     const isNewMessage = messages.length > prevMessageCountRef.current;
     const lastIsMine = lastMsg?.sender_id === currentUserId;
     if (isNearBottomRef.current || (isNewMessage && lastIsMine) || prevMessageCountRef.current === 0) {
-      scrollToBottom();
+      scrollToBottom(prevMessageCountRef.current === 0 ? "instant" : "smooth");
     }
     prevMessageCountRef.current = messages.length;
   }, [messages, loadingMessages, currentUserId]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const lineHeight = Number.parseFloat(window.getComputedStyle(textarea).lineHeight) || 20;
+    const maxHeight = lineHeight * 4 + 26;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [text]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const keepNewestVisible = () => {
+      if (!isNearBottomRef.current) return;
+      window.requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ behavior: "instant", block: "end" }));
+    };
+    viewport?.addEventListener("resize", keepNewestVisible);
+    return () => viewport?.removeEventListener("resize", keepNewestVisible);
+  }, []);
 
   const markAsRead = useCallback(async () => {
     try {
@@ -1078,7 +1099,7 @@ export default function ProjectChat(props: ProjectChatProps) {
   };
 
   return (
-    <div className="w-full">
+    <div className="flex h-full min-h-0 w-full flex-col">
       {toastMessage && (
         <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lifted">
           {toastMessage}
@@ -1087,7 +1108,7 @@ export default function ProjectChat(props: ProjectChatProps) {
 
       <div
         ref={containerRef}
-        className="mb-6 max-h-[60vh] space-y-4 overflow-y-auto rounded-2xl border border-border bg-muted/50 p-4"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain bg-muted/50 px-3 py-4 sm:px-5"
         onScroll={() => {
           const el = containerRef.current;
           if (!el) return;
@@ -1632,84 +1653,87 @@ export default function ProjectChat(props: ProjectChatProps) {
         </div>
       )}
 
-      {error && (
-        <div className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
-      )}
+      <div className="z-10 shrink-0 border-t border-border bg-background px-3 pb-2 pt-2 sm:px-5">
+        {error && (
+          <div className="mb-2 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+        )}
 
-      {canSend ? (
-        <div className="space-y-2">
-          {pendingFiles.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {pendingFiles.map((pendingFile) => (
-                <div key={pendingFile.id} className="relative w-24 rounded-md border border-border bg-card p-2">
-                  <button
-                    type="button"
-                    aria-label={`Remove ${pendingFile.file.name}`}
-                    className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground"
-                    onClick={() => handleRemoveFile(pendingFile.id)}
-                  >
-                    ×
-                  </button>
-                  {pendingFile.kind === "photo" && pendingFile.previewUrl ? (
-                    <Image src={pendingFile.previewUrl} alt={pendingFile.file.name} width={200} height={64} unoptimized className="h-16 w-full rounded object-cover" />
-                  ) : (
-                    <div className="flex h-16 w-full items-center justify-center rounded bg-muted text-xl">
-                      {pendingFile.kind === "video" ? "🎬" : "📄"}
-                    </div>
-                  )}
-                  <p className="mt-2 truncate text-[10px] text-foreground">{pendingFile.file.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{formatFileSize(pendingFile.file.size)}</p>
-                </div>
-              ))}
+        {canSend ? (
+          <div className="space-y-2">
+            {pendingFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {pendingFiles.map((pendingFile) => (
+                  <div key={pendingFile.id} className="relative w-24 rounded-md border border-border bg-card p-2">
+                    <button
+                      type="button"
+                      aria-label={`Remove ${pendingFile.file.name}`}
+                      className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground"
+                      onClick={() => handleRemoveFile(pendingFile.id)}
+                    >
+                      ×
+                    </button>
+                    {pendingFile.kind === "photo" && pendingFile.previewUrl ? (
+                      <Image src={pendingFile.previewUrl} alt={pendingFile.file.name} width={200} height={64} unoptimized className="h-16 w-full rounded object-cover" />
+                    ) : (
+                      <div className="flex h-16 w-full items-center justify-center rounded bg-muted text-xl">
+                        {pendingFile.kind === "video" ? "🎬" : "📄"}
+                      </div>
+                    )}
+                    <p className="mt-2 truncate text-[10px] text-foreground">{pendingFile.file.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{formatFileSize(pendingFile.file.size)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {uploadError && (
+              <div className="rounded border border-destructive/20 bg-destructive/10 p-2 text-sm text-destructive whitespace-pre-line">{uploadError}</div>
+            )}
+
+            <div className="flex items-end gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-border bg-background px-3 text-sm text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Add files"
+              >
+                📎
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                hidden
+                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                onChange={handleAddFiles}
+                disabled={sending}
+              />
+
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={sending}
+                placeholder="Type a message..."
+                className="min-h-11 max-h-28 min-w-0 flex-1 resize-none overflow-y-hidden rounded-xl border border-input bg-background p-3 text-sm leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground"
+                rows={1}
+              />
+
+              <button
+                onClick={handleSend}
+                disabled={sending || (!text.trim() && pendingFiles.length === 0)}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {sending ? "Uploading…" : "Send"}
+              </button>
             </div>
-          )}
-
-          {uploadError && (
-            <div className="rounded border border-destructive/20 bg-destructive/10 p-2 text-sm text-destructive whitespace-pre-line">{uploadError}</div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={sending}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-border bg-background px-3 text-sm text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Add files"
-            >
-              📎
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-              onChange={handleAddFiles}
-              disabled={sending}
-            />
-
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={sending}
-              placeholder="Type a message..."
-              className="min-h-11 min-w-0 flex-1 rounded-xl border border-input bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground"
-              rows={3}
-            />
-
-            <button
-              onClick={handleSend}
-              disabled={sending || (!text.trim() && pendingFiles.length === 0)}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {sending ? "Uploading…" : "Send"}
-            </button>
           </div>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border bg-muted p-4 text-sm text-muted-foreground">{readOnlyReason}</div>
-      )}
+        ) : (
+          <div className="rounded-xl border border-border bg-muted p-4 text-sm text-muted-foreground">{readOnlyReason}</div>
+        )}
+      </div>
     </div>
   );
 }

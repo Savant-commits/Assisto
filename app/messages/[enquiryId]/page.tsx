@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/avatar";
 import ProjectChat from "@/components/project-chat";
-import { PageHeading } from "@/components/page-heading";
 
 export default function MessageConversationPage({ params }: { params: Promise<{ enquiryId: string }> }) {
+  const mainRef = useRef<HTMLElement>(null);
   const [projectId, setProjectId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +18,26 @@ export default function MessageConversationPage({ params }: { params: Promise<{ 
   const [currentUserId, setCurrentUserId] = useState("");
   const [canSend, setCanSend] = useState(false);
   const [notificationRefreshVersion, setNotificationRefreshVersion] = useState(0);
+
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const viewport = window.visualViewport;
+    const updateViewport = () => {
+      main.style.height = `${viewport?.height ?? window.innerHeight}px`;
+      main.style.top = `${viewport?.offsetTop ?? 0}px`;
+    };
+
+    updateViewport();
+    viewport?.addEventListener("resize", updateViewport);
+    viewport?.addEventListener("scroll", updateViewport);
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      viewport?.removeEventListener("resize", updateViewport);
+      viewport?.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, []);
 
   useEffect(() => {
     function handleNotificationRefresh(event: Event) {
@@ -100,32 +120,51 @@ export default function MessageConversationPage({ params }: { params: Promise<{ 
 
   if (loading) {
     return (
-      <main className="mx-auto flex min-h-[calc(100dvh-var(--bottom-nav-height))] w-full max-w-3xl flex-col px-4 py-6">
-        <div className="skeleton h-20 rounded-2xl" />
-        <div className="mt-4 flex-1 space-y-3"><div className="skeleton h-16 rounded-2xl" /><div className="skeleton h-16 rounded-2xl" /><div className="skeleton h-16 rounded-2xl" /></div>
+      <main ref={mainRef} className="fixed inset-x-0 top-0 z-30 flex h-[100dvh] flex-col overflow-hidden bg-background">
+        <div className="mx-auto w-full max-w-[720px] shrink-0 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.5rem)] sm:px-5">
+          <div className="skeleton h-12 rounded-2xl" />
+        </div>
+        <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col gap-3 overflow-hidden px-3 sm:px-5">
+          <div className="skeleton h-16 shrink-0 rounded-2xl" />
+          <div className="skeleton h-16 shrink-0 rounded-2xl" />
+          <div className="skeleton h-16 shrink-0 rounded-2xl" />
+        </div>
       </main>
     );
   }
 
   if (error) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
-        <Link href="/messages" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted"><ArrowLeft className="size-4" />Back to messages</Link>
-        <div role="alert" className="mt-5 rounded-2xl border border-border bg-card p-6 text-sm text-destructive">{error}</div>
+      <main ref={mainRef} className="fixed inset-x-0 top-0 z-30 flex h-[100dvh] flex-col overflow-hidden bg-background">
+        <div className="mx-auto w-full max-w-[720px] px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.5rem)] sm:px-5">
+          <Link href="/messages" aria-label="Back to messages" className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft aria-hidden="true" className="size-5" /></Link>
+        </div>
+        <div className="mx-auto w-full max-w-[720px] px-3 sm:px-5">
+          <div role="alert" className="rounded-2xl border border-border bg-card p-6 text-sm text-destructive">{error}</div>
+        </div>
       </main>
     );
   }
 
   const history = ["completed", "cancelled", "declined"].includes(status);
+  const statusLabel = status === "sent" ? "New" : `${status.charAt(0).toLocaleUpperCase()}${status.slice(1)}`;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 pt-[calc(env(safe-area-inset-top)_+_1.5rem)] pb-[calc(var(--bottom-nav-height)+2rem)] sm:pb-6">
-      <header className="mb-4 flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-sm">
-        <Link href="/messages" aria-label="Back to messages" className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="size-5" /></Link>
-        <Avatar src={avatarUrl} name={name} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
-        <PageHeading title={name} description={<span className="capitalize">{status === "sent" ? "New" : status}</span>} className="mb-0 min-w-0 flex-1 pt-0" />
+    <main ref={mainRef} className="fixed inset-x-0 top-0 z-30 flex h-[100dvh] flex-col overflow-hidden bg-background pb-[env(safe-area-inset-bottom)]">
+      <header className="mx-auto flex w-full max-w-[720px] shrink-0 items-center gap-3 border-b border-border bg-background px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.5rem)] sm:px-5 sm:pt-[calc(env(safe-area-inset-top)+0.75rem)]">
+        <Link href="/messages" aria-label="Back to messages" className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft aria-hidden="true" className="size-5" /></Link>
+        <Avatar src={avatarUrl} name={name} size={44} className="size-11 shrink-0 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
+        <h1 className="min-w-0 flex-1 truncate font-display text-lg font-semibold text-foreground sm:text-xl">{name}</h1>
+        <Link
+          href={`/projects/${encodeURIComponent(projectId)}`}
+          aria-label={`View enquiry, status ${statusLabel}`}
+          title="View enquiry"
+          className={`inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-4 sm:text-sm ${status === "cancelled" || status === "declined" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}
+        >
+          {statusLabel}
+        </Link>
       </header>
-      <section className="rounded-2xl border border-border bg-card p-3 shadow-sm sm:p-5">
+      <section aria-label="Conversation" className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-hidden px-0 sm:px-5">
         <ProjectChat
           key={`${projectId}:${notificationRefreshVersion}`}
           projectId={projectId}

@@ -16,14 +16,15 @@ export function RouteChrome({
 }) {
   const pathname = usePathname() || "/";
   const isHomeRoute = pathname === "/";
+  const isMessageConversation = pathname.startsWith("/messages/");
 
   return (
     <NotificationsProvider>
       {isHomeRoute && <AppHeader fullName={fullName} isLoggedIn={isLoggedIn} />}
-      <div style={{ paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
+      <div style={isMessageConversation ? undefined : { paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
         {children}
       </div>
-      <BottomNav currentPath={pathname} />
+      {!isMessageConversation && <BottomNav currentPath={pathname} />}
     </NotificationsProvider>
   );
 }
