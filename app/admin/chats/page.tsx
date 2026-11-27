@@ -4,6 +4,7 @@ import AdminChatsList from "@/components/admin-chats-list";
 import type { AdminChatSummary } from "@/components/admin-chats-list";
 import { humanDuration } from "@/lib/chat-duration";
 import { one } from "@/lib/relations";
+import { PageHeading } from "@/components/page-heading";
 
 type Relation<T> = T | T[] | null;
 type ReportRow = { reportable_id: string; status: string; created_at: string };
@@ -137,9 +138,8 @@ export default async function AdminChatsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-1 text-2xl font-semibold">Reported Chats (admin)</h1>
-      <p className="mb-6 text-muted-foreground">Only chats with at least one reported message appear here.</p>
+    <div className="mx-auto max-w-4xl px-4 pt-0 pb-8">
+      <PageHeading title="Reported Chats (admin)" description="Only chats with at least one reported message appear here." />
 
       <AdminChatsList chats={byProject} />
     </div>

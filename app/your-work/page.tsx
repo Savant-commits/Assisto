@@ -14,6 +14,7 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { friendlyDbError } from "@/lib/db-errors";
 import MediaViewer from "@/components/media-viewer";
 import type { ProviderPortfolioItem } from "@/lib/types";
+import { PageHeading } from "@/components/page-heading";
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -642,13 +643,8 @@ export default function PortfolioPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <div className="mb-6">
-        <h1 className="mb-1 text-2xl font-semibold">Your work</h1>
-        <p className="text-muted-foreground">
-          Photos and videos of your past projects. Customers see them on your profile.
-        </p>
-      </div>
+    <div className="mx-auto max-w-2xl px-4 pt-0 pb-10">
+      <PageHeading title="Your work" description="Photos and videos of your past projects. Customers see them on your profile." />
 
       <div
         onDragEnter={handleDragEnter}

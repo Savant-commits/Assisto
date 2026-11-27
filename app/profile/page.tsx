@@ -3,6 +3,7 @@
 import { useState, useEffect, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,6 +30,10 @@ import { Avatar } from "@/components/avatar";
 import { PrivateProfileAddress } from "@/components/profile/private-address";
 import { ProviderSummaryCard } from "@/components/profile/provider-summary-card";
 import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
+import { PageHeading } from "@/components/page-heading";
+import ThemeToggle from "@/components/theme-toggle";
+import { SettingsLogOutButton, SettingsSignInButton } from "@/components/settings-account-actions";
+import AdminLink from "@/components/shell/admin-link";
 
 const schema = z.object({
   full_name: z.string().min(2),
@@ -165,6 +170,8 @@ export default function ProfilePage() {
   const [listingSuccess, setListingSuccess] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [accountEmail, setAccountEmail] = useState("");
+  const [guestSettings, setGuestSettings] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [phoneVerifiedAt, setPhoneVerifiedAt] = useState<string | null>(null);
   const [isPhoneGateOpen, setIsPhoneGateOpen] = useState(false);
@@ -211,11 +218,19 @@ export default function ProfilePage() {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError && !isAuthSessionMissingError(userError)) logSupabaseError("profile auth lookup failed", userError);
       if (!userData.user) {
+        if (!isProviderHubRoute) {
+          setGuestSettings(true);
+          setLoading(false);
+          return;
+        }
         setLoading(false);
         router.push(`/login?redirect=${encodeURIComponent(isProviderHubRoute ? "/profile/provider" : "/profile")}`);
         return;
       }
-      if (mounted) setProfileId(userData.user.id);
+      if (mounted) {
+        setProfileId(userData.user.id);
+        setAccountEmail(userData.user.email ?? "");
+      }
 
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
@@ -542,12 +557,36 @@ export default function ProfilePage() {
     </main>
   );
 
+  if (guestSettings) {
+    return (
+      <main className="mx-auto w-full max-w-5xl px-4 pt-0 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6">
+        <PageHeading title="Your profile" />
+        <section aria-labelledby="settings" className="space-y-5 border-t border-border pt-6">
+          <h2 id="settings" className="font-display text-2xl font-medium text-foreground">Settings</h2>
+          <section aria-labelledby="appearance-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+            <h3 id="appearance-heading" className="mb-2 text-lg font-semibold text-foreground">Appearance</h3>
+            <p className="mb-5 text-sm text-muted-foreground">Choose a light or dark theme, or follow your device setting.</p>
+            <ThemeToggle />
+          </section>
+          <section aria-labelledby="account-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+            <h3 id="account-heading" className="mb-4 text-lg font-semibold text-foreground">Account</h3>
+            <p className="mb-4 text-sm text-muted-foreground">You&apos;re browsing as a guest</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <SettingsSignInButton />
+              <Link href="/signup?redirect=%2Fprofile%23settings" className="inline-flex min-h-11 items-center justify-center rounded-full border border-border px-5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">Create account</Link>
+            </div>
+          </section>
+        </section>
+      </main>
+    );
+  }
+
   if (isProviderHubRoute && isProvider === null) {
     if (providerLookupError) {
       return (
         <main className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6">
           <section role="alert" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm">
-            <h1 className="font-display text-2xl">Provider hub</h1>
+            <PageHeading title="Provider hub" className="mb-0 pt-0" />
             <p className="mt-2 text-sm text-muted-foreground">{providerLookupError}</p>
             <Button type="button" variant="outline" className="mt-4 min-h-11" onClick={() => window.location.reload()}>Reload</Button>
           </section>
@@ -572,14 +611,8 @@ export default function ProfilePage() {
     const isEditingProvider = activeEditor === "provider";
 
     return (
-      <main className="mx-auto w-full max-w-5xl space-y-4 px-4 py-8 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6 md:py-10">
-        <header className="mb-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">Provider hub</h1>
-            <Badge>Provider</Badge>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground">Manage how customers see your business.</p>
-        </header>
+      <main className="mx-auto w-full max-w-5xl space-y-4 px-4 pt-0 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6">
+        <PageHeading title="Provider hub" description="Manage how customers see your business." action={<Badge>Provider</Badge>} />
 
         <ProviderSummaryCard
           providerId={profileId}
@@ -594,7 +627,7 @@ export default function ProfilePage() {
               <h2 id="provider-listing-heading" className="font-display text-xl">Provider listing</h2>
               <p className="mt-1 text-xs font-medium text-muted-foreground">Public business details</p>
             </div>
-            {!isEditingProvider && <Button type="button" variant="outline" className="min-h-11" disabled={activeEditor !== null} onClick={() => { setProviderListing(savedProviderListing); setListingError(null); setListingSuccess(null); setActiveEditor("provider"); }}>Edit</Button>}
+            {!isEditingProvider && <Button type="button" variant="outline" size="icon" className="size-11 shrink-0" aria-label="Edit provider listing" title="Edit provider listing" disabled={activeEditor !== null} onClick={() => { setProviderListing(savedProviderListing); setListingError(null); setListingSuccess(null); setActiveEditor("provider"); }}><Pencil aria-hidden="true" className="size-4" /></Button>}
           </div>
           <form onSubmit={saveProviderListing} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -688,15 +721,13 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-8 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6 md:py-10">
-      <header className="mb-6 sm:mb-8">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">Your profile</h1>
-          {isAdmin && <Badge variant="secondary">Admin</Badge>}
-          {isProvider && <Badge>Provider</Badge>}
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">Manage your public details and private address.</p>
-      </header>
+    <main className="mx-auto w-full max-w-5xl px-4 pt-0 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6">
+      <PageHeading
+        title="Your profile"
+        description="Manage your public details and private address."
+        action={<div className="flex flex-wrap gap-2">{isAdmin && <Badge variant="secondary">Admin</Badge>}{isProvider && <Badge>Provider</Badge>}</div>}
+        className="sm:mb-8"
+      />
 
       <div className="grid items-start gap-4 md:grid-cols-2 md:gap-5">
         <section aria-labelledby="identity-heading" className="min-w-0 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
@@ -705,11 +736,11 @@ export default function ProfilePage() {
               <h2 id="identity-heading" className="font-display text-xl">Identity</h2>
               <p className="mt-1 text-xs font-medium text-muted-foreground">Public details</p>
             </div>
-            {!isEditing && <Button type="button" variant="outline" className="min-h-11 shrink-0" disabled={activeEditor !== null} onClick={() => {
+            {!isEditing && <Button type="button" variant="outline" size="icon" className="size-11 shrink-0" aria-label="Edit identity" title="Edit identity" disabled={activeEditor !== null} onClick={() => {
               form.reset(savedFormValues);
               setError(null);
               setActiveEditor("identity");
-            }}>Edit</Button>}
+            }}><Pencil aria-hidden="true" className="size-4" /></Button>}
           </div>
 
           <div className="mb-5 flex items-center gap-4">
@@ -721,7 +752,6 @@ export default function ProfilePage() {
             />
             <div className="min-w-0">
               <p className="truncate text-lg font-semibold text-foreground">{profile?.full_name || savedFormValues.full_name || "Name not provided"}</p>
-              {profile?.user_code && <span className="mt-1 inline-flex min-h-7 items-center rounded-full border border-border bg-muted/50 px-3 text-xs font-medium text-muted-foreground">ID · {profile.user_code}</span>}
               <input key="profile-avatar-file" id="profile-avatar-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadAvatar} disabled={isUploading} className="sr-only" aria-label="Choose a profile photo" />
               <label htmlFor="profile-avatar-file" aria-disabled={isUploading} className={`mt-2 inline-flex min-h-11 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors ${isUploading ? "pointer-events-none opacity-50" : "cursor-pointer hover:bg-accent hover:text-accent-foreground"}`}>
                 {isUploading ? "Uploading…" : "Change photo"}
@@ -764,6 +794,7 @@ export default function ProfilePage() {
             <div className="space-y-2 border-t border-border pt-4 text-sm">
               <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Name</span><span className="truncate font-medium">{savedFormValues.full_name || "Not provided"}</span></div>
               <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">City</span><span className="font-medium">{savedFormValues.city || "Not provided"}</span></div>
+              <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">ID</span><span className="font-medium">{profile?.user_code || "Not provided"}</span></div>
             </div>
           )}
         </section>
@@ -819,7 +850,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <a href="/profile/services" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Manage services</a>
-                  {!isEditingProvider && <Button type="button" variant="outline" className="min-h-11" disabled={activeEditor !== null} onClick={() => { setProviderListing(savedProviderListing); setListingError(null); setListingSuccess(null); setActiveEditor("provider"); }}>Edit</Button>}
+                  {!isEditingProvider && <Button type="button" variant="outline" size="icon" className="size-11 shrink-0" aria-label="Edit provider listing" title="Edit provider listing" disabled={activeEditor !== null} onClick={() => { setProviderListing(savedProviderListing); setListingError(null); setListingSuccess(null); setActiveEditor("provider"); }}><Pencil aria-hidden="true" className="size-4" /></Button>}
                 </div>
               </div>
 
@@ -883,6 +914,32 @@ export default function ProfilePage() {
           );
         })()}
       </div>
+
+      <section aria-labelledby="settings" className="mt-8 space-y-5 border-t border-border pt-6">
+        <h2 id="settings" className="font-display text-2xl font-medium text-foreground">Settings</h2>
+
+        <section aria-labelledby="appearance-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+          <h3 id="appearance-heading" className="mb-2 text-lg font-semibold text-foreground">Appearance</h3>
+          <p className="mb-5 text-sm text-muted-foreground">Choose a light or dark theme, or follow your device setting.</p>
+          <ThemeToggle />
+        </section>
+
+        <section aria-labelledby="account-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+          <h3 id="account-heading" className="mb-4 text-lg font-semibold text-foreground">Account</h3>
+          <div className="mb-5 flex min-w-0 items-center gap-4 rounded-xl border border-border bg-background p-4">
+            <Avatar src={avatarUrl} name={profile?.full_name?.trim() || accountEmail || "Your account"} size={56} className="size-14 shrink-0 rounded-full object-cover" />
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">{profile?.full_name?.trim() || accountEmail || "Your account"}</p>
+              <p className="truncate text-sm text-muted-foreground">{accountEmail || "Email unavailable"}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link href="#identity-heading" className="inline-flex min-h-11 items-center justify-center rounded-full border border-border px-5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">Edit profile</Link>
+            <SettingsLogOutButton />
+            <AdminLink />
+          </div>
+        </section>
+      </section>
 
       <PhoneGateDialog
         isOpen={isPhoneGateOpen}

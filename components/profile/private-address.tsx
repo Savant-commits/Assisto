@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
-import { MapPin, X } from "lucide-react";
+import { MapPin, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LocationPicker } from "@/components/map/location-picker";
@@ -347,9 +347,13 @@ export function PrivateProfileAddress({
             <h2 id="private-address-heading" className="font-display text-xl">Address</h2>
             <p className="mt-1 text-xs font-medium text-muted-foreground">Private: only you can see this</p>
           </div>
-          <Button type="button" variant="outline" className="min-h-11 shrink-0" onClick={onEdit} disabled={!canEdit}>
-            {address ? "Edit" : "Add your address"}
-          </Button>
+          {address ? (
+            <Button type="button" variant="outline" size="icon" className="size-11 shrink-0" aria-label="Edit address" title="Edit address" onClick={onEdit} disabled={!canEdit}>
+              <Pencil aria-hidden="true" className="size-4" />
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" className="min-h-11 shrink-0" onClick={onEdit} disabled={!canEdit}>Add your address</Button>
+          )}
         </div>
 
         {address ? (

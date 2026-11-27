@@ -10,6 +10,7 @@ import DiscoverSearchToggle from "@/components/discover/discover-search-toggle";
 import DiscoverFilterStrip from "@/components/discover/discover-filter-strip";
 import DiscoverLocationChip from "@/components/discover/discover-location-chip";
 import { groupProviders, sameCity, type GeolocatedProvider } from "@/lib/discover/group-providers";
+import { PageHeading } from "@/components/page-heading";
 
 type ProviderListRow = GeolocatedProvider & {
   profiles?: ProviderProfile | ProviderProfile[] | null;
@@ -217,13 +218,11 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   const retryHref = buildDiscoverUrl({ ...params, sort: selectedSort });
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 pt-0 pb-8">
+      <PageHeading title="Find a professional" description={`Browse verified professionals near ${effectiveCity}.`} />
       <div className="sm:hidden [&>div>p]:hidden">
         <DiscoverSearchToggle city={city} category={category} requirement={requirement} />
-        <p className="mb-3 text-sm text-muted-foreground">Browse verified professionals near {effectiveCity}.</p>
       </div>
-      <h1 className="mb-1 hidden text-2xl font-semibold sm:block">Find a professional</h1>
-      <p className="mb-6 hidden text-muted-foreground sm:block">Browse verified professionals near {effectiveCity}.</p>
 
       <DiscoverFilterStrip
         locationChip={<DiscoverLocationChip variant="mobile" />}

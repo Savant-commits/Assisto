@@ -3,6 +3,7 @@ import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import AdminSendWarning from "@/components/admin-send-warning";
+import { PageHeading } from "@/components/page-heading";
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -20,8 +21,8 @@ export default async function AdminPage() {
   if (profile?.role !== "admin") redirect("/");
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-6 text-3xl font-semibold">Admin Dashboard</h1>
+    <div className="mx-auto max-w-4xl px-4 pt-0 pb-8">
+      <PageHeading title="Admin Dashboard" />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Link

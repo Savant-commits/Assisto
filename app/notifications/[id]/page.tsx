@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { notFound, redirect } from "next/navigation";
+import { PageHeading } from "@/components/page-heading";
 
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -205,11 +206,8 @@ export default async function NotificationPage({ params }: { params: Promise<{ i
   const project = Array.isArray(enquiry?.projects) ? enquiry.projects[0] : enquiry?.projects;
 
   return (
-    <main className="mx-auto max-w-3xl p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">{notification.title}</h1>
-        <div className="text-sm text-muted-foreground">{new Date(notification.created_at).toLocaleString()}</div>
-      </div>
+    <main className="mx-auto max-w-3xl px-6 pt-0 pb-6">
+      <PageHeading title={notification.title} description={new Date(notification.created_at).toLocaleString()} />
 
       {notification.type === "review_received" && review && enquiry ? (
         <div className="rounded-lg border p-6 space-y-4">

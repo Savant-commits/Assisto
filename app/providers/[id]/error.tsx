@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeading } from "@/components/page-heading";
 
 type Props = {
   error: Error & { digest?: string };
@@ -11,9 +12,9 @@ type Props = {
 
 export default function Error({ reset }: Props) {
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-10">
+    <main className="mx-auto w-full max-w-2xl px-4 pt-0 pb-10">
       <section role="alert" className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-soft">
-        <h1 className="font-display text-2xl">We couldn&apos;t load this provider profile.</h1>
+        <PageHeading title="We couldn't load this provider profile." className="mb-0 pt-0" />
         <p className="mt-2 text-sm text-muted-foreground">Please try again, or return to Discover.</p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button type="button" variant="outline" className="min-h-11" onClick={reset}>Try again</Button>

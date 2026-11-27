@@ -3,27 +3,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, BriefcaseBusiness, Compass, House, LogIn, MessageCircle, Settings as SettingsIcon, UserRound, ClipboardList } from "lucide-react";
+import { Bell, BriefcaseBusiness, UserRound } from "lucide-react";
 import { useNotifications } from "@/components/notification-bell";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
 import HomeSearchBar from "@/components/search/home-search-bar";
 import AuthGatedLink from "@/components/auth/auth-gated-link";
-import { useAuthGate } from "@/components/auth/auth-sheet";
-import AdminLink from "@/components/shell/admin-link";
 import { createClient } from "@/lib/supabase/client";
 
 type AppHeaderProps = {
   fullName?: string | null;
   isLoggedIn: boolean;
 };
-
-const tabs = [
-  { label: "Home", href: "/", Icon: House },
-  { label: "Discover", href: "/discover", Icon: Compass },
-  { label: "Requests", href: "/enquiries", Icon: ClipboardList, requiresLogin: true },
-  { label: "Messages", href: "/messages", Icon: MessageCircle, requiresLogin: true },
-  { label: "Profile", href: "/profile", Icon: UserRound, requiresLogin: true },
-];
 
 export function HeaderSearchSlot({ compact, firstName }: { compact: boolean; firstName?: string | null }) {
   return <HomeSearchBar compact={compact} firstName={firstName} />;
@@ -35,11 +25,8 @@ export default function AppHeader({ fullName, isLoggedIn }: AppHeaderProps) {
   const [hasFocus, setHasFocus] = useState(false);
   const [hasProviderRow, setHasProviderRow] = useState(false);
   const notifications = useNotifications();
-  const { requireAuth } = useAuthGate();
 
   const isHomeRoute = pathname === "/";
-  const isSettingsRoute = pathname === "/settings";
-  const isProviderHubRoute = pathname === "/profile/provider";
   const compact = hidden && !hasFocus;
 
   useEffect(() => {
@@ -81,38 +68,12 @@ export default function AppHeader({ fullName, isLoggedIn }: AppHeaderProps) {
             Assisto
           </Link>
 
-          {isHomeRoute && <nav aria-label="Main navigation" className="hidden items-center gap-1 lg:flex">
-            {tabs.map(({ label, href, Icon, requiresLogin }) => {
-              const active = pathname === href || (href === "/messages" && pathname.startsWith("/messages"));
-              const className = `inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${active ? "bg-accent text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`;
-
-              return requiresLogin ? (
-                <AuthGatedLink key={label} href={href} actionLabel={`to view ${label.toLowerCase()}`} className={className} aria-current={active ? "page" : undefined}>
-                  <Icon aria-hidden="true" className="size-4" />
-                  {label}
-                  {label === "Messages" && !!notifications?.unreadMessageCount && (
-                    <span aria-label={`${notifications.unreadMessageCount} unread messages`} className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
-                      {notifications.unreadMessageCount > 9 ? "9+" : notifications.unreadMessageCount}
-                    </span>
-                  )}
-                </AuthGatedLink>
-              ) : (
-                <Link key={label} href={href} className={className} aria-current={active ? "page" : undefined}>
-                  <Icon aria-hidden="true" className="size-4" />
-                  {label}
-                </Link>
-              );
-            })}
-          </nav>}
-
           <div className="flex items-center gap-2">
-            <AdminLink />
             {isLoggedIn && hasProviderRow && (
               <Link
                 href="/profile/provider"
                 aria-label="Provider hub"
-                aria-current={isProviderHubRoute ? "page" : undefined}
-                className={`inline-flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isProviderHubRoute ? "bg-accent text-primary" : "text-foreground hover:bg-muted"}`}
+                className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <BriefcaseBusiness aria-hidden="true" className="size-5" />
               </Link>
@@ -137,24 +98,12 @@ export default function AppHeader({ fullName, isLoggedIn }: AppHeaderProps) {
               </AuthGatedLink>
             )}
             <Link
-              href="/settings"
-              aria-label="Settings"
-              aria-current={isSettingsRoute ? "page" : undefined}
-              className={`inline-flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isSettingsRoute ? "bg-accent text-primary" : "text-foreground hover:bg-muted"}`}
+              href={isLoggedIn ? "/profile" : "/login?redirect=%2Fprofile"}
+              aria-label="Profile"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <SettingsIcon aria-hidden="true" className="size-5" />
+              <UserRound aria-hidden="true" className="size-5" />
             </Link>
-            {!isLoggedIn && (
-              <button
-                type="button"
-                aria-label="Sign in"
-                onClick={() => requireAuth(() => {}, "to access your account")}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[380px]:size-11 max-[380px]:px-0"
-              >
-                <LogIn aria-hidden="true" className="size-4" />
-                <span className="max-[380px]:sr-only">Sign in</span>
-              </button>
-            )}
           </div>
         </div>
       </header>

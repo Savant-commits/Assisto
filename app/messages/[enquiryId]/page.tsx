@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/avatar";
 import ProjectChat from "@/components/project-chat";
+import { PageHeading } from "@/components/page-heading";
 
 export default function MessageConversationPage({ params }: { params: Promise<{ enquiryId: string }> }) {
   const [projectId, setProjectId] = useState("");
@@ -118,14 +119,11 @@ export default function MessageConversationPage({ params }: { params: Promise<{ 
   const history = ["completed", "cancelled", "declined"].includes(status);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-4 pb-[calc(var(--bottom-nav-height)+2rem)] sm:py-6">
+    <main className="mx-auto w-full max-w-3xl px-4 pt-[calc(env(safe-area-inset-top)_+_1.5rem)] pb-[calc(var(--bottom-nav-height)+2rem)] sm:pb-6">
       <header className="mb-4 flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-sm">
         <Link href="/messages" aria-label="Back to messages" className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="size-5" /></Link>
         <Avatar src={avatarUrl} name={name} size={44} className="size-11 rounded-full border border-border bg-muted text-sm text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate font-display text-xl font-semibold text-foreground">{name}</h1>
-          <p className="text-xs font-medium capitalize text-muted-foreground">{status === "sent" ? "New" : status}</p>
-        </div>
+        <PageHeading title={name} description={<span className="capitalize">{status === "sent" ? "New" : status}</span>} className="mb-0 min-w-0 flex-1 pt-0" />
       </header>
       <section className="rounded-2xl border border-border bg-card p-3 shadow-sm sm:p-5">
         <ProjectChat

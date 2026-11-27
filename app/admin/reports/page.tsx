@@ -4,6 +4,7 @@ import AdminReportsTabs from "@/components/admin-reports-tabs";
 import type { ProjectMessageAttachment } from "@/lib/types";
 import { one } from "@/lib/relations";
 import type { AdminReportProfile, AdminReportRow, AdminReportTarget } from "@/lib/admin-reports";
+import { PageHeading } from "@/components/page-heading";
 
 type Relation<T> = T | T[] | null;
 type ReportQueryRow = {
@@ -196,9 +197,8 @@ export default async function AdminReportsPage() {
   }));
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-1 text-2xl font-semibold">Reports (admin)</h1>
-      <p className="mb-6 text-muted-foreground">{enrichedReports.length} reports</p>
+    <div className="mx-auto max-w-4xl px-4 pt-0 pb-8">
+      <PageHeading title="Reports (admin)" description={`${enrichedReports.length} reports`} />
 
       <AdminReportsTabs reports={enrichedReports} />
     </div>

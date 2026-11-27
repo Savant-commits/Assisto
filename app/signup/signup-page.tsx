@@ -12,6 +12,7 @@ import { emailSchema } from "@/lib/email-validation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
+import { PageHeading } from "@/components/page-heading";
 import {
   Form,
   FormControl,
@@ -108,8 +109,8 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="mx-auto max-w-sm px-4 py-16">
-      <h1 className="mb-1 text-2xl font-semibold">Create your account</h1>
+    <div className="mx-auto max-w-sm px-4 pt-0 pb-16">
+      <PageHeading title="Create your account" />
       <p className="mb-6 text-muted-foreground">
         Takes a minute. You&apos;ll need this to post a requirement or apply as a professional.
       </p>

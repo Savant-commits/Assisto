@@ -5,6 +5,7 @@ import { ApplicationActions, ApplicationApprovalToast } from "@/components/appli
 import { ApplicationCallDialog, CallRecordingPlayer } from "@/components/application-call-dialog";
 import { CredentialReviewActions } from "@/components/credential-review-actions";
 import { getPhoneVerificationRequired } from "@/lib/phone-verification-required";
+import { PageHeading } from "@/components/page-heading";
 
 const callStatusLabels = {
   pending: "Not called yet",
@@ -170,12 +171,9 @@ export default async function AdminApplicationsPage() {
   }));
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-3xl px-4 pt-0 pb-8">
       <ApplicationApprovalToast />
-      <h1 className="mb-1 text-2xl font-semibold">Provider applications</h1>
-      <p className="mb-6 text-muted-foreground">
-        {applications?.length ?? 0} pending review
-      </p>
+      <PageHeading title="Provider applications" description={`${applications?.length ?? 0} pending review`} />
 
       {!applications?.length ? (
         <p className="text-muted-foreground">Nothing pending.</p>

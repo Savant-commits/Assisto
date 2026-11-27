@@ -19,6 +19,7 @@ import { useLocation } from "@/lib/location/provider";
 import { CustomerSummarySheet, type CustomerSummary } from "@/components/enquiries/customer-summary-sheet";
 import { RequestDetailsEditor } from "@/components/enquiries/request-details-editor";
 import { CancellationSheet, type CancellationReasonCode } from "@/components/enquiries/cancellation-sheet";
+import { PageHeading } from "@/components/page-heading";
 
 type SentTab = "pending" | "active" | "history" | "reviews";
 type ReceivedTab = "pending" | "active" | "history";
@@ -818,11 +819,8 @@ export default function EnquiriesPage() {
     }));
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 pb-12 sm:py-10">
-      <div className="mb-6">
-        <h1 className="mb-1 font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">Enquiries</h1>
-        <p className="text-sm text-muted-foreground">Track messages, decisions, and work in progress.</p>
-      </div>
+    <main className="mx-auto w-full max-w-3xl px-4 pt-0 pb-12 sm:pb-10">
+      <PageHeading title="Enquiries" description="Track messages, decisions, and work in progress." />
 
       {unavailableToast && <p role="status" aria-live="polite" className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-[70] mx-auto max-w-lg rounded-2xl border border-border bg-card p-4 text-center text-sm font-medium text-card-foreground shadow-lifted">This request is no longer available</p>}
       {schemaError && <p role="alert" className="mb-5 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{schemaError}</p>}

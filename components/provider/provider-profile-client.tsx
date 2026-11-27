@@ -23,6 +23,7 @@ import { getEligibleEnquiriesForReview, type EligibleReviewEnquiry } from "@/lib
 import { useAuthGate } from "@/components/auth/auth-sheet";
 import ProviderProfileSkeleton from "@/components/provider/provider-profile-skeleton";
 import ProviderProfileHeader from "@/components/provider/provider-profile-header";
+import { PageHeading } from "@/components/page-heading";
 import ProviderActionBar from "@/components/provider/provider-action-bar";
 import ProviderWorkSection from "@/components/provider/provider-work-section";
 import ProviderLocationSection from "@/components/provider/provider-location-section";
@@ -712,8 +713,8 @@ export default function ProviderProfileClient({ id }: Props) {
 
   if (!provider) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-10">
-        <h1 className="text-2xl font-semibold">Provider not found</h1>
+      <div className="mx-auto max-w-2xl px-4 pt-0 pb-10">
+        <PageHeading title="Provider not found" className="mb-0" />
         <Link href="/discover" className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ArrowLeft aria-hidden="true" className="size-4" />
           Back to discover
@@ -803,7 +804,7 @@ export default function ProviderProfileClient({ id }: Props) {
   ) : null;
 
   return (
-    <div className={`mx-auto max-w-2xl px-4 pt-6 ${showMobileActionBar ? "pb-[calc(5rem+env(safe-area-inset-bottom))]" : "pb-10"} sm:py-10`}>
+    <div className={`mx-auto max-w-2xl px-4 pt-[calc(env(safe-area-inset-top)_+_1.5rem)] ${showMobileActionBar ? "pb-[calc(5rem+env(safe-area-inset-bottom))]" : "pb-10"} sm:pb-10`}>
       <ProviderProfileHeader
         name={name}
         avatarUrl={profile?.avatar_url}

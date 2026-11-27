@@ -103,7 +103,6 @@ export default function DiscoverSearchToggle({
   return (
     <div className="sm:block">
       <div className="flex items-center justify-between gap-3 sm:block">
-        <h1 className="mb-1 text-2xl font-semibold">Find a professional</h1>
         <button
           ref={headerButtonRef}
           type="button"
@@ -116,10 +115,6 @@ export default function DiscoverSearchToggle({
           <Search aria-hidden="true" className="size-5" />
         </button>
       </div>
-
-      <p className="mb-6 max-sm:mb-3 text-muted-foreground">
-        Browse verified professionals in Cuddalore and Chidambaram.
-      </p>
 
       <div
         id={panelId}

@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { friendlyDbError } from "@/lib/db-errors";
 import { useAuthGate } from "@/components/auth/auth-sheet";
 import { PhoneGateDialog } from "@/components/phone-gate-dialog";
+import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -259,12 +260,8 @@ export default function ApplyForm() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10">
-      <h1 className="mb-1 text-2xl font-semibold">Apply to join Assisto</h1>
-      <p className="mb-6 text-muted-foreground">
-        Tell us about your work. Applications are reviewed before your profile
-        goes live — this keeps the platform trustworthy for customers.
-      </p>
+    <div className="mx-auto max-w-xl px-4 pt-0 pb-10">
+      <PageHeading title="Apply to join Assisto" description="Tell us about your work. Applications are reviewed before your profile goes live — this keeps the platform trustworthy for customers." />
 
       {loading ? (
         <div className="py-20">

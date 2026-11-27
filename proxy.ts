@@ -9,7 +9,6 @@ function requiresAuthentication(pathname: string): boolean {
     pathname === "/enquiries" ||
     pathname === "/my-enquiries" ||
     pathname === "/your-work" ||
-    pathname === "/profile" ||
     pathname.startsWith("/profile/") ||
     pathname === "/projects" ||
     pathname.startsWith("/projects/") ||

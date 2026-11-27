@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import AdminEnquiriesTabs from "@/components/admin-enquiries-tabs";
 import type { AdminEnquiryRow } from "@/components/admin-enquiry-detail";
 import { one } from "@/lib/relations";
+import { PageHeading } from "@/components/page-heading";
 
 type Relation<T> = T | T[] | null;
 type EnquiryQueryRow = Omit<AdminEnquiryRow, "profiles" | "providers" | "customer_requirements"> & {
@@ -38,9 +39,8 @@ export default async function AdminEnquiriesPage({ searchParams }: { searchParam
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-1 text-2xl font-semibold">Enquiries (admin)</h1>
-      <p className="mb-6 text-muted-foreground">{enquiries?.length ?? 0} enquiries</p>
+    <div className="mx-auto max-w-4xl px-4 pt-0 pb-8">
+      <PageHeading title="Enquiries (admin)" description={`${enquiries?.length ?? 0} enquiries`} />
 
       <AdminEnquiriesTabs
         enquiries={((enquiries ?? []) as EnquiryQueryRow[]).map((enquiry): AdminEnquiryRow => {

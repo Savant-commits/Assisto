@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ContactUnlock } from "@/components/contact-unlock";
 import { one } from "@/lib/relations";
+import { PageHeading } from "@/components/page-heading";
 
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -94,7 +95,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <div className="mx-auto max-w-2xl px-4 pt-[calc(env(safe-area-inset-top)_+_1.5rem)] pb-10">
       <div className="mb-6">
         <Link href="/enquiries" className="text-sm text-blue-600 underline">
           ← Back to enquiries
@@ -103,9 +104,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
       <div className="rounded-lg border p-6">
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">{project.project_code}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Enquiry: {enquiry.enquiry_code}</p>
+          <div className="min-w-0 flex-1">
+            <PageHeading title={project.project_code} description={`Enquiry: ${enquiry.enquiry_code}`} className="mb-0 pt-0" />
           </div>
           <div>{statusBadge(enquiry.status)}</div>
         </div>

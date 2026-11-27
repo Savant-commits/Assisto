@@ -3,15 +3,15 @@
 import { useSearchParams } from "next/navigation";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import LoginForm from "@/components/auth/login-form";
+import { PageHeading } from "@/components/page-heading";
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const redirectTo = safeRedirectPath(searchParams.get("redirect"));
 
   return (
-    <div className="mx-auto max-w-sm px-4 py-16">
-      <h1 className="mb-1 text-2xl font-semibold">Log in</h1>
-      <p className="mb-6 text-muted-foreground">Welcome back to Assisto.</p>
+    <div className="mx-auto max-w-sm px-4 pt-0 pb-16">
+      <PageHeading title="Log in" description="Welcome back to Assisto." />
       {searchParams.get("error") === "link_expired" && (
         <p role="alert" className="mb-4 text-sm text-destructive">
           This confirmation link is invalid or has expired. Enter your email below and sign in to request another link.

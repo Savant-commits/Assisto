@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LoadingSpinner from "@/components/loading-spinner";
+import { PageHeading } from "@/components/page-heading";
 
 type Category = { id: number; slug: string; name: string; sort_order: number };
 type Service = { id: number; slug: string; name: string; category_id?: number; sort_order?: number };
@@ -136,11 +137,8 @@ export default function ManageServicesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <div className="mb-6">
-        <h1 className="mb-1 text-2xl font-semibold">Categories & services</h1>
-        <p className="text-muted-foreground">Choose which categories and services you offer. Your selections determine where you appear when customers search.</p>
-      </div>
+    <div className="mx-auto max-w-2xl px-4 pt-0 pb-10">
+      <PageHeading title="Categories & services" description="Choose which categories and services you offer. Your selections determine where you appear when customers search." />
 
       {/* Service edits banner */}
       {serviceEditCredits !== null && (

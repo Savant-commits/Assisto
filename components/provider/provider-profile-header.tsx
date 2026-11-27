@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import type { MouseEvent } from "react";
 import { Avatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
+import { PageHeading } from "@/components/page-heading";
 
 type Props = {
   name: string;
@@ -49,7 +50,7 @@ export default function ProviderProfileHeader({
   }
 
   return (
-    <header className="mb-[var(--section-gap)] sm:mb-0">
+    <div className="mb-[var(--section-gap)] sm:mb-0">
       <Link
         href="/discover"
         onClick={handleBack}
@@ -68,10 +69,7 @@ export default function ProviderProfileHeader({
           className="h-16 w-16 shrink-0 rounded-full object-cover bg-muted"
         />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-2xl font-semibold text-foreground sm:font-sans sm:tracking-normal">{name}</h1>
-            {isVerified === true && <Badge variant="secondary">Credential verified</Badge>}
-          </div>
+          <PageHeading title={name} action={isVerified === true ? <Badge variant="secondary">Credential verified</Badge> : undefined} className="mb-0 pt-0" />
 
           {headline?.trim() && <p className="mt-1 text-sm text-muted-foreground sm:hidden">{headline}</p>}
 
@@ -113,6 +111,6 @@ export default function ProviderProfileHeader({
           ))}
         </div>
       )}
-    </header>
+    </div>
   );
 }

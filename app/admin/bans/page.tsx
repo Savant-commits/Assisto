@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AdminBansList, { type UserBanListItem } from "@/components/admin-bans-list";
+import { PageHeading } from "@/components/page-heading";
 
 export default async function AdminBansPage() {
   const supabase = await createClient();
@@ -63,9 +64,8 @@ export default async function AdminBansPage() {
   }));
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-1 text-2xl font-semibold">Bans (admin)</h1>
-      <p className="mb-6 text-muted-foreground">Review active and historical account suspensions.</p>
+    <div className="mx-auto max-w-4xl px-4 pt-0 pb-8">
+      <PageHeading title="Bans (admin)" description="Review active and historical account suspensions." />
 
       <AdminBansList bans={adminBans} />
     </div>

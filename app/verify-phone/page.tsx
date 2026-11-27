@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { VerifyPhoneForm } from "@/app/verify-phone/verify-phone-form";
+import { PageHeading } from "@/components/page-heading";
 
 function safeNext(value: string | string[] | undefined): string {
   if (
@@ -36,11 +37,8 @@ export default async function VerifyPhonePage({
   if (profile?.phone_verified_at) redirect(next);
 
   return (
-    <main className="mx-auto w-full max-w-md px-4 py-10">
-      <h1 className="mb-2 text-2xl font-semibold">Verify your phone number</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Verify your phone number to continue.
-      </p>
+    <main className="mx-auto w-full max-w-md px-4 pt-0 pb-10">
+      <PageHeading title="Verify your phone number" description="Verify your phone number to continue." />
       <VerifyPhoneForm next={next} initialPhone={userData.user.phone ?? undefined} />
     </main>
   );

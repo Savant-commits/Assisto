@@ -13,6 +13,7 @@ import { PhoneGateDialog } from "@/components/phone-gate-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { PageHeading } from "@/components/page-heading";
 import {
   Form,
   FormControl,
@@ -148,11 +149,8 @@ export default function NewRequirementPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10">
-      <h1 className="mb-1 text-2xl font-semibold">What do you need done?</h1>
-      <p className="mb-6 text-muted-foreground">
-        Describe the job in your own words. We&apos;ll show you professionals who match.
-      </p>
+    <div className="mx-auto max-w-xl px-4 pt-0 pb-10">
+      <PageHeading title="What do you need done?" description="Describe the job in your own words. We'll show you professionals who match." />
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">

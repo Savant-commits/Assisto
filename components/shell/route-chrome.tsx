@@ -5,8 +5,6 @@ import AppHeader from "@/components/shell/app-header";
 import BottomNav from "@/components/shell/bottom-nav";
 import { NotificationsProvider } from "@/components/notification-bell";
 
-const mainTabPaths = new Set(["/", "/discover", "/enquiries", "/messages", "/profile", "/profile/provider", "/settings"]);
-
 export function RouteChrome({
   children,
   fullName,
@@ -17,15 +15,15 @@ export function RouteChrome({
   isLoggedIn: boolean;
 }) {
   const pathname = usePathname() || "/";
-  const showBottomNavigation = mainTabPaths.has(pathname) || pathname.startsWith("/messages/");
+  const isHomeRoute = pathname === "/";
 
   return (
     <NotificationsProvider>
-      <AppHeader fullName={fullName} isLoggedIn={isLoggedIn} />
-      <div style={showBottomNavigation ? { paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" } : undefined}>
+      {isHomeRoute && <AppHeader fullName={fullName} isLoggedIn={isLoggedIn} />}
+      <div style={{ paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom))" }}>
         {children}
       </div>
-      {showBottomNavigation && <BottomNav currentPath={pathname} isLoggedIn={isLoggedIn} />}
+      <BottomNav currentPath={pathname} />
     </NotificationsProvider>
   );
 }

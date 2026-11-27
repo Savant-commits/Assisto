@@ -4,6 +4,7 @@ import AdminChatViewer from "@/components/admin-chat-viewer";
 import { humanDuration } from "@/lib/chat-duration";
 import { one } from "@/lib/relations";
 import type { ProjectMessageAttachment } from "@/lib/types";
+import { PageHeading } from "@/components/page-heading";
 
 type Relation<T> = T | T[] | null;
 type ProjectAttachment = ProjectMessageAttachment & { signedUrl: string | null };
@@ -108,9 +109,8 @@ export default async function AdminReportChatPage({ params, searchParams }: { pa
   if (!messages || messages.length === 0) {
     // chat not reported or RLS blocked — show short notice
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <h1 className="mb-2 text-2xl font-semibold">Reported Chat</h1>
-        <p className="text-muted-foreground">This chat has no reported messages, so its content is not available.</p>
+      <div className="mx-auto max-w-4xl px-4 pt-0 pb-8">
+        <PageHeading title="Reported Chat" description="This chat has no reported messages, so its content is not available." />
         <p className="mt-4"><a href="/admin/chats" className="text-blue-600 underline">Back to Chats</a></p>
       </div>
     );

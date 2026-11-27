@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import AdminCredentialsList, { type AdminCredentialItem } from "@/components/admin-credentials-list";
+import { PageHeading } from "@/components/page-heading";
 
 export default async function AdminCredentialsPage({
   searchParams,
@@ -70,9 +71,8 @@ export default async function AdminCredentialsPage({
   const credential = Array.isArray(params.credential) ? params.credential[0] : params.credential;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="mb-1 text-2xl font-semibold">Provider credentials</h1>
-      <p className="mb-6 text-sm text-muted-foreground">Review uploaded certificates, degrees and licences.</p>
+    <main className="mx-auto max-w-5xl px-4 pt-0 pb-8">
+      <PageHeading title="Provider credentials" description="Review uploaded certificates, degrees and licences." />
       <AdminCredentialsList credentials={credentials} deepLinkCredentialId={credential ?? null} />
     </main>
   );

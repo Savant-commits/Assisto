@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/avatar";
+import { PageHeading } from "@/components/page-heading";
 
 type Conversation = {
   enquiryId: number;
@@ -177,9 +178,8 @@ export default function MessagesPage() {
   const shown = tab === "active" ? active : history;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 pb-12 sm:py-10">
-      <h1 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">Messages</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Conversations with your customers and providers.</p>
+    <main className="mx-auto w-full max-w-3xl px-4 pt-0 pb-12 sm:pb-10">
+      <PageHeading title="Messages" description="Conversations with your customers and providers." />
 
       <div className="sticky top-[env(safe-area-inset-top)] z-20 mt-6 rounded-full border border-border bg-card p-1 shadow-sm">
         <div className="grid grid-cols-2 gap-1">
