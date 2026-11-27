@@ -28,7 +28,6 @@ import { LocationMap } from "@/components/map/location-map";
 import { LocationPicker } from "@/components/map/location-picker";
 import { Avatar } from "@/components/avatar";
 import { PrivateProfileAddress } from "@/components/profile/private-address";
-import { ProviderSummaryCard } from "@/components/profile/provider-summary-card";
 import { usePhoneVerificationRequired } from "@/components/phone-verification-required-context";
 import { PageHeading } from "@/components/page-heading";
 import ThemeToggle from "@/components/theme-toggle";
@@ -334,6 +333,12 @@ export default function ProfilePage() {
     const headline = providerListing.headline.trim();
     const bio = providerListing.bio.trim();
     const locality = providerListing.locality.trim();
+    const yearsExperience = providerListing.years_experience;
+
+    if (yearsExperience === null || !Number.isFinite(yearsExperience) || yearsExperience < 0 || yearsExperience > 60) {
+      setListingError("Experience must be between 0 and 60 years.");
+      return;
+    }
 
     setIsSavingListing(true);
     try {
@@ -350,6 +355,7 @@ export default function ProfilePage() {
         .update({
           business_name: businessName || null,
           headline: headline || null,
+          years_experience: yearsExperience,
           bio: bio || null,
           locality: locality || null,
         })
@@ -365,6 +371,7 @@ export default function ProfilePage() {
         ...current,
         business_name: businessName,
         headline,
+        years_experience: yearsExperience,
         bio,
         locality,
       }));
@@ -614,20 +621,13 @@ export default function ProfilePage() {
       <main className="mx-auto w-full max-w-5xl space-y-4 px-4 pt-0 pb-[calc(var(--bottom-nav-height)+2rem+env(safe-area-inset-bottom))] md:px-6">
         <PageHeading title="Provider hub" description="Manage how customers see your business." action={<Badge>Provider</Badge>} />
 
-        <ProviderSummaryCard
-          providerId={profileId}
-          categories={providerListing.categories}
-          yearsExperience={providerListing.years_experience}
-          about={providerListing.bio}
-        />
-
         <section aria-labelledby="provider-listing-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 id="provider-listing-heading" className="font-display text-xl">Provider listing</h2>
-              <p className="mt-1 text-xs font-medium text-muted-foreground">Public business details</p>
+            <h2 id="provider-listing-heading" className="font-display text-xl">Provider listing</h2>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <Link href={`/providers/${profileId}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-border px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">View public profile</Link>
+              {!isEditingProvider && <Button type="button" variant="outline" size="icon" className="size-11 shrink-0" aria-label="Edit provider listing" title="Edit provider listing" disabled={activeEditor !== null} onClick={() => { setProviderListing(savedProviderListing); setListingError(null); setListingSuccess(null); setActiveEditor("provider"); }}><Pencil aria-hidden="true" className="size-4" /></Button>}
             </div>
-            {!isEditingProvider && <Button type="button" variant="outline" size="icon" className="size-11 shrink-0" aria-label="Edit provider listing" title="Edit provider listing" disabled={activeEditor !== null} onClick={() => { setProviderListing(savedProviderListing); setListingError(null); setListingSuccess(null); setActiveEditor("provider"); }}><Pencil aria-hidden="true" className="size-4" /></Button>}
           </div>
           <form onSubmit={saveProviderListing} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -640,14 +640,32 @@ export default function ProfilePage() {
                 <Input id="provider-headline" value={providerListing.headline} maxLength={150} readOnly={!isEditingProvider} onChange={(event) => { setProviderListing((current) => ({ ...current, headline: event.target.value })); setListingSuccess(null); }} className="min-h-11 read-only:border-transparent read-only:bg-muted/40 read-only:px-0" />
                 {isEditingProvider && providerListing.headline.length > 120 && <p className="mt-1 text-right text-xs text-muted-foreground">{providerListing.headline.length}/150</p>}
               </div>
+              <div>
+                <label htmlFor="provider-years-experience" className="mb-1 block text-sm font-medium">Experience (years)</label>
+                {isEditingProvider ? (
+                  <Input
+                    id="provider-years-experience"
+                    type="number"
+                    min={0}
+                    max={60}
+                    step="any"
+                    required
+                    value={providerListing.years_experience ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setProviderListing((current) => ({ ...current, years_experience: value === "" ? null : Number(value) }));
+                      setListingSuccess(null);
+                    }}
+                    className="min-h-11"
+                  />
+                ) : (
+                  <p className="min-h-11 py-2 text-sm font-medium">{providerListing.years_experience === null ? "Not provided" : `${providerListing.years_experience} years`}</p>
+                )}
+              </div>
               <div className="sm:col-span-2">
                 <label htmlFor="provider-bio" className="mb-1 block text-sm font-medium">Bio</label>
                 <Textarea id="provider-bio" value={providerListing.bio} maxLength={2000} rows={4} readOnly={!isEditingProvider} onChange={(event) => { setProviderListing((current) => ({ ...current, bio: event.target.value })); setListingSuccess(null); }} className="read-only:resize-none read-only:border-transparent read-only:bg-muted/40 read-only:px-0" />
                 {isEditingProvider && providerListing.bio.length > 1600 && <p className="mt-1 text-right text-xs text-muted-foreground">{providerListing.bio.length}/2000</p>}
-              </div>
-              <div className="sm:col-span-2">
-                <label htmlFor="provider-locality" className="mb-1 block text-sm font-medium">Based at (area or landmark)</label>
-                <Input id="provider-locality" value={providerListing.locality} maxLength={150} placeholder="Beach Road, Cuddalore" readOnly={!isEditingProvider} onChange={(event) => { setProviderListing((current) => ({ ...current, locality: event.target.value })); setListingSuccess(null); }} className="min-h-11 read-only:border-transparent read-only:bg-muted/40 read-only:px-0" />
               </div>
             </div>
             {isEditingProvider && (
@@ -659,34 +677,6 @@ export default function ProfilePage() {
             {listingError && <p className="text-sm text-destructive" role="alert">{listingError}</p>}
             {listingSuccess && <p className="text-sm text-primary" role="status">{listingSuccess}</p>}
           </form>
-        </section>
-
-        <section aria-labelledby="business-location-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 id="business-location-heading" className="font-display text-xl">Business location</h2>
-              <p className="mt-1 text-xs font-medium text-muted-foreground">Your business pin is public on your profile.</p>
-            </div>
-            <Button type="button" variant="outline" className="min-h-11" disabled={activeEditor !== null} onClick={() => setIsLocationPickerOpen(true)}>{hasLocation ? "Change location" : "Set location"}</Button>
-          </div>
-          {providerLocationLabel?.coordinates === `${providerListing.lat},${providerListing.lng}` && <p className="mb-2 truncate text-sm text-muted-foreground" title={providerLocationLabel.label}>{providerLocationLabel.label}</p>}
-          {hasLocation ? (
-            <LocationMap lat={providerListing.lat!} lng={providerListing.lng!} height={240} />
-          ) : (
-            <>
-              <LocationMap lat={cityCenter.lat} lng={cityCenter.lng} height={240} />
-              <p className="mt-2 text-sm text-muted-foreground">No business location set yet.</p>
-            </>
-          )}
-          <p className="mt-3 text-xs text-muted-foreground">For privacy, place a public pin at your shop or office rather than your home.</p>
-          <LocationPicker
-            open={isLocationPickerOpen}
-            onOpenChange={setIsLocationPickerOpen}
-            initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
-            title="Business location"
-            confirmLabel="Confirm"
-            onConfirm={saveProviderLocation}
-          />
         </section>
 
         <section aria-labelledby="provider-categories-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
@@ -707,6 +697,38 @@ export default function ProfilePage() {
               ? `You have ${providerListing.service_edit_credits} service edit${providerListing.service_edit_credits === 1 ? "" : "s"} remaining.`
               : "No service edits remaining. Contact support if you need to change your selections."}
           </p>
+        </section>
+
+        <section aria-labelledby="business-location-heading" className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="business-location-heading" className="font-display text-xl">Business location</h2>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">Your business pin is public on your profile.</p>
+            </div>
+            <Button type="button" variant="outline" className="min-h-11" disabled={activeEditor !== null} onClick={() => setIsLocationPickerOpen(true)}>{hasLocation ? "Change location" : "Set location"}</Button>
+          </div>
+          <div className="mb-4 max-w-xl">
+            <label htmlFor="provider-locality" className="mb-1 block text-sm font-medium">Based at (area or landmark)</label>
+            <Input id="provider-locality" value={providerListing.locality} maxLength={150} placeholder="Beach Road, Cuddalore" readOnly={!isEditingProvider} onChange={(event) => { setProviderListing((current) => ({ ...current, locality: event.target.value })); setListingSuccess(null); }} className="min-h-11 read-only:border-transparent read-only:bg-muted/40 read-only:px-0" />
+          </div>
+          {providerLocationLabel?.coordinates === `${providerListing.lat},${providerListing.lng}` && <p className="mb-2 truncate text-sm text-muted-foreground" title={providerLocationLabel.label}>{providerLocationLabel.label}</p>}
+          {hasLocation ? (
+            <LocationMap lat={providerListing.lat!} lng={providerListing.lng!} height={240} />
+          ) : (
+            <>
+              <LocationMap lat={cityCenter.lat} lng={cityCenter.lng} height={240} />
+              <p className="mt-2 text-sm text-muted-foreground">No business location set yet.</p>
+            </>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">For privacy, place a public pin at your shop or office rather than your home.</p>
+          <LocationPicker
+            open={isLocationPickerOpen}
+            onOpenChange={setIsLocationPickerOpen}
+            initial={hasLocation ? { lat: providerListing.lat!, lng: providerListing.lng! } : null}
+            title="Business location"
+            confirmLabel="Confirm"
+            onConfirm={saveProviderLocation}
+          />
         </section>
 
         <PhoneGateDialog
